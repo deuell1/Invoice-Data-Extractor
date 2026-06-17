@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, sql, and, inArray } from "drizzle-orm";
+import { eq, sql, and, inArray, ilike, or, asc, desc } from "drizzle-orm";
 import { db, invoiceCaptureTable, invoiceAuditLogTable, vendorIdTable } from "@workspace/db";
 import {
   CreateInvoiceBody,
@@ -125,7 +125,7 @@ router.get("/invoices", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const { status, vendorId, page, limit } = parsed.data;
+  const { status, vendorId, search, sortBy, sortDir, page, limit } = parsed.data;
   const offset = ((page ?? 1) - 1) * (limit ?? 20);
 
   const conditions = [];
@@ -135,8 +135,27 @@ router.get("/invoices", async (req, res): Promise<void> => {
   if (vendorId != null) {
     conditions.push(eq(invoiceCaptureTable.vendorId, vendorId));
   }
+  if (search) {
+    const pattern = `%${search}%`;
+    conditions.push(
+      or(
+        ilike(invoiceCaptureTable.invoiceNumber, pattern),
+        ilike(vendorIdTable.vendorName, pattern),
+      )!
+    );
+  }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const sortColumn = (() => {
+    const dir = sortDir === "asc" ? asc : desc;
+    switch (sortBy) {
+      case "invoiceDate": return dir(invoiceCaptureTable.invoiceDate);
+      case "totalAmount": return dir(invoiceCaptureTable.totalAmount);
+      case "vendorName": return dir(vendorIdTable.vendorName);
+      default: return dir(invoiceCaptureTable.createdAt);
+    }
+  })();
 
   const baseQuery = db
     .select({
@@ -166,12 +185,13 @@ router.get("/invoices", async (req, res): Promise<void> => {
   const [rows, countRows] = await Promise.all([
     baseQuery
       .where(whereClause)
-      .orderBy(invoiceCaptureTable.createdAt)
+      .orderBy(sortColumn)
       .limit(limit ?? 20)
       .offset(offset),
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(invoiceCaptureTable)
+      .leftJoin(vendorIdTable, eq(invoiceCaptureTable.vendorId, vendorIdTable.id))
       .where(whereClause),
   ]);
 

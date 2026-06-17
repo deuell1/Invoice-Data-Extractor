@@ -49,6 +49,23 @@ paths:
           in: query
           schema:
             type: ["integer", "null"]
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search by invoice number or vendor name
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [createdAt, invoiceDate, totalAmount, vendorName]
+            default: createdAt
+        - name: sortDir
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
         - name: page
           in: query
           schema:

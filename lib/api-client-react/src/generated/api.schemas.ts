@@ -271,6 +271,12 @@ status?: ListInvoicesStatus;
  * @nullable
  */
 vendorId?: number | null;
+/**
+ * Search by invoice number or vendor name
+ */
+search?: string;
+sortBy?: ListInvoicesSortBy;
+sortDir?: ListInvoicesSortDir;
 page?: number;
 limit?: number;
 };
@@ -284,6 +290,24 @@ export const ListInvoicesStatus = {
   PENDING_APPROVAL: 'PENDING_APPROVAL',
   APPROVED: 'APPROVED',
   POSTED: 'POSTED',
+} as const;
+
+export type ListInvoicesSortBy = typeof ListInvoicesSortBy[keyof typeof ListInvoicesSortBy];
+
+
+export const ListInvoicesSortBy = {
+  createdAt: 'createdAt',
+  invoiceDate: 'invoiceDate',
+  totalAmount: 'totalAmount',
+  vendorName: 'vendorName',
+} as const;
+
+export type ListInvoicesSortDir = typeof ListInvoicesSortDir[keyof typeof ListInvoicesSortDir];
+
+
+export const ListInvoicesSortDir = {
+  asc: 'asc',
+  desc: 'desc',
 } as const;
 
 export type ExportInvoicesCsvParams = {

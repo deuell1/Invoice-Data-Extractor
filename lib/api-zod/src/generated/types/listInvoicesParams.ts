@@ -5,6 +5,8 @@
  * Invoice Capture MVP API
  * OpenAPI spec version: 0.1.0
  */
+import type { ListInvoicesSortBy } from './listInvoicesSortBy';
+import type { ListInvoicesSortDir } from './listInvoicesSortDir';
 import type { ListInvoicesStatus } from './listInvoicesStatus';
 
 export type ListInvoicesParams = {
@@ -13,6 +15,12 @@ status?: ListInvoicesStatus;
  * @nullable
  */
 vendorId?: number | null;
+/**
+ * Search by invoice number or vendor name
+ */
+search?: string;
+sortBy?: ListInvoicesSortBy;
+sortDir?: ListInvoicesSortDir;
 page?: number;
 limit?: number;
 };

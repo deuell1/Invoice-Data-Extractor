@@ -20,12 +20,17 @@ export const HealthCheckResponse = zod.object({
 /**
  * @summary List all invoices
  */
+export const listInvoicesQuerySortByDefault = `createdAt`;
+export const listInvoicesQuerySortDirDefault = `desc`;
 export const listInvoicesQueryPageDefault = 1;
 export const listInvoicesQueryLimitDefault = 20;
 
 export const ListInvoicesQueryParams = zod.object({
   "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED']).optional(),
   "vendorId": zod.coerce.number().nullish(),
+  "search": zod.coerce.string().optional().describe('Search by invoice number or vendor name'),
+  "sortBy": zod.enum(['createdAt', 'invoiceDate', 'totalAmount', 'vendorName']).default(listInvoicesQuerySortByDefault),
+  "sortDir": zod.enum(['asc', 'desc']).default(listInvoicesQuerySortDirDefault),
   "page": zod.coerce.number().default(listInvoicesQueryPageDefault),
   "limit": zod.coerce.number().default(listInvoicesQueryLimitDefault)
 })

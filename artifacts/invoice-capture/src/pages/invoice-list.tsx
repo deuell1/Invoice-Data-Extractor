@@ -12,11 +12,13 @@ import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/status-badge";
 import {
   FileText, AlertCircle, CheckSquare, CheckCircle, FilePlus, Loader2,
-  Search, ChevronLeft, ChevronRight,
+  Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown,
 } from "lucide-react";
 import { format } from "date-fns";
 
 type StatusFilter = "ALL" | "PENDING_EXTRACTION" | "EXCEPTION" | "PENDING_APPROVAL" | "APPROVED" | "POSTED";
+type SortBy = "createdAt" | "invoiceDate" | "totalAmount" | "vendorName";
+type SortDir = "asc" | "desc";
 
 const STATUS_TABS: { label: string; value: StatusFilter }[] = [
   { label: "All", value: "ALL" },
@@ -29,16 +31,27 @@ const STATUS_TABS: { label: string; value: StatusFilter }[] = [
 
 const PAGE_SIZE = 10;
 
+function SortIcon({ col, sortBy, sortDir }: { col: SortBy; sortBy: SortBy; sortDir: SortDir }) {
+  if (sortBy !== col) return <ArrowUpDown className="h-3 w-3 ml-1 text-muted-foreground/50" />;
+  return sortDir === "asc"
+    ? <ArrowUp className="h-3 w-3 ml-1 text-primary" />
+    : <ArrowDown className="h-3 w-3 ml-1 text-primary" />;
+}
+
 export function InvoiceList() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [sortBy, setSortBy] = useState<SortBy>("createdAt");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
   const { data: stats, isLoading: statsLoading } = useGetInvoiceStats();
 
   const queryParams = {
     status: statusFilter === "ALL" ? undefined : statusFilter,
     search: search || undefined,
+    sortBy,
+    sortDir,
     page,
     limit: PAGE_SIZE,
   };
@@ -58,6 +71,29 @@ export function InvoiceList() {
     setSearch(value);
     setPage(1);
   };
+
+  const handleSort = (col: SortBy) => {
+    if (sortBy === col) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(col);
+      setSortDir("desc");
+    }
+    setPage(1);
+  };
+
+  const SortableHead = ({ col, children }: { col: SortBy; children: React.ReactNode }) => (
+    <TableHead
+      className="cursor-pointer select-none hover:bg-muted/30 transition-colors"
+      onClick={() => handleSort(col)}
+      data-testid={`sort-${col}`}
+    >
+      <span className="flex items-center">
+        {children}
+        <SortIcon col={col} sortBy={sortBy} sortDir={sortDir} />
+      </span>
+    </TableHead>
+  );
 
   return (
     <div className="space-y-6 flex flex-col h-full">
@@ -158,9 +194,9 @@ export function InvoiceList() {
             <TableHeader className="sticky top-0 bg-card z-10 shadow-sm">
               <TableRow>
                 <TableHead>Invoice #</TableHead>
-                <TableHead>Vendor</TableHead>
-                <TableHead>Date</TableHead>
-                <TableHead>Amount</TableHead>
+                <SortableHead col="vendorName">Vendor</SortableHead>
+                <SortableHead col="invoiceDate">Date</SortableHead>
+                <SortableHead col="totalAmount">Amount</SortableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Action</TableHead>
               </TableRow>
@@ -209,7 +245,7 @@ export function InvoiceList() {
           <div className="flex items-center justify-between px-4 py-3 border-t shrink-0 text-sm text-muted-foreground">
             <span>
               {invoicesRes?.total ?? 0} invoice{invoicesRes?.total !== 1 ? "s" : ""}
-              {statusFilter !== "ALL" ? ` · filtered by ${statusFilter.replace("_", " ").toLowerCase()}` : ""}
+              {statusFilter !== "ALL" ? ` · ${statusFilter.replace(/_/g, " ").toLowerCase()}` : ""}
             </span>
             <div className="flex items-center gap-2">
               <Button
@@ -221,9 +257,7 @@ export function InvoiceList() {
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <span className="text-sm">
-                Page {page} of {totalPages}
-              </span>
+              <span className="text-sm">Page {page} of {totalPages}</span>
               <Button
                 variant="outline"
                 size="sm"

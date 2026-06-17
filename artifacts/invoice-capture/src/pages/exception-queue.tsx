@@ -4,17 +4,45 @@ import {
   useListInvoices,
   getListInvoicesQueryKey,
   useUpdateInvoiceStatus,
+  useUpdateInvoice,
   useGetInvoiceAuditLog,
   getGetInvoiceAuditLogQueryKey,
+  useListVendors,
 } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, AlertTriangle, ArrowRight, RotateCcw, ChevronDown, ChevronRight } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Loader2, AlertTriangle, ArrowRight, RotateCcw, ChevronDown, ChevronRight, Pencil, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+
+type Invoice = {
+  id: number;
+  invoiceNumber: string | null;
+  vendorId: number | null;
+  vendorName: string | null;
+  invoiceDate: string | null;
+  totalAmount: number | null;
+  taxAmount: number | null;
+  poNumber: string | null;
+  currency: string;
+  exceptionReason: string | null;
+  lowConfidenceFields: string | null;
+  updatedAt: string;
+};
+
 function InvoiceAuditPanel({ invoiceId }: { invoiceId: number }) {
   const { data: logs, isLoading } = useGetInvoiceAuditLog(invoiceId, {
     query: { enabled: true, queryKey: getGetInvoiceAuditLogQueryKey(invoiceId) },
@@ -44,10 +72,154 @@ function InvoiceAuditPanel({ invoiceId }: { invoiceId: number }) {
   );
 }
 
+function EditFieldsModal({
+  invoice,
+  open,
+  onClose,
+}: {
+  invoice: Invoice;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { data: vendorsData } = useListVendors({ limit: 100 });
+  const updateInvoice = useUpdateInvoice();
+
+  const flagged = invoice.lowConfidenceFields?.split(",").map((f) => f.trim()) ?? [];
+
+  const [form, setForm] = useState({
+    vendorId: invoice.vendorId?.toString() ?? "",
+    invoiceNumber: invoice.invoiceNumber ?? "",
+    invoiceDate: invoice.invoiceDate ? invoice.invoiceDate.split("T")[0] : "",
+    totalAmount: invoice.totalAmount?.toString() ?? "",
+    taxAmount: invoice.taxAmount?.toString() ?? "",
+    poNumber: invoice.poNumber ?? "",
+    currency: invoice.currency ?? "USD",
+  });
+
+  const handleSave = async () => {
+    try {
+      const payload: Record<string, unknown> = { editorRole: "AP_PROCESSOR" };
+      if (form.vendorId) payload.vendorId = parseInt(form.vendorId, 10);
+      if (form.invoiceNumber !== undefined) payload.invoiceNumber = form.invoiceNumber || null;
+      if (form.invoiceDate !== undefined) payload.invoiceDate = form.invoiceDate || null;
+      payload.totalAmount = form.totalAmount ? parseFloat(form.totalAmount) : null;
+      payload.taxAmount = form.taxAmount ? parseFloat(form.taxAmount) : null;
+      if (form.poNumber !== undefined) payload.poNumber = form.poNumber || null;
+      payload.currency = form.currency;
+
+      await updateInvoice.mutateAsync({ id: invoice.id, data: payload });
+      toast({ title: "Saved", description: "Invoice fields updated" });
+      queryClient.invalidateQueries({ queryKey: getListInvoicesQueryKey({ status: "EXCEPTION" }) });
+      queryClient.invalidateQueries({ queryKey: getGetInvoiceAuditLogQueryKey(invoice.id) });
+      onClose();
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Save Failed", description: e?.data?.error || "Failed to save changes" });
+    }
+  };
+
+  const isLow = (field: string) => flagged.includes(field);
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Edit Invoice Fields</DialogTitle>
+          <p className="text-sm text-muted-foreground">
+            {invoice.invoiceNumber || "Untitled"} · {invoice.vendorName || "Unknown Vendor"}
+          </p>
+        </DialogHeader>
+        {flagged.length > 0 && (
+          <div className="flex gap-1 flex-wrap">
+            {flagged.map((f) => (
+              <Badge key={f} variant="outline" className="text-amber-600 border-amber-300 bg-amber-50 text-xs">
+                <AlertCircle className="h-3 w-3 mr-1" />
+                {f}
+              </Badge>
+            ))}
+          </div>
+        )}
+        <div className="space-y-4 py-2">
+          <div className="space-y-1">
+            <Label className="flex items-center gap-1 text-xs">
+              Vendor {isLow("vendorId") && <AlertCircle className="h-3 w-3 text-amber-500" />}
+            </Label>
+            <Select value={form.vendorId} onValueChange={(v) => setForm((p) => ({ ...p, vendorId: v }))}>
+              <SelectTrigger><SelectValue placeholder="Select Vendor" /></SelectTrigger>
+              <SelectContent>
+                {vendorsData?.data?.map((v) => (
+                  <SelectItem key={v.id} value={v.id.toString()}>{v.vendorName}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="flex items-center gap-1 text-xs">
+                Invoice # {isLow("invoiceNumber") && <AlertCircle className="h-3 w-3 text-amber-500" />}
+              </Label>
+              <Input value={form.invoiceNumber} onChange={(e) => setForm((p) => ({ ...p, invoiceNumber: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="flex items-center gap-1 text-xs">
+                Invoice Date {isLow("invoiceDate") && <AlertCircle className="h-3 w-3 text-amber-500" />}
+              </Label>
+              <Input type="date" value={form.invoiceDate} onChange={(e) => setForm((p) => ({ ...p, invoiceDate: e.target.value }))} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="flex items-center gap-1 text-xs">
+                Total Amount {isLow("totalAmount") && <AlertCircle className="h-3 w-3 text-amber-500" />}
+              </Label>
+              <Input type="number" step="0.01" value={form.totalAmount} onChange={(e) => setForm((p) => ({ ...p, totalAmount: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="flex items-center gap-1 text-xs">
+                Tax Amount {isLow("taxAmount") && <AlertCircle className="h-3 w-3 text-amber-500" />}
+              </Label>
+              <Input type="number" step="0.01" value={form.taxAmount} onChange={(e) => setForm((p) => ({ ...p, taxAmount: e.target.value }))} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <Label className="flex items-center gap-1 text-xs">
+                PO Number {isLow("poNumber") && <AlertCircle className="h-3 w-3 text-amber-500" />}
+              </Label>
+              <Input value={form.poNumber} onChange={(e) => setForm((p) => ({ ...p, poNumber: e.target.value }))} />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Currency</Label>
+              <Select value={form.currency} onValueChange={(v) => setForm((p) => ({ ...p, currency: v }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="USD">USD</SelectItem>
+                  <SelectItem value="EUR">EUR</SelectItem>
+                  <SelectItem value="GBP">GBP</SelectItem>
+                  <SelectItem value="CAD">CAD</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={handleSave} disabled={updateInvoice.isPending}>
+            {updateInvoice.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Save Changes
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function ExceptionQueue() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
 
   const { data: invoicesRes, isLoading } = useListInvoices(
     { status: "EXCEPTION", limit: 100 },
@@ -136,8 +308,7 @@ export function ExceptionQueue() {
                       >
                         {isExpanded
                           ? <ChevronDown className="h-4 w-4" />
-                          : <ChevronRight className="h-4 w-4" />
-                        }
+                          : <ChevronRight className="h-4 w-4" />}
                       </TableCell>
                       <TableCell className="font-medium">{invoice.invoiceNumber || "—"}</TableCell>
                       <TableCell>{invoice.vendorName || "—"}</TableCell>
@@ -148,6 +319,16 @@ export function ExceptionQueue() {
                       </TableCell>
                       <TableCell>{format(new Date(invoice.updatedAt), "MMM d, yyyy HH:mm")}</TableCell>
                       <TableCell className="text-right space-x-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setEditingInvoice(invoice as Invoice)}
+                          data-testid={`button-edit-${invoice.id}`}
+                          title="Edit flagged fields"
+                        >
+                          <Pencil className="h-3.5 w-3.5 mr-1" />
+                          Edit
+                        </Button>
                         <Button
                           variant="outline"
                           size="sm"
@@ -192,6 +373,14 @@ export function ExceptionQueue() {
           </Table>
         </CardContent>
       </Card>
+
+      {editingInvoice && (
+        <EditFieldsModal
+          invoice={editingInvoice}
+          open={true}
+          onClose={() => setEditingInvoice(null)}
+        />
+      )}
     </div>
   );
 }

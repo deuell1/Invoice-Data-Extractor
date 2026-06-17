@@ -23,6 +23,8 @@ export * from './invoiceStatusUpdate';
 export * from './invoiceStatusUpdateStatus';
 export * from './invoiceUpdate';
 export * from './listInvoicesParams';
+export * from './listInvoicesSortBy';
+export * from './listInvoicesSortDir';
 export * from './listInvoicesStatus';
 export * from './listVendorsParams';
 export * from './rejectInput';
