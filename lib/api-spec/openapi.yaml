@@ -3,13 +3,21 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Invoice Capture MVP API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: invoices
+    description: Invoice capture operations
+  - name: vendors
+    description: Vendor ID master operations
+  - name: audit
+    description: Audit log operations
+  - name: storage
+    description: Object storage upload and serving endpoints
 paths:
   /healthz:
     get:
@@ -24,6 +32,557 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ─── Invoices ────────────────────────────────────────────────────────────────
+  /invoices:
+    get:
+      operationId: listInvoices
+      tags: [invoices]
+      summary: List all invoices
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING_EXTRACTION, EXCEPTION, PENDING_APPROVAL, APPROVED, POSTED]
+        - name: vendorId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Invoice list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvoiceListResponse"
+    post:
+      operationId: createInvoice
+      tags: [invoices]
+      summary: Create a new invoice record after file upload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvoiceInput"
+      responses:
+        "201":
+          description: Invoice created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+        "409":
+          description: Duplicate invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /invoices/stats:
+    get:
+      operationId: getInvoiceStats
+      tags: [invoices]
+      summary: Invoice pipeline summary stats
+      responses:
+        "200":
+          description: Stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvoiceStats"
+
+  /invoices/export:
+    get:
+      operationId: exportInvoicesCsv
+      tags: [invoices]
+      summary: Export approved invoices as CSV
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [APPROVED, POSTED]
+            default: APPROVED
+      responses:
+        "200":
+          description: CSV file download
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+
+  /invoices/{id}:
+    get:
+      operationId: getInvoice
+      tags: [invoices]
+      summary: Get invoice by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      operationId: updateInvoice
+      tags: [invoices]
+      summary: Update invoice fields (creates audit log entries)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvoiceUpdate"
+      responses:
+        "200":
+          description: Updated invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Duplicate invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /invoices/{id}/status:
+    patch:
+      operationId: updateInvoiceStatus
+      tags: [invoices]
+      summary: Transition invoice status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvoiceStatusUpdate"
+      responses:
+        "200":
+          description: Updated invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /invoices/{id}/voucher:
+    patch:
+      operationId: setVoucherId
+      tags: [invoices]
+      summary: Set VoucherID after ERP posting
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoucherInput"
+      responses:
+        "200":
+          description: Updated invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /invoices/{id}/approve:
+    post:
+      operationId: approveInvoice
+      tags: [invoices]
+      summary: Approve an invoice (AP Approver action)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Approved invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /invoices/{id}/reject:
+    post:
+      operationId: rejectInvoice
+      tags: [invoices]
+      summary: Reject invoice back to extraction (AP Reviewer action)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RejectInput"
+      responses:
+        "200":
+          description: Rejected invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /invoices/{id}/submit:
+    post:
+      operationId: submitInvoice
+      tags: [invoices]
+      summary: Submit invoice for approval (validates confidence + duplicate)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Invoice submitted or routed to exception
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Duplicate invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /invoices/bulk-approve:
+    post:
+      operationId: bulkApproveInvoices
+      tags: [invoices]
+      summary: Approve multiple invoices at once
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkActionInput"
+      responses:
+        "200":
+          description: Bulk approve result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkActionResult"
+
+  # ─── Vendors ─────────────────────────────────────────────────────────────────
+  /vendors:
+    get:
+      operationId: listVendors
+      tags: [vendors]
+      summary: List vendors
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Vendor list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VendorListResponse"
+    post:
+      operationId: createVendor
+      tags: [vendors]
+      summary: Create a new vendor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VendorInput"
+      responses:
+        "201":
+          description: Vendor created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vendor"
+        "409":
+          description: Duplicate vendor code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /vendors/import:
+    post:
+      operationId: importVendors
+      tags: [vendors]
+      summary: Bulk-import vendors from JSON array
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VendorImportInput"
+      responses:
+        "200":
+          description: Import result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VendorImportResult"
+
+  /vendors/{id}:
+    get:
+      operationId: getVendor
+      tags: [vendors]
+      summary: Get vendor by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Vendor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vendor"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    patch:
+      operationId: updateVendor
+      tags: [vendors]
+      summary: Update a vendor
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VendorUpdate"
+      responses:
+        "200":
+          description: Updated vendor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vendor"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ─── Audit Log ───────────────────────────────────────────────────────────────
+  /invoices/{id}/audit:
+    get:
+      operationId: getInvoiceAuditLog
+      tags: [audit]
+      summary: Get audit log entries for an invoice
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Audit log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuditLogEntry"
+
+  # ─── Storage ─────────────────────────────────────────────────────────────────
+  /storage/uploads/request-url:
+    post:
+      tags: [storage]
+      operationId: requestUploadUrl
+      summary: Request a presigned URL for file upload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UploadUrlRequest"
+      responses:
+        "200":
+          description: Presigned upload URL generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadUrlResponse"
+        "400":
+          description: Missing or invalid required fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "500":
+          description: Failed to generate upload URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /storage/public-objects/{filePath}:
+    get:
+      tags: [storage]
+      operationId: getPublicObject
+      summary: Serve a public asset
+      parameters:
+        - name: filePath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Object content
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: File not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /storage/objects/{objectPath}:
+    get:
+      tags: [storage]
+      operationId: getStorageObject
+      summary: Serve an object entity
+      parameters:
+        - name: objectPath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Object content
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: Object not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +593,393 @@ components:
       required:
         - status
 
+    # ─── Invoice ────────────────────────────────────────────────────────────────
+    Invoice:
+      type: object
+      required:
+        - id
+        - status
+        - createdAt
+        - updatedAt
+        - fileObjectPath
+        - originalFileName
+      properties:
+        id:
+          type: integer
+        status:
+          type: string
+          enum: [PENDING_EXTRACTION, EXCEPTION, PENDING_APPROVAL, APPROVED, POSTED]
+        vendorId:
+          type: ["integer", "null"]
+        vendorName:
+          type: ["string", "null"]
+        invoiceNumber:
+          type: ["string", "null"]
+        invoiceDate:
+          type: ["string", "null"]
+        totalAmount:
+          type: ["number", "null"]
+        taxAmount:
+          type: ["number", "null"]
+        poNumber:
+          type: ["string", "null"]
+        currency:
+          type: string
+          default: USD
+        fileObjectPath:
+          type: string
+        originalFileName:
+          type: string
+        voucherId:
+          type: ["string", "null"]
+        exceptionReason:
+          type: ["string", "null"]
+        lowConfidenceFields:
+          type: ["string", "null"]
+        confidenceScore:
+          type: ["number", "null"]
+        role:
+          type: string
+          enum: [AP_PROCESSOR, AP_APPROVER]
+          default: AP_PROCESSOR
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    InvoiceInput:
+      type: object
+      required:
+        - fileObjectPath
+        - originalFileName
+      properties:
+        fileObjectPath:
+          type: string
+        originalFileName:
+          type: string
+        vendorId:
+          type: ["integer", "null"]
+        invoiceNumber:
+          type: ["string", "null"]
+        invoiceDate:
+          type: ["string", "null"]
+        totalAmount:
+          type: ["number", "null"]
+        taxAmount:
+          type: ["number", "null"]
+        poNumber:
+          type: ["string", "null"]
+        currency:
+          type: string
+          default: USD
+        confidenceScore:
+          type: ["number", "null"]
+        lowConfidenceFields:
+          type: ["string", "null"]
+
+    InvoiceUpdate:
+      type: object
+      properties:
+        vendorId:
+          type: ["integer", "null"]
+        invoiceNumber:
+          type: ["string", "null"]
+        invoiceDate:
+          type: ["string", "null"]
+        totalAmount:
+          type: ["number", "null"]
+        taxAmount:
+          type: ["number", "null"]
+        poNumber:
+          type: ["string", "null"]
+        currency:
+          type: ["string", "null"]
+        confidenceScore:
+          type: ["number", "null"]
+        lowConfidenceFields:
+          type: ["string", "null"]
+        editorRole:
+          type: string
+          default: AP_PROCESSOR
+
+    InvoiceStatusUpdate:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [PENDING_EXTRACTION, EXCEPTION, PENDING_APPROVAL, APPROVED, POSTED]
+        reason:
+          type: ["string", "null"]
+
+    VoucherInput:
+      type: object
+      required:
+        - voucherId
+      properties:
+        voucherId:
+          type: string
+          minLength: 1
+
+    RejectInput:
+      type: object
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+
+    BulkActionInput:
+      type: object
+      required:
+        - ids
+      properties:
+        ids:
+          type: array
+          items:
+            type: integer
+
+    BulkActionResult:
+      type: object
+      required:
+        - succeeded
+        - failed
+      properties:
+        succeeded:
+          type: integer
+        failed:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: string
+
+    InvoiceListResponse:
+      type: object
+      required:
+        - data
+        - total
+        - page
+        - limit
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Invoice"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    InvoiceStats:
+      type: object
+      required:
+        - total
+        - pendingExtraction
+        - exception
+        - pendingApproval
+        - approved
+        - posted
+        - totalApprovedAmount
+      properties:
+        total:
+          type: integer
+        pendingExtraction:
+          type: integer
+        exception:
+          type: integer
+        pendingApproval:
+          type: integer
+        approved:
+          type: integer
+        posted:
+          type: integer
+        totalApprovedAmount:
+          type: number
+
+    # ─── Vendor ─────────────────────────────────────────────────────────────────
+    Vendor:
+      type: object
+      required:
+        - id
+        - vendorCode
+        - vendorName
+        - isActive
+        - createdAt
+      properties:
+        id:
+          type: integer
+        vendorCode:
+          type: string
+        vendorName:
+          type: string
+        taxId:
+          type: ["string", "null"]
+        address:
+          type: ["string", "null"]
+        contactEmail:
+          type: ["string", "null"]
+        contactPhone:
+          type: ["string", "null"]
+        paymentTerms:
+          type: ["string", "null"]
+        isActive:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: ["string", "null"]
+
+    VendorInput:
+      type: object
+      required:
+        - vendorCode
+        - vendorName
+      properties:
+        vendorCode:
+          type: string
+          minLength: 1
+        vendorName:
+          type: string
+          minLength: 1
+        taxId:
+          type: ["string", "null"]
+        address:
+          type: ["string", "null"]
+        contactEmail:
+          type: ["string", "null"]
+        contactPhone:
+          type: ["string", "null"]
+        paymentTerms:
+          type: ["string", "null"]
+
+    VendorUpdate:
+      type: object
+      properties:
+        vendorName:
+          type: ["string", "null"]
+        taxId:
+          type: ["string", "null"]
+        address:
+          type: ["string", "null"]
+        contactEmail:
+          type: ["string", "null"]
+        contactPhone:
+          type: ["string", "null"]
+        paymentTerms:
+          type: ["string", "null"]
+        isActive:
+          type: ["boolean", "null"]
+
+    VendorListResponse:
+      type: object
+      required:
+        - data
+        - total
+        - page
+        - limit
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Vendor"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    VendorImportInput:
+      type: object
+      required:
+        - vendors
+      properties:
+        vendors:
+          type: array
+          items:
+            $ref: "#/components/schemas/VendorInput"
+
+    VendorImportResult:
+      type: object
+      required:
+        - inserted
+        - skipped
+        - errors
+      properties:
+        inserted:
+          type: integer
+        skipped:
+          type: integer
+        errors:
+          type: array
+          items:
+            type: string
+
+    # ─── Audit ──────────────────────────────────────────────────────────────────
+    AuditLogEntry:
+      type: object
+      required:
+        - id
+        - invoiceId
+        - action
+        - createdAt
+      properties:
+        id:
+          type: integer
+        invoiceId:
+          type: integer
+        action:
+          type: string
+        fieldName:
+          type: ["string", "null"]
+        oldValue:
+          type: ["string", "null"]
+        newValue:
+          type: ["string", "null"]
+        editorRole:
+          type: ["string", "null"]
+        note:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+
+    # ─── Storage ────────────────────────────────────────────────────────────────
+    UploadUrlRequest:
+      type: object
+      required: [name, size, contentType]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        size:
+          type: integer
+          minimum: 1
+        contentType:
+          type: string
+          minLength: 1
+
+    UploadUrlResponse:
+      type: object
+      required: [uploadURL, objectPath]
+      properties:
+        uploadURL:
+          type: string
+          format: uri
+        objectPath:
+          type: string
+
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
