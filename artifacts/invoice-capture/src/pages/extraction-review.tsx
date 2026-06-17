@@ -70,6 +70,17 @@ export function ExtractionReview() {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
+  const getApiErrorMessage = (e: unknown): string => {
+    if (e && typeof e === "object" && "status" in e) {
+      const err = e as { status: number; data?: { error?: string }; message?: string };
+      if (err.status === 409) {
+        return err.data?.error || "Duplicate invoice detected — this invoice number already exists for this vendor.";
+      }
+      if (err.data?.error) return err.data.error;
+    }
+    return "";
+  };
+
   const handleSaveField = async (field: string, value: string) => {
     try {
       const payload: Record<string, unknown> = { editorRole: "AP_PROCESSOR" };
@@ -86,8 +97,9 @@ export function ExtractionReview() {
       toast({ title: "Saved", description: `${field} updated` });
       queryClient.invalidateQueries({ queryKey: getGetInvoiceQueryKey(id) });
       queryClient.invalidateQueries({ queryKey: getGetInvoiceAuditLogQueryKey(id) });
-    } catch {
-      toast({ variant: "destructive", title: "Error", description: "Failed to save field" });
+    } catch (e) {
+      const msg = getApiErrorMessage(e);
+      toast({ variant: "destructive", title: "Save Failed", description: msg || "Failed to save field — please try again." });
     }
   };
 
@@ -97,8 +109,13 @@ export function ExtractionReview() {
       toast({ title: "Submitted", description: "Invoice routed for approval" });
       queryClient.invalidateQueries({ queryKey: getGetInvoiceQueryKey(id) });
       setLocation("/invoices");
-    } catch {
-      toast({ variant: "destructive", title: "Error", description: "Submit failed" });
+    } catch (e) {
+      const msg = getApiErrorMessage(e);
+      if (msg.toLowerCase().includes("duplicate")) {
+        toast({ variant: "destructive", title: "Duplicate Invoice", description: msg });
+      } else {
+        toast({ variant: "destructive", title: "Submit Failed", description: msg || "Could not submit invoice — please check all required fields." });
+      }
     }
   };
 
