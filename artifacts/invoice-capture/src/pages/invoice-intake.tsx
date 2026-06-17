@@ -42,13 +42,17 @@ export function InvoiceIntake() {
       setProgress(30);
 
       // 2. PUT file directly to GCS presigned URL
-      await fetch(uploadData.uploadURL, {
+      const uploadRes = await fetch(uploadData.uploadURL, {
         method: "PUT",
         body: file,
         headers: {
           "Content-Type": file.type || "application/octet-stream",
         },
       });
+
+      if (!uploadRes.ok) {
+        throw new Error(`File upload failed (${uploadRes.status} ${uploadRes.statusText})`);
+      }
 
       setProgress(70);
 

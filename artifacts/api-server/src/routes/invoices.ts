@@ -569,6 +569,12 @@ router.post("/invoices/:id/submit", async (req, res): Promise<void> => {
     return;
   }
 
+  // Vendor must be matched before submission
+  if (!existing.vendorId) {
+    res.status(422).json({ error: "A vendor must be selected before submitting this invoice for approval." });
+    return;
+  }
+
   // Check for duplicate before submitting
   if (await isDuplicate(existing.vendorId, existing.invoiceNumber, params.data.id)) {
     res.status(409).json({ error: "Duplicate invoice (same vendor + invoice number)" });

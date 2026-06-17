@@ -104,6 +104,10 @@ export function ExtractionReview() {
   };
 
   const handleSubmit = async () => {
+    if (!formData.vendorId) {
+      toast({ variant: "destructive", title: "Vendor Required", description: "Please select a vendor before submitting this invoice for approval." });
+      return;
+    }
     try {
       await submitInvoice.mutateAsync({ id });
       toast({ title: "Submitted", description: "Invoice routed for approval" });
@@ -113,6 +117,8 @@ export function ExtractionReview() {
       const msg = getApiErrorMessage(e);
       if (msg.toLowerCase().includes("duplicate")) {
         toast({ variant: "destructive", title: "Duplicate Invoice", description: msg });
+      } else if (msg.toLowerCase().includes("vendor")) {
+        toast({ variant: "destructive", title: "Vendor Required", description: msg });
       } else {
         toast({ variant: "destructive", title: "Submit Failed", description: msg || "Could not submit invoice — please check all required fields." });
       }
