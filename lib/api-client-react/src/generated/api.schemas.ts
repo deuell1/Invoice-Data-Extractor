@@ -331,3 +331,19 @@ page?: number;
 limit?: number;
 };
 
+
+export type DuplicateCheckMatchType = typeof DuplicateCheckMatchType[keyof typeof DuplicateCheckMatchType];
+
+export const DuplicateCheckMatchType = {
+  none: 'none',
+  exact: 'exact',
+  fuzzy: 'fuzzy',
+} as const;
+
+export interface DuplicateCheckResult {
+  isDuplicate: boolean;
+  matchedIds: number[];
+  /** 0 = no match, 0.7 = fuzzy match, 1.0 = exact match */
+  riskScore: number;
+  matchType: DuplicateCheckMatchType;
+}

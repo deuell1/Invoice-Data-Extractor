@@ -23,6 +23,7 @@ import type {
   AuditLogEntry,
   BulkActionInput,
   BulkActionResult,
+  DuplicateCheckResult,
   ErrorEnvelope,
   ExportInvoicesCsvParams,
   HealthStatus,
@@ -1705,3 +1706,53 @@ export function useGetStorageObject<TData = Awaited<ReturnType<typeof getStorage
 
 
 
+
+
+export const getCheckDuplicateUrl = (id: number) => {
+  return `/api/invoices/${id}/check-duplicate`
+}
+
+/**
+ * @summary Check whether an invoice is a likely duplicate of an existing APPROVED/POSTED invoice
+ */
+export const checkDuplicate = async (id: number, options?: RequestInit): Promise<DuplicateCheckResult> => {
+  return customFetch<DuplicateCheckResult>(getCheckDuplicateUrl(id), {
+    ...options,
+    method: 'POST',
+  });
+}
+
+export const getCheckDuplicateMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof checkDuplicate>>, TError, { id: number }, TContext>, request?: SecondParameter<typeof customFetch> }
+): UseMutationOptions<Awaited<ReturnType<typeof checkDuplicate>>, TError, { id: number }, TContext> => {
+  const mutationKey = ['checkDuplicate'];
+  const { mutation: mutationOptions, request: requestOptions } = options ?
+    options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<Awaited<ReturnType<typeof checkDuplicate>>, { id: number }> = (props) => {
+    const { id } = props ?? {};
+    return checkDuplicate(id, requestOptions);
+  }
+
+  return { mutationFn, ...mutationOptions }
+}
+
+export type CheckDuplicateMutationResult = NonNullable<Awaited<ReturnType<typeof checkDuplicate>>>
+export type CheckDuplicateMutationError = ErrorType<ErrorEnvelope>
+
+/**
+ * @summary Check whether an invoice is a likely duplicate of an existing APPROVED/POSTED invoice
+ */
+export const useCheckDuplicate = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof checkDuplicate>>, TError, { id: number }, TContext>, request?: SecondParameter<typeof customFetch> }
+): UseMutationResult<
+  Awaited<ReturnType<typeof checkDuplicate>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getCheckDuplicateMutationOptions(options));
+}

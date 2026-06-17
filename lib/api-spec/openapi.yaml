@@ -494,6 +494,32 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  # ─── Duplicate Check ─────────────────────────────────────────────────────────
+  /invoices/{id}/check-duplicate:
+    post:
+      operationId: checkDuplicate
+      tags: [invoices]
+      summary: Check whether an invoice is a likely duplicate of an existing APPROVED/POSTED invoice
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Duplicate check result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DuplicateCheckResult"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   # ─── Audit Log ───────────────────────────────────────────────────────────────
   /invoices/{id}/audit:
     get:
@@ -749,6 +775,27 @@ components:
         reason:
           type: string
           minLength: 1
+
+    DuplicateCheckResult:
+      type: object
+      required:
+        - isDuplicate
+        - matchedIds
+        - riskScore
+        - matchType
+      properties:
+        isDuplicate:
+          type: boolean
+        matchedIds:
+          type: array
+          items:
+            type: integer
+        riskScore:
+          type: number
+          description: "0 = no match, 0.7 = fuzzy match, 1.0 = exact match"
+        matchType:
+          type: string
+          enum: [none, exact, fuzzy]
 
     BulkActionInput:
       type: object

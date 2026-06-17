@@ -9,8 +9,10 @@ import {
   useGetInvoiceAuditLog,
   useSubmitInvoice,
   useUpdateInvoiceStatus,
+  useCheckDuplicate,
   getGetInvoiceAuditLogQueryKey,
 } from "@workspace/api-client-react";
+import type { DuplicateCheckResult } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -20,7 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge } from "@/components/status-badge";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Loader2, AlertCircle, CheckCircle2, AlertTriangle } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -47,9 +49,12 @@ export function ExtractionReview() {
   const updateInvoice = useUpdateInvoice();
   const submitInvoice = useSubmitInvoice();
   const updateStatus = useUpdateInvoiceStatus();
+  const checkDuplicate = useCheckDuplicate();
 
   const [formData, setFormData] = useState<Record<string, string>>({});
+  const [duplicateResult, setDuplicateResult] = useState<DuplicateCheckResult | null>(null);
   const initialized = useRef(false);
+  const duplicateChecked = useRef(false);
 
   useEffect(() => {
     if (invoice && !initialized.current) {
@@ -63,6 +68,12 @@ export function ExtractionReview() {
         currency: invoice.currency || "USD",
       });
       initialized.current = true;
+    }
+    if (invoice && !duplicateChecked.current) {
+      duplicateChecked.current = true;
+      checkDuplicate.mutateAsync({ id }).then((result) => {
+        setDuplicateResult(result);
+      }).catch(() => {});
     }
   }, [invoice]);
 
@@ -146,6 +157,34 @@ export function ExtractionReview() {
 
   return (
     <div className="flex flex-col h-full space-y-4">
+      {duplicateResult?.isDuplicate && (
+        <div
+          className={`flex items-start gap-3 rounded-md border px-4 py-3 text-sm ${
+            duplicateResult.matchType === "exact"
+              ? "border-destructive/50 bg-destructive/10 text-destructive"
+              : "border-amber-500/50 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+          }`}
+          data-testid="duplicate-warning-banner"
+        >
+          <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+          <div>
+            <p className="font-medium">
+              {duplicateResult.matchType === "exact"
+                ? "Exact duplicate detected"
+                : "Possible duplicate detected"}
+            </p>
+            <p className="text-xs mt-0.5 opacity-80">
+              {duplicateResult.matchType === "exact"
+                ? "This invoice number already exists for this vendor in an approved or posted invoice."
+                : "An invoice with a similar amount and date exists for this vendor."}
+              {" "}Matched invoice{duplicateResult.matchedIds.length > 1 ? "s" : ""}{" "}
+              #{duplicateResult.matchedIds.join(", #")}.
+              {" "}Risk score: {Math.round(duplicateResult.riskScore * 100)}%.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="flex justify-between items-center shrink-0">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Review Invoice</h1>

@@ -28,6 +28,8 @@ import {
   GetInvoiceStatsResponse,
   GetInvoiceAuditLogResponse,
   ExportInvoicesCsvQueryParams,
+  CheckDuplicateParams,
+  CheckDuplicateResponse,
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -660,6 +662,92 @@ router.post("/invoices/bulk-approve", async (req, res): Promise<void> => {
   }
 
   res.json(BulkApproveInvoicesResponse.parse({ succeeded, failed, errors }));
+});
+
+// ─── POST /invoices/:id/check-duplicate ──────────────────────────────────────
+router.post("/invoices/:id/check-duplicate", async (req, res): Promise<void> => {
+  const params = CheckDuplicateParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const invoice = await getInvoiceById(params.data.id);
+  if (!invoice) {
+    res.status(404).json({ error: "Invoice not found" });
+    return;
+  }
+
+  const { vendorId, invoiceNumber, totalAmount, invoiceDate } = invoice;
+
+  // ── Step 1: Exact match — same vendor + invoice number, APPROVED or POSTED ──
+  if (vendorId && invoiceNumber) {
+    const exactMatches = await db
+      .select({ id: invoiceCaptureTable.id })
+      .from(invoiceCaptureTable)
+      .where(
+        and(
+          eq(invoiceCaptureTable.vendorId, vendorId),
+          eq(invoiceCaptureTable.invoiceNumber, invoiceNumber),
+          inArray(invoiceCaptureTable.status, ["APPROVED", "POSTED"]),
+          sql`${invoiceCaptureTable.id} <> ${params.data.id}`,
+        )
+      );
+
+    if (exactMatches.length > 0) {
+      res.json(
+        CheckDuplicateResponse.parse({
+          isDuplicate: true,
+          matchedIds: exactMatches.map((r) => r.id),
+          riskScore: 1.0,
+          matchType: "exact",
+        })
+      );
+      return;
+    }
+  }
+
+  // ── Step 2: Fuzzy match — same vendor, amount ±1%, date ±3 days ─────────────
+  if (vendorId && totalAmount != null && invoiceDate) {
+    const amount = Number(totalAmount);
+    const minAmount = amount * 0.99;
+    const maxAmount = amount * 1.01;
+
+    const fuzzyMatches = await db
+      .select({ id: invoiceCaptureTable.id })
+      .from(invoiceCaptureTable)
+      .where(
+        and(
+          eq(invoiceCaptureTable.vendorId, vendorId),
+          inArray(invoiceCaptureTable.status, ["APPROVED", "POSTED"]),
+          sql`${invoiceCaptureTable.id} <> ${params.data.id}`,
+          sql`${invoiceCaptureTable.totalAmount}::numeric BETWEEN ${minAmount}::numeric AND ${maxAmount}::numeric`,
+          sql`${invoiceCaptureTable.invoiceDate}::date BETWEEN (${invoiceDate}::date - INTERVAL '3 days') AND (${invoiceDate}::date + INTERVAL '3 days')`,
+        )
+      );
+
+    if (fuzzyMatches.length > 0) {
+      res.json(
+        CheckDuplicateResponse.parse({
+          isDuplicate: true,
+          matchedIds: fuzzyMatches.map((r) => r.id),
+          riskScore: 0.7,
+          matchType: "fuzzy",
+        })
+      );
+      return;
+    }
+  }
+
+  // ── No duplicate found ───────────────────────────────────────────────────────
+  res.json(
+    CheckDuplicateResponse.parse({
+      isDuplicate: false,
+      matchedIds: [],
+      riskScore: 0,
+      matchType: "none",
+    })
+  );
 });
 
 // ─── GET /invoices/:id/audit ─────────────────────────────────────────────────

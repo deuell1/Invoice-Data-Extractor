@@ -541,6 +541,21 @@ export const GetInvoiceAuditLogResponse = zod.array(GetInvoiceAuditLogResponseIt
 
 
 /**
+ * @summary Check whether an invoice is a likely duplicate of an existing APPROVED/POSTED invoice
+ */
+export const CheckDuplicateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const CheckDuplicateResponse = zod.object({
+  "isDuplicate": zod.boolean(),
+  "matchedIds": zod.array(zod.number()),
+  "riskScore": zod.number(),
+  "matchType": zod.enum(["none", "exact", "fuzzy"])
+})
+
+
+/**
  * @summary Request a presigned URL for file upload
  */
 
