@@ -44,6 +44,9 @@ export const invoiceCaptureTable = pgTable("invoice_capture", {
   exceptionReason: text("exception_reason"),
   lowConfidenceFields: text("low_confidence_fields"),
   confidenceScore: numeric("confidence_score", { precision: 5, scale: 4 }),
+  subtotal: numeric("subtotal", { precision: 18, scale: 2 }),
+  freightAmount: numeric("freight_amount", { precision: 18, scale: 2 }),
+  paymentTerms: text("payment_terms"),
   role: invoiceRoleEnum("role").notNull().default("AP_PROCESSOR"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true })
