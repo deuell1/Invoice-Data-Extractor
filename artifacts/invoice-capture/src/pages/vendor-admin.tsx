@@ -231,6 +231,7 @@ export function VendorAdmin() {
               <TableRow>
                 <TableHead>Code</TableHead>
                 <TableHead>Name</TableHead>
+                <TableHead>Aliases</TableHead>
                 <TableHead>Tax ID</TableHead>
                 <TableHead>Contact</TableHead>
                 <TableHead>Status</TableHead>
@@ -255,12 +256,28 @@ export function VendorAdmin() {
                   <TableRow key={vendor.id} data-testid={`row-vendor-${vendor.id}`}>
                     <TableCell className="font-medium">{vendor.vendorCode}</TableCell>
                     <TableCell>{vendor.vendorName}</TableCell>
+                    <TableCell className="max-w-[180px]">
+                      {vendor.aliases && vendor.aliases.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {vendor.aliases.map((a: string) => (
+                            <Badge key={a} variant="secondary" className="text-xs font-normal">{a}</Badge>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                     <TableCell>{vendor.taxId || "—"}</TableCell>
                     <TableCell>{vendor.contactEmail || "—"}</TableCell>
                     <TableCell>
-                      <div className="flex items-center">
-                        <div className={`h-2 w-2 rounded-full mr-2 ${vendor.isActive ? 'bg-emerald-500' : 'bg-muted-foreground'}`} />
-                        {vendor.isActive ? 'Active' : 'Inactive'}
+                      <div className="flex flex-col gap-1">
+                        <div className="flex items-center">
+                          <div className={`h-2 w-2 rounded-full mr-2 ${vendor.isActive ? 'bg-emerald-500' : 'bg-muted-foreground'}`} />
+                          {vendor.isActive ? 'Active' : 'Inactive'}
+                        </div>
+                        {vendor.onHold && (
+                          <Badge variant="destructive" className="text-xs w-fit">On Hold</Badge>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground">

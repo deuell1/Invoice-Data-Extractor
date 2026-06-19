@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { applyVendorMatch } from "../services/vendorMatcher";
 import { eq, sql, and, inArray, ilike, or, asc, desc } from "drizzle-orm";
 import { db, invoiceCaptureTable, invoiceAuditLogTable, vendorIdTable } from "@workspace/db";
 import {
@@ -60,6 +61,10 @@ async function getInvoiceById(id: number) {
       exceptionReason: invoiceCaptureTable.exceptionReason,
       lowConfidenceFields: invoiceCaptureTable.lowConfidenceFields,
       confidenceScore: invoiceCaptureTable.confidenceScore,
+      subtotal: invoiceCaptureTable.subtotal,
+      freightAmount: invoiceCaptureTable.freightAmount,
+      paymentTerms: invoiceCaptureTable.paymentTerms,
+      vendorMatchScore: invoiceCaptureTable.vendorMatchScore,
       role: invoiceCaptureTable.role,
       createdAt: invoiceCaptureTable.createdAt,
       updatedAt: invoiceCaptureTable.updatedAt,
@@ -123,6 +128,9 @@ function serializeInvoice(row: Awaited<ReturnType<typeof getInvoiceById>>) {
     totalAmount: row.totalAmount != null ? Number(row.totalAmount) : null,
     taxAmount: row.taxAmount != null ? Number(row.taxAmount) : null,
     confidenceScore: row.confidenceScore != null ? Number(row.confidenceScore) : null,
+    subtotal: row.subtotal != null ? Number(row.subtotal) : null,
+    freightAmount: row.freightAmount != null ? Number(row.freightAmount) : null,
+    vendorMatchScore: row.vendorMatchScore != null ? Number(row.vendorMatchScore) : null,
   };
 }
 
@@ -253,6 +261,12 @@ router.post("/invoices", async (req, res): Promise<void> => {
     note: `Invoice created from file: ${invoice.originalFileName}`,
   });
 
+  // Run vendor matching synchronously if vendorRawName was supplied
+  const rawName = parsed.data.vendorRawName ?? null;
+  if (rawName) {
+    await applyVendorMatch(invoice.id, rawName);
+  }
+
   const row = await getInvoiceById(invoice.id);
   res.status(201).json(GetInvoiceResponse.parse(serializeInvoice(row)));
 });
@@ -345,6 +359,31 @@ router.get("/invoices/export", async (req, res): Promise<void> => {
   res.setHeader("Content-Type", "text/csv");
   res.setHeader("Content-Disposition", `attachment; filename="invoices-${status.toLowerCase()}.csv"`);
   res.send([header, ...csvRows].join("\n"));
+});
+
+// ─── POST /invoices/:id/match-vendor ─────────────────────────────────────────
+router.post("/invoices/:id/match-vendor", async (req, res): Promise<void> => {
+  const params = GetInvoiceParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const existing = await getInvoiceById(params.data.id);
+  if (!existing) {
+    res.status(404).json({ error: "Invoice not found" });
+    return;
+  }
+
+  if (!existing.vendorRawName) {
+    res.status(409).json({ error: "Invoice has no vendorRawName to match against" });
+    return;
+  }
+
+  await applyVendorMatch(params.data.id, existing.vendorRawName);
+
+  const row = await getInvoiceById(params.data.id);
+  res.json(GetInvoiceResponse.parse(serializeInvoice(row)));
 });
 
 // ─── GET /invoices/:id ───────────────────────────────────────────────────────

@@ -201,6 +201,38 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /invoices/{id}/match-vendor:
+    post:
+      operationId: matchInvoiceVendor
+      tags: [invoices]
+      summary: Run vendor matching on vendorRawName
+      description: Normalizes vendorRawName and matches against vendor_id table. Updates vendorId and routes to Exception if no match, low confidence, inactive, or on-hold.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Invoice after matching
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: No vendorRawName on invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /invoices/{id}/status:
     patch:
       operationId: updateInvoiceStatus
@@ -687,6 +719,14 @@ components:
           type: ["string", "null"]
         confidenceScore:
           type: ["number", "null"]
+        subtotal:
+          type: ["number", "null"]
+        freightAmount:
+          type: ["number", "null"]
+        paymentTerms:
+          type: ["string", "null"]
+        vendorMatchScore:
+          type: ["number", "null"]
         role:
           type: string
           enum: [AP_PROCESSOR, AP_APPROVER]
@@ -756,6 +796,12 @@ components:
         confidenceScore:
           type: ["number", "null"]
         lowConfidenceFields:
+          type: ["string", "null"]
+        subtotal:
+          type: ["number", "null"]
+        freightAmount:
+          type: ["number", "null"]
+        paymentTerms:
           type: ["string", "null"]
         editorRole:
           type: string
@@ -907,6 +953,14 @@ components:
           type: ["string", "null"]
         paymentTerms:
           type: ["string", "null"]
+        aliases:
+          type: array
+          items:
+            type: string
+          default: []
+        onHold:
+          type: boolean
+          default: false
         isActive:
           type: boolean
         createdAt:
@@ -937,6 +991,13 @@ components:
           type: ["string", "null"]
         paymentTerms:
           type: ["string", "null"]
+        aliases:
+          type: array
+          items:
+            type: string
+          default: []
+        onHold:
+          type: ["boolean", "null"]
 
     VendorUpdate:
       type: object
@@ -953,6 +1014,12 @@ components:
           type: ["string", "null"]
         paymentTerms:
           type: ["string", "null"]
+        aliases:
+          type: array
+          items:
+            type: string
+        onHold:
+          type: ["boolean", "null"]
         isActive:
           type: ["boolean", "null"]
 

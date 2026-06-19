@@ -10,6 +10,7 @@ import {
   useSubmitInvoice,
   useUpdateInvoiceStatus,
   useCheckDuplicate,
+  useMatchInvoiceVendor,
   getGetInvoiceAuditLogQueryKey,
 } from "@workspace/api-client-react";
 import type { DuplicateCheckResult } from "@workspace/api-client-react";
@@ -22,7 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge } from "@/components/status-badge";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, AlertCircle, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Loader2, AlertCircle, CheckCircle2, AlertTriangle, RefreshCw } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -50,6 +51,7 @@ export function ExtractionReview() {
   const submitInvoice = useSubmitInvoice();
   const updateStatus = useUpdateInvoiceStatus();
   const checkDuplicate = useCheckDuplicate();
+  const matchVendor = useMatchInvoiceVendor();
 
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [duplicateResult, setDuplicateResult] = useState<DuplicateCheckResult | null>(null);
@@ -135,6 +137,17 @@ export function ExtractionReview() {
       } else {
         toast({ variant: "destructive", title: "Submit Failed", description: msg || "Could not submit invoice — please check all required fields." });
       }
+    }
+  };
+
+  const handleRerunVendorMatch = async () => {
+    try {
+      await matchVendor.mutateAsync({ id });
+      toast({ title: "Vendor Match Complete", description: "Vendor matching has been re-run." });
+      queryClient.invalidateQueries({ queryKey: getGetInvoiceQueryKey(id) });
+      queryClient.invalidateQueries({ queryKey: getGetInvoiceAuditLogQueryKey(id) });
+    } catch {
+      toast({ variant: "destructive", title: "Match Failed", description: "Could not re-run vendor matching." });
     }
   };
 
@@ -261,11 +274,18 @@ export function ExtractionReview() {
             <CardHeader className="py-3 px-4 shrink-0 bg-muted/30 border-b">
               <div className="flex justify-between items-center">
                 <CardTitle className="text-sm font-medium">Extracted Data</CardTitle>
-                {invoice.confidenceScore != null && (
-                  <Badge variant={invoice.confidenceScore > 0.8 ? "outline" : "secondary"}>
-                    {Math.round(Number(invoice.confidenceScore) * 100)}% Confidence
-                  </Badge>
-                )}
+                <div className="flex items-center gap-2">
+                  {invoice.vendorMatchScore != null && (
+                    <Badge variant={invoice.vendorMatchScore >= 0.85 ? "outline" : "secondary"} className="text-xs">
+                      Vendor {Math.round(Number(invoice.vendorMatchScore) * 100)}%
+                    </Badge>
+                  )}
+                  {invoice.confidenceScore != null && (
+                    <Badge variant={invoice.confidenceScore > 0.8 ? "outline" : "secondary"}>
+                      {Math.round(Number(invoice.confidenceScore) * 100)}% Confidence
+                    </Badge>
+                  )}
+                </div>
               </div>
             </CardHeader>
             <CardContent className="p-4 space-y-4">
@@ -299,13 +319,30 @@ export function ExtractionReview() {
                   Vendor Name (as on document)
                   {isLowConfidence("vendorRawName") && <AlertCircle className="h-3 w-3 text-amber-500" />}
                 </Label>
-                <Input
-                  value={formData.vendorRawName}
-                  onChange={(e) => handleInputChange("vendorRawName", e.target.value)}
-                  onBlur={(e) => handleSaveField("vendorRawName", e.target.value)}
-                  placeholder="Raw vendor name from invoice"
-                  data-testid="input-vendor-raw-name"
-                />
+                <div className="flex gap-2">
+                  <Input
+                    value={formData.vendorRawName}
+                    onChange={(e) => handleInputChange("vendorRawName", e.target.value)}
+                    onBlur={(e) => handleSaveField("vendorRawName", e.target.value)}
+                    placeholder="Raw vendor name from invoice"
+                    data-testid="input-vendor-raw-name"
+                    className="flex-1"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRerunVendorMatch}
+                    disabled={matchVendor.isPending || !formData.vendorRawName}
+                    title="Re-run vendor matching"
+                    data-testid="button-rerun-match"
+                  >
+                    {matchVendor.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

@@ -62,6 +62,14 @@ export interface Invoice {
   lowConfidenceFields?: string | null;
   /** @nullable */
   confidenceScore?: number | null;
+  /** @nullable */
+  subtotal?: number | null;
+  /** @nullable */
+  freightAmount?: number | null;
+  /** @nullable */
+  paymentTerms?: string | null;
+  /** @nullable */
+  vendorMatchScore?: number | null;
   role?: InvoiceRole;
   createdAt: string;
   updatedAt: string;
@@ -116,6 +124,12 @@ export interface InvoiceUpdate {
   confidenceScore?: number | null;
   /** @nullable */
   lowConfidenceFields?: string | null;
+  /** @nullable */
+  subtotal?: number | null;
+  /** @nullable */
+  freightAmount?: number | null;
+  /** @nullable */
+  paymentTerms?: string | null;
   editorRole?: string;
 }
 
@@ -204,6 +218,8 @@ export interface Vendor {
   contactPhone?: string | null;
   /** @nullable */
   paymentTerms?: string | null;
+  aliases?: string[];
+  onHold?: boolean;
   isActive: boolean;
   createdAt: string;
   /** @nullable */
@@ -225,6 +241,9 @@ export interface VendorInput {
   contactPhone?: string | null;
   /** @nullable */
   paymentTerms?: string | null;
+  aliases?: string[];
+  /** @nullable */
+  onHold?: boolean | null;
 }
 
 export interface VendorUpdate {
@@ -240,6 +259,9 @@ export interface VendorUpdate {
   contactPhone?: string | null;
   /** @nullable */
   paymentTerms?: string | null;
+  aliases?: string[];
+  /** @nullable */
+  onHold?: boolean | null;
   /** @nullable */
   isActive?: boolean | null;
 }

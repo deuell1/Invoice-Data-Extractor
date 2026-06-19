@@ -42,6 +42,14 @@ export interface Invoice {
   lowConfidenceFields?: string | null;
   /** @nullable */
   confidenceScore?: number | null;
+  /** @nullable */
+  subtotal?: number | null;
+  /** @nullable */
+  freightAmount?: number | null;
+  /** @nullable */
+  paymentTerms?: string | null;
+  /** @nullable */
+  vendorMatchScore?: number | null;
   role?: InvoiceRole;
   createdAt: Date;
   updatedAt: Date;

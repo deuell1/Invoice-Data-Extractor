@@ -19,6 +19,9 @@ export interface VendorUpdate {
   contactPhone?: string | null;
   /** @nullable */
   paymentTerms?: string | null;
+  aliases?: string[];
+  /** @nullable */
+  onHold?: boolean | null;
   /** @nullable */
   isActive?: boolean | null;
 }

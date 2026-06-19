@@ -59,6 +59,10 @@ export const ListInvoicesResponse = zod.object({
   "exceptionReason": zod.string().nullish(),
   "lowConfidenceFields": zod.string().nullish(),
   "confidenceScore": zod.number().nullish(),
+  "subtotal": zod.number().nullish(),
+  "freightAmount": zod.number().nullish(),
+  "paymentTerms": zod.string().nullish(),
+  "vendorMatchScore": zod.number().nullish(),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(listInvoicesResponseDataItemRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -145,6 +149,10 @@ export const GetInvoiceResponse = zod.object({
   "exceptionReason": zod.string().nullish(),
   "lowConfidenceFields": zod.string().nullish(),
   "confidenceScore": zod.number().nullish(),
+  "subtotal": zod.number().nullish(),
+  "freightAmount": zod.number().nullish(),
+  "paymentTerms": zod.string().nullish(),
+  "vendorMatchScore": zod.number().nullish(),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(getInvoiceResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -172,6 +180,9 @@ export const UpdateInvoiceBody = zod.object({
   "vendorRawName": zod.string().nullish(),
   "confidenceScore": zod.number().nullish(),
   "lowConfidenceFields": zod.string().nullish(),
+  "subtotal": zod.number().nullish(),
+  "freightAmount": zod.number().nullish(),
+  "paymentTerms": zod.string().nullish(),
   "editorRole": zod.string().default(updateInvoiceBodyEditorRoleDefault)
 })
 
@@ -198,7 +209,52 @@ export const UpdateInvoiceResponse = zod.object({
   "exceptionReason": zod.string().nullish(),
   "lowConfidenceFields": zod.string().nullish(),
   "confidenceScore": zod.number().nullish(),
+  "subtotal": zod.number().nullish(),
+  "freightAmount": zod.number().nullish(),
+  "paymentTerms": zod.string().nullish(),
+  "vendorMatchScore": zod.number().nullish(),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(updateInvoiceResponseRoleDefault),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * Normalizes vendorRawName and matches against vendor_id table. Updates vendorId and routes to Exception if no match, low confidence, inactive, or on-hold.
+ * @summary Run vendor matching on vendorRawName
+ */
+export const MatchInvoiceVendorParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const matchInvoiceVendorResponseCurrencyDefault = `USD`;
+export const matchInvoiceVendorResponseRoleDefault = `AP_PROCESSOR`;
+
+export const MatchInvoiceVendorResponse = zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED']),
+  "vendorId": zod.number().nullish(),
+  "vendorName": zod.string().nullish(),
+  "invoiceNumber": zod.string().nullish(),
+  "invoiceDate": zod.string().nullish(),
+  "totalAmount": zod.number().nullish(),
+  "taxAmount": zod.number().nullish(),
+  "poNumber": zod.string().nullish(),
+  "currency": zod.string().default(matchInvoiceVendorResponseCurrencyDefault),
+  "fileObjectPath": zod.string(),
+  "originalFileName": zod.string(),
+  "documentId": zod.string().nullish(),
+  "vendorRawName": zod.string().nullish(),
+  "dueDate": zod.string().nullish(),
+  "voucherId": zod.string().nullish(),
+  "exceptionReason": zod.string().nullish(),
+  "lowConfidenceFields": zod.string().nullish(),
+  "confidenceScore": zod.number().nullish(),
+  "subtotal": zod.number().nullish(),
+  "freightAmount": zod.number().nullish(),
+  "paymentTerms": zod.string().nullish(),
+  "vendorMatchScore": zod.number().nullish(),
+  "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(matchInvoiceVendorResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -239,6 +295,10 @@ export const UpdateInvoiceStatusResponse = zod.object({
   "exceptionReason": zod.string().nullish(),
   "lowConfidenceFields": zod.string().nullish(),
   "confidenceScore": zod.number().nullish(),
+  "subtotal": zod.number().nullish(),
+  "freightAmount": zod.number().nullish(),
+  "paymentTerms": zod.string().nullish(),
+  "vendorMatchScore": zod.number().nullish(),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(updateInvoiceStatusResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -282,6 +342,10 @@ export const SetVoucherIdResponse = zod.object({
   "exceptionReason": zod.string().nullish(),
   "lowConfidenceFields": zod.string().nullish(),
   "confidenceScore": zod.number().nullish(),
+  "subtotal": zod.number().nullish(),
+  "freightAmount": zod.number().nullish(),
+  "paymentTerms": zod.string().nullish(),
+  "vendorMatchScore": zod.number().nullish(),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(setVoucherIdResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -318,6 +382,10 @@ export const ApproveInvoiceResponse = zod.object({
   "exceptionReason": zod.string().nullish(),
   "lowConfidenceFields": zod.string().nullish(),
   "confidenceScore": zod.number().nullish(),
+  "subtotal": zod.number().nullish(),
+  "freightAmount": zod.number().nullish(),
+  "paymentTerms": zod.string().nullish(),
+  "vendorMatchScore": zod.number().nullish(),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(approveInvoiceResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -361,6 +429,10 @@ export const RejectInvoiceResponse = zod.object({
   "exceptionReason": zod.string().nullish(),
   "lowConfidenceFields": zod.string().nullish(),
   "confidenceScore": zod.number().nullish(),
+  "subtotal": zod.number().nullish(),
+  "freightAmount": zod.number().nullish(),
+  "paymentTerms": zod.string().nullish(),
+  "vendorMatchScore": zod.number().nullish(),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(rejectInvoiceResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -397,6 +469,10 @@ export const SubmitInvoiceResponse = zod.object({
   "exceptionReason": zod.string().nullish(),
   "lowConfidenceFields": zod.string().nullish(),
   "confidenceScore": zod.number().nullish(),
+  "subtotal": zod.number().nullish(),
+  "freightAmount": zod.number().nullish(),
+  "paymentTerms": zod.string().nullish(),
+  "vendorMatchScore": zod.number().nullish(),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(submitInvoiceResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -429,6 +505,9 @@ export const ListVendorsQueryParams = zod.object({
   "limit": zod.coerce.number().default(listVendorsQueryLimitDefault)
 })
 
+export const listVendorsResponseDataItemAliasesDefault = [];
+export const listVendorsResponseDataItemOnHoldDefault = false;
+
 export const ListVendorsResponse = zod.object({
   "data": zod.array(zod.object({
   "id": zod.number(),
@@ -439,6 +518,8 @@ export const ListVendorsResponse = zod.object({
   "contactEmail": zod.string().nullish(),
   "contactPhone": zod.string().nullish(),
   "paymentTerms": zod.string().nullish(),
+  "aliases": zod.array(zod.string()).default(listVendorsResponseDataItemAliasesDefault),
+  "onHold": zod.boolean().default(listVendorsResponseDataItemOnHoldDefault),
   "isActive": zod.boolean(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.string().nullish()
@@ -454,7 +535,7 @@ export const ListVendorsResponse = zod.object({
  */
 
 
-
+export const createVendorBodyAliasesDefault = [];
 
 export const CreateVendorBody = zod.object({
   "vendorCode": zod.string().min(1),
@@ -463,7 +544,9 @@ export const CreateVendorBody = zod.object({
   "address": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
   "contactPhone": zod.string().nullish(),
-  "paymentTerms": zod.string().nullish()
+  "paymentTerms": zod.string().nullish(),
+  "aliases": zod.array(zod.string()).default(createVendorBodyAliasesDefault),
+  "onHold": zod.boolean().nullish()
 })
 
 
@@ -472,7 +555,7 @@ export const CreateVendorBody = zod.object({
  */
 
 
-
+export const importVendorsBodyVendorsItemAliasesDefault = [];
 
 export const ImportVendorsBody = zod.object({
   "vendors": zod.array(zod.object({
@@ -482,7 +565,9 @@ export const ImportVendorsBody = zod.object({
   "address": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
   "contactPhone": zod.string().nullish(),
-  "paymentTerms": zod.string().nullish()
+  "paymentTerms": zod.string().nullish(),
+  "aliases": zod.array(zod.string()).default(importVendorsBodyVendorsItemAliasesDefault),
+  "onHold": zod.boolean().nullish()
 }))
 })
 
@@ -500,6 +585,9 @@ export const GetVendorParams = zod.object({
   "id": zod.coerce.number()
 })
 
+export const getVendorResponseAliasesDefault = [];
+export const getVendorResponseOnHoldDefault = false;
+
 export const GetVendorResponse = zod.object({
   "id": zod.number(),
   "vendorCode": zod.string(),
@@ -509,6 +597,8 @@ export const GetVendorResponse = zod.object({
   "contactEmail": zod.string().nullish(),
   "contactPhone": zod.string().nullish(),
   "paymentTerms": zod.string().nullish(),
+  "aliases": zod.array(zod.string()).default(getVendorResponseAliasesDefault),
+  "onHold": zod.boolean().default(getVendorResponseOnHoldDefault),
   "isActive": zod.boolean(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.string().nullish()
@@ -529,8 +619,13 @@ export const UpdateVendorBody = zod.object({
   "contactEmail": zod.string().nullish(),
   "contactPhone": zod.string().nullish(),
   "paymentTerms": zod.string().nullish(),
+  "aliases": zod.array(zod.string()).optional(),
+  "onHold": zod.boolean().nullish(),
   "isActive": zod.boolean().nullish()
 })
+
+export const updateVendorResponseAliasesDefault = [];
+export const updateVendorResponseOnHoldDefault = false;
 
 export const UpdateVendorResponse = zod.object({
   "id": zod.number(),
@@ -541,6 +636,8 @@ export const UpdateVendorResponse = zod.object({
   "contactEmail": zod.string().nullish(),
   "contactPhone": zod.string().nullish(),
   "paymentTerms": zod.string().nullish(),
+  "aliases": zod.array(zod.string()).default(updateVendorResponseAliasesDefault),
+  "onHold": zod.boolean().default(updateVendorResponseOnHoldDefault),
   "isActive": zod.boolean(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.string().nullish()

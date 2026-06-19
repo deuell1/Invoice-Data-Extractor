@@ -19,6 +19,7 @@ const router: IRouter = Router();
 function serializeVendor(row: typeof vendorIdTable.$inferSelect) {
   return {
     ...row,
+    aliases: (row.aliases as string[] | null) ?? [],
     updatedAt: row.updatedAt instanceof Date ? row.updatedAt.toISOString() : (row.updatedAt ?? null),
   };
 }
@@ -80,7 +81,11 @@ router.post("/vendors", async (req, res): Promise<void> => {
     return;
   }
 
-  const [vendor] = await db.insert(vendorIdTable).values(parsed.data).returning();
+  const [vendor] = await db.insert(vendorIdTable).values({
+    ...parsed.data,
+    onHold: parsed.data.onHold ?? false,
+    aliases: parsed.data.aliases ?? [],
+  }).returning();
   res.status(201).json(GetVendorResponse.parse(serializeVendor(vendor)));
 });
 
@@ -106,7 +111,11 @@ router.post("/vendors/import", async (req, res): Promise<void> => {
       if (existing.length > 0) {
         skipped++;
       } else {
-        await db.insert(vendorIdTable).values(vendor);
+        await db.insert(vendorIdTable).values({
+          ...vendor,
+          onHold: (vendor as { onHold?: boolean | null }).onHold ?? false,
+          aliases: (vendor as { aliases?: string[] | null }).aliases ?? [],
+        });
         inserted++;
       }
     } catch (err) {
@@ -158,6 +167,8 @@ router.patch("/vendors/:id", async (req, res): Promise<void> => {
   if (parsed.data.contactEmail !== undefined) updates.contactEmail = parsed.data.contactEmail;
   if (parsed.data.contactPhone !== undefined) updates.contactPhone = parsed.data.contactPhone;
   if (parsed.data.paymentTerms !== undefined) updates.paymentTerms = parsed.data.paymentTerms;
+  if (parsed.data.aliases !== undefined) updates.aliases = parsed.data.aliases;
+  if (parsed.data.onHold != null) updates.onHold = parsed.data.onHold;
   if (parsed.data.isActive != null) updates.isActive = parsed.data.isActive;
 
   const [vendor] = await db

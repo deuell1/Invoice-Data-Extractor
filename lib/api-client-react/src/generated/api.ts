@@ -602,6 +602,77 @@ export const useUpdateInvoice = <TError = ErrorType<ErrorEnvelope>,
       return useMutation(getUpdateInvoiceMutationOptions(options));
     }
 
+export const getMatchInvoiceVendorUrl = (id: number,) => {
+
+
+
+
+  return `/api/invoices/${id}/match-vendor`
+}
+
+/**
+ * Normalizes vendorRawName and matches against vendor_id table. Updates vendorId and routes to Exception if no match, low confidence, inactive, or on-hold.
+ * @summary Run vendor matching on vendorRawName
+ */
+export const matchInvoiceVendor = async (id: number, options?: RequestInit): Promise<Invoice> => {
+
+  return customFetch<Invoice>(getMatchInvoiceVendorUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getMatchInvoiceVendorMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof matchInvoiceVendor>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof matchInvoiceVendor>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['matchInvoiceVendor'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof matchInvoiceVendor>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  matchInvoiceVendor(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type MatchInvoiceVendorMutationResult = NonNullable<Awaited<ReturnType<typeof matchInvoiceVendor>>>
+
+    export type MatchInvoiceVendorMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Run vendor matching on vendorRawName
+ */
+export const useMatchInvoiceVendor = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof matchInvoiceVendor>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof matchInvoiceVendor>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getMatchInvoiceVendorMutationOptions(options));
+    }
+
 export const getUpdateInvoiceStatusUrl = (id: number,) => {
 
 

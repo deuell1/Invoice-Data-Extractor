@@ -47,6 +47,7 @@ export const invoiceCaptureTable = pgTable("invoice_capture", {
   subtotal: numeric("subtotal", { precision: 18, scale: 2 }),
   freightAmount: numeric("freight_amount", { precision: 18, scale: 2 }),
   paymentTerms: text("payment_terms"),
+  vendorMatchScore: numeric("vendor_match_score", { precision: 5, scale: 4 }),
   role: invoiceRoleEnum("role").notNull().default("AP_PROCESSOR"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true })

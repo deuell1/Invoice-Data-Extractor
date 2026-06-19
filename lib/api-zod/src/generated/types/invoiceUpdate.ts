@@ -29,5 +29,11 @@ export interface InvoiceUpdate {
   confidenceScore?: number | null;
   /** @nullable */
   lowConfidenceFields?: string | null;
+  /** @nullable */
+  subtotal?: number | null;
+  /** @nullable */
+  freightAmount?: number | null;
+  /** @nullable */
+  paymentTerms?: string | null;
   editorRole?: string;
 }

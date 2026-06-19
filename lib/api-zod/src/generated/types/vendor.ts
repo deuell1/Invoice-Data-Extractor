@@ -20,6 +20,8 @@ export interface Vendor {
   contactPhone?: string | null;
   /** @nullable */
   paymentTerms?: string | null;
+  aliases?: string[];
+  onHold?: boolean;
   isActive: boolean;
   createdAt: Date;
   /** @nullable */

@@ -1,1 +1,2 @@
 - [Date serialization in Drizzle routes](date-serialization.md) — nullable timestamp columns return Date objects but Zod string schemas reject them; must serialize before parsing.
+- [Vendor matching service](vendor-matching.md) — controlled vendor ID assignment via fuzzy match on vendorRawName; 85% threshold; clear exception on success only when current exceptionReason mentions "vendor"/"match".
