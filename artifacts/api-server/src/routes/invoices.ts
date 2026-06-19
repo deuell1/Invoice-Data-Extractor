@@ -53,6 +53,9 @@ async function getInvoiceById(id: number) {
       currency: invoiceCaptureTable.currency,
       fileObjectPath: invoiceCaptureTable.fileObjectPath,
       originalFileName: invoiceCaptureTable.originalFileName,
+      documentId: invoiceCaptureTable.documentId,
+      vendorRawName: invoiceCaptureTable.vendorRawName,
+      dueDate: invoiceCaptureTable.dueDate,
       voucherId: invoiceCaptureTable.voucherId,
       exceptionReason: invoiceCaptureTable.exceptionReason,
       lowConfidenceFields: invoiceCaptureTable.lowConfidenceFields,
@@ -176,6 +179,9 @@ router.get("/invoices", async (req, res): Promise<void> => {
       currency: invoiceCaptureTable.currency,
       fileObjectPath: invoiceCaptureTable.fileObjectPath,
       originalFileName: invoiceCaptureTable.originalFileName,
+      documentId: invoiceCaptureTable.documentId,
+      vendorRawName: invoiceCaptureTable.vendorRawName,
+      dueDate: invoiceCaptureTable.dueDate,
       voucherId: invoiceCaptureTable.voucherId,
       exceptionReason: invoiceCaptureTable.exceptionReason,
       lowConfidenceFields: invoiceCaptureTable.lowConfidenceFields,
@@ -234,6 +240,13 @@ router.post("/invoices", async (req, res): Promise<void> => {
     })
     .returning();
 
+  // Generate human-readable DocumentID now that we have the auto-increment id
+  const documentId = `INV-CAP-${String(invoice.id).padStart(6, "0")}`;
+  await db
+    .update(invoiceCaptureTable)
+    .set({ documentId })
+    .where(eq(invoiceCaptureTable.id, invoice.id));
+
   await appendAudit({
     invoiceId: invoice.id,
     action: "CREATED",
@@ -288,10 +301,13 @@ router.get("/invoices/export", async (req, res): Promise<void> => {
   const rows = await db
     .select({
       id: invoiceCaptureTable.id,
+      documentId: invoiceCaptureTable.documentId,
       status: invoiceCaptureTable.status,
       vendorName: vendorIdTable.vendorName,
+      vendorRawName: invoiceCaptureTable.vendorRawName,
       invoiceNumber: invoiceCaptureTable.invoiceNumber,
       invoiceDate: invoiceCaptureTable.invoiceDate,
+      dueDate: invoiceCaptureTable.dueDate,
       totalAmount: invoiceCaptureTable.totalAmount,
       taxAmount: invoiceCaptureTable.taxAmount,
       poNumber: invoiceCaptureTable.poNumber,
@@ -304,14 +320,17 @@ router.get("/invoices/export", async (req, res): Promise<void> => {
     .where(eq(invoiceCaptureTable.status, status as "APPROVED" | "POSTED"))
     .orderBy(invoiceCaptureTable.createdAt);
 
-  const header = "id,status,vendorName,invoiceNumber,invoiceDate,totalAmount,taxAmount,currency,poNumber,voucherId,createdAt";
+  const header = "documentId,id,status,vendorName,vendorRawName,invoiceNumber,invoiceDate,dueDate,totalAmount,taxAmount,currency,poNumber,voucherId,createdAt";
   const csvRows = rows.map((r) =>
     [
+      r.documentId ?? "",
       r.id,
       r.status,
       r.vendorName ?? "",
+      r.vendorRawName ?? "",
       r.invoiceNumber ?? "",
       r.invoiceDate ?? "",
+      r.dueDate ?? "",
       r.totalAmount ?? "",
       r.taxAmount ?? "",
       r.currency,
@@ -386,10 +405,12 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
   track("vendorId", existing.vendorId, parsed.data.vendorId, "vendorId");
   track("invoiceNumber", existing.invoiceNumber, parsed.data.invoiceNumber, "invoiceNumber");
   track("invoiceDate", existing.invoiceDate, parsed.data.invoiceDate, "invoiceDate");
+  track("dueDate", existing.dueDate, parsed.data.dueDate, "dueDate");
   track("totalAmount", existing.totalAmount, parsed.data.totalAmount, "totalAmount");
   track("taxAmount", existing.taxAmount, parsed.data.taxAmount, "taxAmount");
   track("poNumber", existing.poNumber, parsed.data.poNumber, "poNumber");
   track("currency", existing.currency, parsed.data.currency, "currency");
+  track("vendorRawName", existing.vendorRawName, parsed.data.vendorRawName, "vendorRawName");
 
   if (Object.keys(updates).length > 0) {
     await db

@@ -673,6 +673,12 @@ components:
           type: string
         originalFileName:
           type: string
+        documentId:
+          type: ["string", "null"]
+        vendorRawName:
+          type: ["string", "null"]
+        dueDate:
+          type: ["string", "null"]
         voucherId:
           type: ["string", "null"]
         exceptionReason:
@@ -717,6 +723,10 @@ components:
         currency:
           type: string
           default: USD
+        vendorRawName:
+          type: ["string", "null"]
+        dueDate:
+          type: ["string", "null"]
         confidenceScore:
           type: ["number", "null"]
         lowConfidenceFields:
@@ -731,6 +741,8 @@ components:
           type: ["string", "null"]
         invoiceDate:
           type: ["string", "null"]
+        dueDate:
+          type: ["string", "null"]
         totalAmount:
           type: ["number", "null"]
         taxAmount:
@@ -738,6 +750,8 @@ components:
         poNumber:
           type: ["string", "null"]
         currency:
+          type: ["string", "null"]
+        vendorRawName:
           type: ["string", "null"]
         confidenceScore:
           type: ["number", "null"]

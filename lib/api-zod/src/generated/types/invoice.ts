@@ -29,6 +29,12 @@ export interface Invoice {
   fileObjectPath: string;
   originalFileName: string;
   /** @nullable */
+  documentId?: string | null;
+  /** @nullable */
+  vendorRawName?: string | null;
+  /** @nullable */
+  dueDate?: string | null;
+  /** @nullable */
   voucherId?: string | null;
   /** @nullable */
   exceptionReason?: string | null;

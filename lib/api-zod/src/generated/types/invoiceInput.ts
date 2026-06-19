@@ -23,6 +23,10 @@ export interface InvoiceInput {
   poNumber?: string | null;
   currency?: string;
   /** @nullable */
+  vendorRawName?: string | null;
+  /** @nullable */
+  dueDate?: string | null;
+  /** @nullable */
   confidenceScore?: number | null;
   /** @nullable */
   lowConfidenceFields?: string | null;

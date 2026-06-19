@@ -14,6 +14,8 @@ export interface InvoiceUpdate {
   /** @nullable */
   invoiceDate?: string | null;
   /** @nullable */
+  dueDate?: string | null;
+  /** @nullable */
   totalAmount?: number | null;
   /** @nullable */
   taxAmount?: number | null;
@@ -21,6 +23,8 @@ export interface InvoiceUpdate {
   poNumber?: string | null;
   /** @nullable */
   currency?: string | null;
+  /** @nullable */
+  vendorRawName?: string | null;
   /** @nullable */
   confidenceScore?: number | null;
   /** @nullable */

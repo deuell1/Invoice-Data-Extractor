@@ -52,6 +52,9 @@ export const ListInvoicesResponse = zod.object({
   "currency": zod.string().default(listInvoicesResponseDataItemCurrencyDefault),
   "fileObjectPath": zod.string(),
   "originalFileName": zod.string(),
+  "documentId": zod.string().nullish(),
+  "vendorRawName": zod.string().nullish(),
+  "dueDate": zod.string().nullish(),
   "voucherId": zod.string().nullish(),
   "exceptionReason": zod.string().nullish(),
   "lowConfidenceFields": zod.string().nullish(),
@@ -81,6 +84,8 @@ export const CreateInvoiceBody = zod.object({
   "taxAmount": zod.number().nullish(),
   "poNumber": zod.string().nullish(),
   "currency": zod.string().default(createInvoiceBodyCurrencyDefault),
+  "vendorRawName": zod.string().nullish(),
+  "dueDate": zod.string().nullish(),
   "confidenceScore": zod.number().nullish(),
   "lowConfidenceFields": zod.string().nullish()
 })
@@ -133,6 +138,9 @@ export const GetInvoiceResponse = zod.object({
   "currency": zod.string().default(getInvoiceResponseCurrencyDefault),
   "fileObjectPath": zod.string(),
   "originalFileName": zod.string(),
+  "documentId": zod.string().nullish(),
+  "vendorRawName": zod.string().nullish(),
+  "dueDate": zod.string().nullish(),
   "voucherId": zod.string().nullish(),
   "exceptionReason": zod.string().nullish(),
   "lowConfidenceFields": zod.string().nullish(),
@@ -156,10 +164,12 @@ export const UpdateInvoiceBody = zod.object({
   "vendorId": zod.number().nullish(),
   "invoiceNumber": zod.string().nullish(),
   "invoiceDate": zod.string().nullish(),
+  "dueDate": zod.string().nullish(),
   "totalAmount": zod.number().nullish(),
   "taxAmount": zod.number().nullish(),
   "poNumber": zod.string().nullish(),
   "currency": zod.string().nullish(),
+  "vendorRawName": zod.string().nullish(),
   "confidenceScore": zod.number().nullish(),
   "lowConfidenceFields": zod.string().nullish(),
   "editorRole": zod.string().default(updateInvoiceBodyEditorRoleDefault)
@@ -181,6 +191,9 @@ export const UpdateInvoiceResponse = zod.object({
   "currency": zod.string().default(updateInvoiceResponseCurrencyDefault),
   "fileObjectPath": zod.string(),
   "originalFileName": zod.string(),
+  "documentId": zod.string().nullish(),
+  "vendorRawName": zod.string().nullish(),
+  "dueDate": zod.string().nullish(),
   "voucherId": zod.string().nullish(),
   "exceptionReason": zod.string().nullish(),
   "lowConfidenceFields": zod.string().nullish(),
@@ -219,6 +232,9 @@ export const UpdateInvoiceStatusResponse = zod.object({
   "currency": zod.string().default(updateInvoiceStatusResponseCurrencyDefault),
   "fileObjectPath": zod.string(),
   "originalFileName": zod.string(),
+  "documentId": zod.string().nullish(),
+  "vendorRawName": zod.string().nullish(),
+  "dueDate": zod.string().nullish(),
   "voucherId": zod.string().nullish(),
   "exceptionReason": zod.string().nullish(),
   "lowConfidenceFields": zod.string().nullish(),
@@ -259,6 +275,9 @@ export const SetVoucherIdResponse = zod.object({
   "currency": zod.string().default(setVoucherIdResponseCurrencyDefault),
   "fileObjectPath": zod.string(),
   "originalFileName": zod.string(),
+  "documentId": zod.string().nullish(),
+  "vendorRawName": zod.string().nullish(),
+  "dueDate": zod.string().nullish(),
   "voucherId": zod.string().nullish(),
   "exceptionReason": zod.string().nullish(),
   "lowConfidenceFields": zod.string().nullish(),
@@ -292,6 +311,9 @@ export const ApproveInvoiceResponse = zod.object({
   "currency": zod.string().default(approveInvoiceResponseCurrencyDefault),
   "fileObjectPath": zod.string(),
   "originalFileName": zod.string(),
+  "documentId": zod.string().nullish(),
+  "vendorRawName": zod.string().nullish(),
+  "dueDate": zod.string().nullish(),
   "voucherId": zod.string().nullish(),
   "exceptionReason": zod.string().nullish(),
   "lowConfidenceFields": zod.string().nullish(),
@@ -332,6 +354,9 @@ export const RejectInvoiceResponse = zod.object({
   "currency": zod.string().default(rejectInvoiceResponseCurrencyDefault),
   "fileObjectPath": zod.string(),
   "originalFileName": zod.string(),
+  "documentId": zod.string().nullish(),
+  "vendorRawName": zod.string().nullish(),
+  "dueDate": zod.string().nullish(),
   "voucherId": zod.string().nullish(),
   "exceptionReason": zod.string().nullish(),
   "lowConfidenceFields": zod.string().nullish(),
@@ -365,6 +390,9 @@ export const SubmitInvoiceResponse = zod.object({
   "currency": zod.string().default(submitInvoiceResponseCurrencyDefault),
   "fileObjectPath": zod.string(),
   "originalFileName": zod.string(),
+  "documentId": zod.string().nullish(),
+  "vendorRawName": zod.string().nullish(),
+  "dueDate": zod.string().nullish(),
   "voucherId": zod.string().nullish(),
   "exceptionReason": zod.string().nullish(),
   "lowConfidenceFields": zod.string().nullish(),
@@ -520,6 +548,21 @@ export const UpdateVendorResponse = zod.object({
 
 
 /**
+ * @summary Check whether an invoice is a likely duplicate of an existing APPROVED/POSTED invoice
+ */
+export const CheckDuplicateParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const CheckDuplicateResponse = zod.object({
+  "isDuplicate": zod.boolean(),
+  "matchedIds": zod.array(zod.number()),
+  "riskScore": zod.number().describe('0 = no match, 0.7 = fuzzy match, 1.0 = exact match'),
+  "matchType": zod.enum(['none', 'exact', 'fuzzy'])
+})
+
+
+/**
  * @summary Get audit log entries for an invoice
  */
 export const GetInvoiceAuditLogParams = zod.object({
@@ -538,21 +581,6 @@ export const GetInvoiceAuditLogResponseItem = zod.object({
   "createdAt": zod.coerce.date()
 })
 export const GetInvoiceAuditLogResponse = zod.array(GetInvoiceAuditLogResponseItem)
-
-
-/**
- * @summary Check whether an invoice is a likely duplicate of an existing APPROVED/POSTED invoice
- */
-export const CheckDuplicateParams = zod.object({
-  "id": zod.coerce.number()
-})
-
-export const CheckDuplicateResponse = zod.object({
-  "isDuplicate": zod.boolean(),
-  "matchedIds": zod.array(zod.number()),
-  "riskScore": zod.number(),
-  "matchType": zod.enum(["none", "exact", "fuzzy"])
-})
 
 
 /**

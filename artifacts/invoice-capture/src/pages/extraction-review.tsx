@@ -62,10 +62,12 @@ export function ExtractionReview() {
         vendorId: invoice.vendorId?.toString() || "",
         invoiceNumber: invoice.invoiceNumber || "",
         invoiceDate: invoice.invoiceDate || "",
+        dueDate: invoice.dueDate || "",
         totalAmount: invoice.totalAmount?.toString() || "",
         taxAmount: invoice.taxAmount?.toString() || "",
         poNumber: invoice.poNumber || "",
         currency: invoice.currency || "USD",
+        vendorRawName: invoice.vendorRawName || "",
       });
       initialized.current = true;
     }
@@ -292,6 +294,20 @@ export function ExtractionReview() {
                 </Select>
               </div>
 
+              <div className="space-y-2">
+                <Label className="flex items-center justify-between">
+                  Vendor Name (as on document)
+                  {isLowConfidence("vendorRawName") && <AlertCircle className="h-3 w-3 text-amber-500" />}
+                </Label>
+                <Input
+                  value={formData.vendorRawName}
+                  onChange={(e) => handleInputChange("vendorRawName", e.target.value)}
+                  onBlur={(e) => handleSaveField("vendorRawName", e.target.value)}
+                  placeholder="Raw vendor name from invoice"
+                  data-testid="input-vendor-raw-name"
+                />
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="flex items-center justify-between">
@@ -317,6 +333,28 @@ export function ExtractionReview() {
                     onBlur={(e) => handleSaveField("invoiceDate", e.target.value)}
                     data-testid="input-invoice-date"
                   />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label className="flex items-center justify-between">
+                    Due Date
+                    {isLowConfidence("dueDate") && <AlertCircle className="h-3 w-3 text-amber-500" />}
+                  </Label>
+                  <Input
+                    type="date"
+                    value={formData.dueDate ? formData.dueDate.split("T")[0] : ""}
+                    onChange={(e) => handleInputChange("dueDate", e.target.value)}
+                    onBlur={(e) => handleSaveField("dueDate", e.target.value)}
+                    data-testid="input-due-date"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label className="text-muted-foreground text-xs">Document ID</Label>
+                  <div className="h-9 px-3 py-2 text-sm rounded-md border bg-muted/50 text-muted-foreground font-mono">
+                    {invoice.documentId || "—"}
+                  </div>
                 </div>
               </div>
 

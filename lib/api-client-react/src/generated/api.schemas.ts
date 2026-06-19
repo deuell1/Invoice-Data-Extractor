@@ -49,6 +49,12 @@ export interface Invoice {
   fileObjectPath: string;
   originalFileName: string;
   /** @nullable */
+  documentId?: string | null;
+  /** @nullable */
+  vendorRawName?: string | null;
+  /** @nullable */
+  dueDate?: string | null;
+  /** @nullable */
   voucherId?: string | null;
   /** @nullable */
   exceptionReason?: string | null;
@@ -78,6 +84,10 @@ export interface InvoiceInput {
   poNumber?: string | null;
   currency?: string;
   /** @nullable */
+  vendorRawName?: string | null;
+  /** @nullable */
+  dueDate?: string | null;
+  /** @nullable */
   confidenceScore?: number | null;
   /** @nullable */
   lowConfidenceFields?: string | null;
@@ -91,6 +101,8 @@ export interface InvoiceUpdate {
   /** @nullable */
   invoiceDate?: string | null;
   /** @nullable */
+  dueDate?: string | null;
+  /** @nullable */
   totalAmount?: number | null;
   /** @nullable */
   taxAmount?: number | null;
@@ -98,6 +110,8 @@ export interface InvoiceUpdate {
   poNumber?: string | null;
   /** @nullable */
   currency?: string | null;
+  /** @nullable */
+  vendorRawName?: string | null;
   /** @nullable */
   confidenceScore?: number | null;
   /** @nullable */
@@ -130,6 +144,23 @@ export interface VoucherInput {
 export interface RejectInput {
   /** @minLength 1 */
   reason: string;
+}
+
+export type DuplicateCheckResultMatchType = typeof DuplicateCheckResultMatchType[keyof typeof DuplicateCheckResultMatchType];
+
+
+export const DuplicateCheckResultMatchType = {
+  none: 'none',
+  exact: 'exact',
+  fuzzy: 'fuzzy',
+} as const;
+
+export interface DuplicateCheckResult {
+  isDuplicate: boolean;
+  matchedIds: number[];
+  /** 0 = no match, 0.7 = fuzzy match, 1.0 = exact match */
+  riskScore: number;
+  matchType: DuplicateCheckResultMatchType;
 }
 
 export interface BulkActionInput {
@@ -331,19 +362,3 @@ page?: number;
 limit?: number;
 };
 
-
-export type DuplicateCheckMatchType = typeof DuplicateCheckMatchType[keyof typeof DuplicateCheckMatchType];
-
-export const DuplicateCheckMatchType = {
-  none: 'none',
-  exact: 'exact',
-  fuzzy: 'fuzzy',
-} as const;
-
-export interface DuplicateCheckResult {
-  isDuplicate: boolean;
-  matchedIds: number[];
-  /** 0 = no match, 0.7 = fuzzy match, 1.0 = exact match */
-  riskScore: number;
-  matchType: DuplicateCheckMatchType;
-}
