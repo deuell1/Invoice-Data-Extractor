@@ -34,6 +34,9 @@ import {
 
 const router: IRouter = Router();
 
+// Phase 1 requirement: route to EXCEPTION when confidence is below 85%
+const CONFIDENCE_THRESHOLD = 0.85;
+
 // ─── Helper: fetch invoice enriched with vendorName ─────────────────────────
 async function getInvoiceById(id: number) {
   const [row] = await db
@@ -586,7 +589,7 @@ router.post("/invoices/:id/submit", async (req, res): Promise<void> => {
   // Check confidence: route to EXCEPTION if low
   const score = existing.confidenceScore != null ? Number(existing.confidenceScore) : null;
   const hasLowConfidence = existing.lowConfidenceFields && existing.lowConfidenceFields.length > 0;
-  const routeToException = score != null && score < 0.7;
+  const routeToException = score != null && score < CONFIDENCE_THRESHOLD;
 
   if (routeToException || hasLowConfidence) {
     await db
