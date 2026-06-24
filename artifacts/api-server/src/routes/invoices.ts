@@ -668,6 +668,13 @@ router.patch("/invoices/:id/status", async (req, res): Promise<void> => {
     return;
   }
 
+  // Protect the terminal POSTED state — a posted invoice (with a voucher, in the
+  // GL) must not be moved by the general-purpose status endpoint.
+  if (existing.status === "POSTED") {
+    res.status(422).json({ error: "A posted invoice cannot change status." });
+    return;
+  }
+
   await db
     .update(invoiceCaptureTable)
     .set({
@@ -708,6 +715,15 @@ router.patch("/invoices/:id/voucher", async (req, res): Promise<void> => {
     return;
   }
 
+  // Only approved (or already posted) invoices can be posted with a voucher.
+  // This prevents an un-approved or in-exception invoice from skipping approval.
+  if (existing.status !== "APPROVED" && existing.status !== "POSTED") {
+    res.status(422).json({
+      error: "Only approved invoices can be assigned a voucher and posted.",
+    });
+    return;
+  }
+
   await db
     .update(invoiceCaptureTable)
     .set({ voucherId: parsed.data.voucherId, status: "POSTED" })
@@ -716,6 +732,7 @@ router.patch("/invoices/:id/voucher", async (req, res): Promise<void> => {
   await appendAudit({
     invoiceId: params.data.id,
     action: "VOUCHER_SET",
+    oldValue: existing.status,
     newValue: parsed.data.voucherId,
   });
 
@@ -802,6 +819,13 @@ router.post("/invoices/:id/reject", async (req, res): Promise<void> => {
   const existing = await getInvoiceById(params.data.id);
   if (!existing) {
     res.status(404).json({ error: "Invoice not found" });
+    return;
+  }
+
+  // A posted invoice is terminal (voucher assigned, in the GL) and cannot be
+  // reversed via reject.
+  if (existing.status === "POSTED") {
+    res.status(422).json({ error: "A posted invoice cannot be rejected." });
     return;
   }
 
