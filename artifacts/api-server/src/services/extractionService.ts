@@ -63,6 +63,35 @@ export function isExtractionConfigured(): boolean {
   return Boolean(process.env.OPENAI_API_KEY);
 }
 
+/** Coarse failure categories used for troubleshooting (never user secrets). */
+export type ExtractionFailureCategory =
+  | "UNSUPPORTED_FILE"
+  | "TIMEOUT"
+  | "INVALID_RESPONSE"
+  | "PROVIDER_ERROR"
+  | "UNKNOWN";
+
+/**
+ * Typed extraction failure carrying a coarse category and a SAFE, user-facing
+ * message. The message is persisted on the invoice and shown in the UI, so it
+ * must never contain the API key, auth headers, request internals, or raw
+ * provider payloads.
+ */
+export class ExtractionError extends Error {
+  category: ExtractionFailureCategory;
+  constructor(category: ExtractionFailureCategory, message: string) {
+    super(message);
+    this.name = "ExtractionError";
+    this.category = category;
+  }
+}
+
+/** Maximum document size accepted for automatic extraction (bytes). */
+const MAX_EXTRACTION_FILE_BYTES = 25 * 1024 * 1024; // 25 MB
+
+/** Extraction request timeout (ms); override with OPENAI_TIMEOUT_MS. */
+const EXTRACTION_TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS) || 60_000;
+
 /** Confidence threshold (0-100 scale) below which a field is "low confidence". */
 const LOW_CONFIDENCE_THRESHOLD = 85;
 
@@ -214,22 +243,52 @@ function clampPct(value: unknown): number {
 }
 
 /**
- * Translate any extraction failure into a safe, user-facing message. Never
- * include the API key, request internals, or raw provider payloads here — the
- * returned string is persisted to the invoice and shown in the UI.
+ * Translate any extraction failure into a coarse category and a safe,
+ * user-facing message. Never include the API key, auth headers, request
+ * internals, or raw provider payloads here — the returned message is persisted
+ * to the invoice and shown in the UI.
  */
-function safeExtractionError(err: unknown): string {
+function categorizeExtractionError(err: unknown): {
+  category: ExtractionFailureCategory;
+  message: string;
+} {
+  // Already-categorized failures (unsupported file, invalid response, etc.).
+  if (err instanceof ExtractionError) {
+    return { category: err.category, message: err.message };
+  }
+
+  // Timeouts/aborts from the SDK or our own timeout guard.
+  const name = (err as { name?: string })?.name;
+  if (name === "APIConnectionTimeoutError" || name === "AbortError") {
+    return {
+      category: "TIMEOUT",
+      message: "Automatic extraction timed out. Please retry.",
+    };
+  }
+
   const status = (err as { status?: number })?.status;
   if (status === 401 || status === 403) {
-    return "Extraction service authentication failed. Please verify the service configuration.";
+    return {
+      category: "PROVIDER_ERROR",
+      message: "Extraction service authentication failed. Please verify the service configuration.",
+    };
   }
   if (status === 429) {
-    return "Extraction service is busy (rate limited). Please retry in a moment.";
+    return {
+      category: "PROVIDER_ERROR",
+      message: "Extraction service is busy (rate limited). Please retry in a moment.",
+    };
   }
   if (status != null && status >= 500) {
-    return "Extraction service is temporarily unavailable. Please retry shortly.";
+    return {
+      category: "PROVIDER_ERROR",
+      message: "Extraction service is temporarily unavailable. Please retry shortly.",
+    };
   }
-  return "Automatic extraction failed. You can retry, or enter the invoice fields manually.";
+  return {
+    category: "UNKNOWN",
+    message: "Automatic extraction failed. You can retry, or enter the invoice fields manually.",
+  };
 }
 
 /**
@@ -338,6 +397,55 @@ type RawModelOutput = {
   extractionNotes?: unknown;
 };
 
+/** Top-level keys the model MUST return per the strict JSON schema. */
+const REQUIRED_MODEL_KEYS = [
+  "vendorRawName",
+  "invoiceNumber",
+  "invoiceDate",
+  "dueDate",
+  "paymentTerms",
+  "poNumberRaw",
+  "subtotal",
+  "taxAmount",
+  "freightAmount",
+  "invoiceTotal",
+  "amountDue",
+  "currency",
+  "extractionConfidence",
+  "fieldConfidence",
+  "lowConfidenceFields",
+  "extractionNotes",
+] as const;
+
+/**
+ * Validate that parsed JSON matches the expected extraction shape. A response
+ * can be valid JSON yet structurally wrong (e.g. `{}` or missing fields); such
+ * payloads must be treated as INVALID_RESPONSE rather than silently accepted as
+ * a successful extraction. Throws ExtractionError on any mismatch.
+ */
+function assertValidModelShape(parsed: unknown): asserts parsed is RawModelOutput {
+  if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new ExtractionError(
+      "INVALID_RESPONSE",
+      "Automatic extraction returned an unexpected result. You can retry or enter the fields manually.",
+    );
+  }
+  const obj = parsed as Record<string, unknown>;
+  const missing = REQUIRED_MODEL_KEYS.filter((k) => !(k in obj));
+  if (missing.length > 0) {
+    throw new ExtractionError(
+      "INVALID_RESPONSE",
+      "Automatic extraction returned incomplete data. You can retry or enter the fields manually.",
+    );
+  }
+  if (obj.fieldConfidence == null || typeof obj.fieldConfidence !== "object") {
+    throw new ExtractionError(
+      "INVALID_RESPONSE",
+      "Automatic extraction returned incomplete data. You can retry or enter the fields manually.",
+    );
+  }
+}
+
 function mapModelOutput(parsed: RawModelOutput, rawExtraction: string): ExtractedFields {
   const fc = parsed.fieldConfidence ?? {};
 
@@ -399,10 +507,28 @@ async function openAiExtract(
   const [buffer] = await file.download();
   const contentType =
     (typeof metadata.contentType === "string" && metadata.contentType) || inferContentType(fileName);
+
+  // Validate file size and type BEFORE building/sending the OpenAI request.
+  if (buffer.length > MAX_EXTRACTION_FILE_BYTES) {
+    throw new ExtractionError(
+      "UNSUPPORTED_FILE",
+      `Document is too large for automatic extraction (max ${Math.floor(
+        MAX_EXTRACTION_FILE_BYTES / (1024 * 1024),
+      )} MB). Enter the invoice fields manually.`,
+    );
+  }
+  const isPdf = contentType === "application/pdf";
+  const isImage = SUPPORTED_IMAGE_TYPES.includes(contentType);
+  if (!isPdf && !isImage) {
+    throw new ExtractionError(
+      "UNSUPPORTED_FILE",
+      "Unsupported document type for automatic extraction. Upload a PDF or image, or enter the fields manually.",
+    );
+  }
   const base64 = buffer.toString("base64");
 
   const { default: OpenAI } = await import("openai");
-  const client = new OpenAI({ apiKey });
+  const client = new OpenAI({ apiKey, timeout: EXTRACTION_TIMEOUT_MS, maxRetries: 1 });
 
   const userContent: Array<Record<string, unknown>> = [
     { type: "input_text", text: `Extract the fields from this invoice ("${fileName}").` },
@@ -421,8 +547,10 @@ async function openAiExtract(
       detail: "auto",
     });
   } else {
-    throw new Error(
-      `Unsupported document type for extraction (${contentType}). Upload a PDF or image.`,
+    // Defensive: type is already validated above.
+    throw new ExtractionError(
+      "UNSUPPORTED_FILE",
+      "Unsupported document type for automatic extraction. Upload a PDF or image, or enter the fields manually.",
     );
   }
 
@@ -447,21 +575,33 @@ async function openAiExtract(
     });
     raw = response.output_text ?? "{}";
   } catch (err) {
-    // Log full detail server-side only; surface a sanitized message to the user.
+    const { category, message } = categorizeExtractionError(err);
+    // Log only safe diagnostics (category + status + provider request id);
+    // never the raw provider message, which may echo headers/credentials.
     logger.error(
-      { err: err instanceof Error ? err.message : String(err), status: (err as { status?: number })?.status },
+      {
+        category,
+        status: (err as { status?: number })?.status,
+        requestId: (err as { request_id?: string })?.request_id ?? null,
+      },
       "openAiExtract: OpenAI request failed",
     );
-    throw new Error(safeExtractionError(err));
+    throw new ExtractionError(category, message);
   }
 
-  let parsed: RawModelOutput;
+  let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch {
     logger.error({ rawLength: raw.length }, "openAiExtract: model returned non-JSON output");
-    throw new Error("Automatic extraction failed to parse the document. You can retry or enter fields manually.");
+    throw new ExtractionError(
+      "INVALID_RESPONSE",
+      "Automatic extraction failed to read the document. You can retry or enter the fields manually.",
+    );
   }
+
+  // Valid JSON can still be structurally wrong; reject it before persisting.
+  assertValidModelShape(parsed);
 
   return mapModelOutput(parsed, raw);
 }
@@ -476,8 +616,11 @@ export async function runExtraction(invoiceId: number): Promise<void> {
   const [invoice] = await db
     .select({
       id: invoiceCaptureTable.id,
+      status: invoiceCaptureTable.status,
+      documentId: invoiceCaptureTable.documentId,
       fileObjectPath: invoiceCaptureTable.fileObjectPath,
       originalFileName: invoiceCaptureTable.originalFileName,
+      extractionAttempts: invoiceCaptureTable.extractionAttempts,
     })
     .from(invoiceCaptureTable)
     .where(eq(invoiceCaptureTable.id, invoiceId))
@@ -488,9 +631,11 @@ export async function runExtraction(invoiceId: number): Promise<void> {
     return;
   }
 
+  const attempt = (invoice.extractionAttempts ?? 0) + 1;
+
   await db
     .update(invoiceCaptureTable)
-    .set({ extractionStatus: "PROCESSING", extractionError: null })
+    .set({ extractionStatus: "PROCESSING", extractionError: null, extractionAttempts: attempt })
     .where(eq(invoiceCaptureTable.id, invoiceId));
 
   try {
@@ -522,6 +667,7 @@ export async function runExtraction(invoiceId: number): Promise<void> {
         lastExtractedAt: new Date(),
         extractionStatus: "COMPLETED",
         extractionError: null,
+        extractionErrorDetail: null,
       })
       .where(eq(invoiceCaptureTable.id, invoiceId));
 
@@ -540,17 +686,46 @@ export async function runExtraction(invoiceId: number): Promise<void> {
     // queue, flags for review, or advances clean invoices toward approval.
     await validateInvoice(invoiceId);
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    logger.error({ invoiceId, err: message }, "runExtraction failed");
+    const { category, message } = categorizeExtractionError(err);
+    const fileType = inferContentType(invoice.originalFileName);
+
+    // Safe, non-sensitive troubleshooting record (no keys, headers, or payloads).
+    const detail = JSON.stringify({
+      invoiceId,
+      documentId: invoice.documentId ?? null,
+      attempt,
+      fileType,
+      category,
+      summary: message,
+      at: new Date().toISOString(),
+    });
+
+    logger.error(
+      { invoiceId, documentId: invoice.documentId, attempt, fileType, category, summary: message },
+      "runExtraction failed",
+    );
+
+    // Route to the exception queue so failed invoices never sit in
+    // PENDING_EXTRACTION forever. Never downgrade an already-decided invoice.
+    const routeToException = invoice.status !== "APPROVED" && invoice.status !== "POSTED";
+
     await db
       .update(invoiceCaptureTable)
-      .set({ extractionStatus: "FAILED", extractionError: message, lastExtractedAt: new Date() })
+      .set({
+        extractionStatus: "FAILED",
+        extractionError: message,
+        extractionErrorDetail: detail,
+        lastExtractedAt: new Date(),
+        ...(routeToException
+          ? { status: "EXCEPTION" as const, exceptionReason: `Extraction Failed: ${message}` }
+          : {}),
+      })
       .where(eq(invoiceCaptureTable.id, invoiceId));
 
     await db.insert(invoiceAuditLogTable).values({
       invoiceId,
       action: "EXTRACTION_FAILED",
-      note: message.slice(0, 500),
+      note: `[${category}] ${message}`.slice(0, 500),
     });
   }
 }

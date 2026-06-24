@@ -30,6 +30,31 @@ type Phase = "idle" | "uploading" | "tracking";
 
 const EXTRACTION_POLL_INTERVAL_MS = 1500;
 
+/** Client-side upload guardrails — mirrored server-side as the source of truth. */
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25 MB
+const ALLOWED_UPLOAD_TYPES = [
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/jpg",
+  "image/webp",
+  "image/gif",
+];
+
+/** Returns a user-friendly error if the file is unsupported, else null. */
+function validateUploadFile(file: File): string | null {
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return `That file is ${(file.size / (1024 * 1024)).toFixed(1)} MB. The maximum is 25 MB.`;
+  }
+  const type = file.type || "";
+  const isAllowed =
+    ALLOWED_UPLOAD_TYPES.includes(type) || /\.(pdf|png|jpe?g|webp|gif)$/i.test(file.name);
+  if (!isAllowed) {
+    return "Unsupported file type. Upload a PDF or an image (PNG, JPEG, WebP, GIF).";
+  }
+  return null;
+}
+
 type StatusTone = "progress" | "success" | "warning" | "error";
 
 interface FriendlyStatus {
@@ -158,7 +183,18 @@ export function InvoiceIntake() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      setFile(e.target.files[0]);
+      const selected = e.target.files[0];
+      const validationError = validateUploadFile(selected);
+      if (validationError) {
+        toast({
+          title: "File can't be uploaded",
+          description: validationError,
+          variant: "destructive",
+        });
+        e.target.value = "";
+        return;
+      }
+      setFile(selected);
     }
   };
 

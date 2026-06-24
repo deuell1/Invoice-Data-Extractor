@@ -1,4 +1,5 @@
 - [Date serialization in Drizzle routes](date-serialization.md) — nullable timestamp columns return Date objects but Zod string schemas reject them; must serialize before parsing.
+- [Extraction failure routing](extraction-failure-routing.md) — failed extraction must flip invoice status to EXCEPTION, not just extractionStatus, or it sits PENDING forever.
 - [Invoice confidence scaling](invoice-confidence-scaling.md) — overall confidenceScore is 0–1, per-field fieldConfidence is 0–100; don't conflate the two scales/thresholds.
 - [Vendor matching service](vendor-matching.md) — controlled vendor ID assignment via fuzzy match on vendorRawName; 85% threshold; clear exception on success only when current exceptionReason mentions "vendor"/"match".
 - [Invoice extraction service](invoice-extraction.md) — OpenAI Responses Structured Outputs shape, 0-100→0-1 confidence convention, model→internal field mapping; single validateInvoice engine routes blocking→EXCEPTION, warnings→PENDING_APPROVAL+NEEDS_REVIEW flag.

@@ -128,6 +128,12 @@ export interface Invoice {
   extractionStatus?: InvoiceExtractionStatus;
   /** @nullable */
   extractionError?: string | null;
+  extractionAttempts?: number;
+  /**
+     * Safe JSON troubleshooting detail for a failed extraction (no sensitive data).
+     * @nullable
+     */
+  extractionErrorDetail?: string | null;
   /**
      * JSON map of per-field confidence (0-100) keyed by field name.
      * @nullable

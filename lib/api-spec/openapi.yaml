@@ -792,6 +792,12 @@ components:
           default: PENDING
         extractionError:
           type: ["string", "null"]
+        extractionAttempts:
+          type: integer
+          default: 0
+        extractionErrorDetail:
+          type: ["string", "null"]
+          description: Safe JSON troubleshooting detail for a failed extraction (no sensitive data).
         fieldConfidence:
           type: ["string", "null"]
           description: JSON map of per-field confidence (0-100) keyed by field name.

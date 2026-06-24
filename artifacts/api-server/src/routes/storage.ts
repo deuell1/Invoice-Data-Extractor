@@ -24,9 +24,32 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
     return;
   }
 
-  try {
-    const { name, size, contentType } = parsed.data;
+  const { name, size, contentType } = parsed.data;
 
+  // Validate file type and size BEFORE issuing an upload URL, so unsupported
+  // documents are rejected with a clear message and never reach extraction.
+  const ALLOWED_UPLOAD_TYPES = [
+    "application/pdf",
+    "image/png",
+    "image/jpeg",
+    "image/jpg",
+    "image/webp",
+    "image/gif",
+    "image/tiff",
+  ];
+  const MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25 MB
+  if (!ALLOWED_UPLOAD_TYPES.includes(contentType)) {
+    res.status(400).json({
+      error: "Unsupported file type. Upload a PDF or image (PNG, JPG, WEBP, GIF, or TIFF).",
+    });
+    return;
+  }
+  if (size > MAX_UPLOAD_BYTES) {
+    res.status(400).json({ error: "File is too large. The maximum size is 25 MB." });
+    return;
+  }
+
+  try {
     const uploadURL = await objectStorageService.getObjectEntityUploadURL();
     const objectPath = objectStorageService.normalizeObjectEntityPath(uploadURL);
 

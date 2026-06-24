@@ -339,6 +339,11 @@ export function ExtractionReview() {
               <p className="text-xs mt-0.5 opacity-80">
                 {invoice.extractionError || "The document could not be processed."} You can retry, or enter the fields manually below.
               </p>
+              {(invoice.extractionAttempts ?? 0) > 1 && (
+                <p className="text-xs mt-1 opacity-60" data-testid="text-extraction-attempts">
+                  {invoice.extractionAttempts} extraction attempts so far.
+                </p>
+              )}
             </div>
           </div>
           <Button

@@ -63,6 +63,8 @@ export const invoiceCaptureTable = pgTable("invoice_capture", {
   validationDetails: text("validation_details"),
   extractionStatus: text("extraction_status").notNull().default("PENDING"),
   extractionError: text("extraction_error"),
+  extractionAttempts: integer("extraction_attempts").notNull().default(0),
+  extractionErrorDetail: text("extraction_error_detail"),
   role: invoiceRoleEnum("role").notNull().default("AP_PROCESSOR"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true })

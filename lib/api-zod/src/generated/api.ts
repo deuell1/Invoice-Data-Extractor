@@ -37,6 +37,7 @@ export const ListInvoicesQueryParams = zod.object({
 
 export const listInvoicesResponseDataItemCurrencyDefault = `USD`;
 export const listInvoicesResponseDataItemExtractionStatusDefault = `PENDING`;
+export const listInvoicesResponseDataItemExtractionAttemptsDefault = 0;
 export const listInvoicesResponseDataItemRoleDefault = `AP_PROCESSOR`;
 
 export const ListInvoicesResponse = zod.object({
@@ -75,6 +76,8 @@ export const ListInvoicesResponse = zod.object({
   "validationDetails": zod.string().nullish().describe('JSON detail of all validation checks, blocking issues, and warnings.'),
   "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(listInvoicesResponseDataItemExtractionStatusDefault),
   "extractionError": zod.string().nullish(),
+  "extractionAttempts": zod.number().default(listInvoicesResponseDataItemExtractionAttemptsDefault),
+  "extractionErrorDetail": zod.string().nullish().describe('Safe JSON troubleshooting detail for a failed extraction (no sensitive data).'),
   "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
   "extractionNotes": zod.string().nullish(),
   "lastExtractedAt": zod.coerce.date().nullish(),
@@ -144,6 +147,7 @@ export const GetInvoiceParams = zod.object({
 
 export const getInvoiceResponseCurrencyDefault = `USD`;
 export const getInvoiceResponseExtractionStatusDefault = `PENDING`;
+export const getInvoiceResponseExtractionAttemptsDefault = 0;
 export const getInvoiceResponseRoleDefault = `AP_PROCESSOR`;
 
 export const GetInvoiceResponse = zod.object({
@@ -181,6 +185,8 @@ export const GetInvoiceResponse = zod.object({
   "validationDetails": zod.string().nullish().describe('JSON detail of all validation checks, blocking issues, and warnings.'),
   "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(getInvoiceResponseExtractionStatusDefault),
   "extractionError": zod.string().nullish(),
+  "extractionAttempts": zod.number().default(getInvoiceResponseExtractionAttemptsDefault),
+  "extractionErrorDetail": zod.string().nullish().describe('Safe JSON troubleshooting detail for a failed extraction (no sensitive data).'),
   "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
   "extractionNotes": zod.string().nullish(),
   "lastExtractedAt": zod.coerce.date().nullish(),
@@ -219,6 +225,7 @@ export const UpdateInvoiceBody = zod.object({
 
 export const updateInvoiceResponseCurrencyDefault = `USD`;
 export const updateInvoiceResponseExtractionStatusDefault = `PENDING`;
+export const updateInvoiceResponseExtractionAttemptsDefault = 0;
 export const updateInvoiceResponseRoleDefault = `AP_PROCESSOR`;
 
 export const UpdateInvoiceResponse = zod.object({
@@ -256,6 +263,8 @@ export const UpdateInvoiceResponse = zod.object({
   "validationDetails": zod.string().nullish().describe('JSON detail of all validation checks, blocking issues, and warnings.'),
   "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(updateInvoiceResponseExtractionStatusDefault),
   "extractionError": zod.string().nullish(),
+  "extractionAttempts": zod.number().default(updateInvoiceResponseExtractionAttemptsDefault),
+  "extractionErrorDetail": zod.string().nullish().describe('Safe JSON troubleshooting detail for a failed extraction (no sensitive data).'),
   "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
   "extractionNotes": zod.string().nullish(),
   "lastExtractedAt": zod.coerce.date().nullish(),
@@ -275,6 +284,7 @@ export const MatchInvoiceVendorParams = zod.object({
 
 export const matchInvoiceVendorResponseCurrencyDefault = `USD`;
 export const matchInvoiceVendorResponseExtractionStatusDefault = `PENDING`;
+export const matchInvoiceVendorResponseExtractionAttemptsDefault = 0;
 export const matchInvoiceVendorResponseRoleDefault = `AP_PROCESSOR`;
 
 export const MatchInvoiceVendorResponse = zod.object({
@@ -312,6 +322,8 @@ export const MatchInvoiceVendorResponse = zod.object({
   "validationDetails": zod.string().nullish().describe('JSON detail of all validation checks, blocking issues, and warnings.'),
   "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(matchInvoiceVendorResponseExtractionStatusDefault),
   "extractionError": zod.string().nullish(),
+  "extractionAttempts": zod.number().default(matchInvoiceVendorResponseExtractionAttemptsDefault),
+  "extractionErrorDetail": zod.string().nullish().describe('Safe JSON troubleshooting detail for a failed extraction (no sensitive data).'),
   "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
   "extractionNotes": zod.string().nullish(),
   "lastExtractedAt": zod.coerce.date().nullish(),
@@ -331,6 +343,7 @@ export const ExtractInvoiceParams = zod.object({
 
 export const extractInvoiceResponseCurrencyDefault = `USD`;
 export const extractInvoiceResponseExtractionStatusDefault = `PENDING`;
+export const extractInvoiceResponseExtractionAttemptsDefault = 0;
 export const extractInvoiceResponseRoleDefault = `AP_PROCESSOR`;
 
 export const ExtractInvoiceResponse = zod.object({
@@ -368,6 +381,8 @@ export const ExtractInvoiceResponse = zod.object({
   "validationDetails": zod.string().nullish().describe('JSON detail of all validation checks, blocking issues, and warnings.'),
   "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(extractInvoiceResponseExtractionStatusDefault),
   "extractionError": zod.string().nullish(),
+  "extractionAttempts": zod.number().default(extractInvoiceResponseExtractionAttemptsDefault),
+  "extractionErrorDetail": zod.string().nullish().describe('Safe JSON troubleshooting detail for a failed extraction (no sensitive data).'),
   "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
   "extractionNotes": zod.string().nullish(),
   "lastExtractedAt": zod.coerce.date().nullish(),
@@ -391,6 +406,7 @@ export const UpdateInvoiceStatusBody = zod.object({
 
 export const updateInvoiceStatusResponseCurrencyDefault = `USD`;
 export const updateInvoiceStatusResponseExtractionStatusDefault = `PENDING`;
+export const updateInvoiceStatusResponseExtractionAttemptsDefault = 0;
 export const updateInvoiceStatusResponseRoleDefault = `AP_PROCESSOR`;
 
 export const UpdateInvoiceStatusResponse = zod.object({
@@ -428,6 +444,8 @@ export const UpdateInvoiceStatusResponse = zod.object({
   "validationDetails": zod.string().nullish().describe('JSON detail of all validation checks, blocking issues, and warnings.'),
   "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(updateInvoiceStatusResponseExtractionStatusDefault),
   "extractionError": zod.string().nullish(),
+  "extractionAttempts": zod.number().default(updateInvoiceStatusResponseExtractionAttemptsDefault),
+  "extractionErrorDetail": zod.string().nullish().describe('Safe JSON troubleshooting detail for a failed extraction (no sensitive data).'),
   "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
   "extractionNotes": zod.string().nullish(),
   "lastExtractedAt": zod.coerce.date().nullish(),
@@ -453,6 +471,7 @@ export const SetVoucherIdBody = zod.object({
 
 export const setVoucherIdResponseCurrencyDefault = `USD`;
 export const setVoucherIdResponseExtractionStatusDefault = `PENDING`;
+export const setVoucherIdResponseExtractionAttemptsDefault = 0;
 export const setVoucherIdResponseRoleDefault = `AP_PROCESSOR`;
 
 export const SetVoucherIdResponse = zod.object({
@@ -490,6 +509,8 @@ export const SetVoucherIdResponse = zod.object({
   "validationDetails": zod.string().nullish().describe('JSON detail of all validation checks, blocking issues, and warnings.'),
   "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(setVoucherIdResponseExtractionStatusDefault),
   "extractionError": zod.string().nullish(),
+  "extractionAttempts": zod.number().default(setVoucherIdResponseExtractionAttemptsDefault),
+  "extractionErrorDetail": zod.string().nullish().describe('Safe JSON troubleshooting detail for a failed extraction (no sensitive data).'),
   "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
   "extractionNotes": zod.string().nullish(),
   "lastExtractedAt": zod.coerce.date().nullish(),
@@ -512,6 +533,7 @@ export const ApproveInvoiceBody = zod.object({
 
 export const approveInvoiceResponseCurrencyDefault = `USD`;
 export const approveInvoiceResponseExtractionStatusDefault = `PENDING`;
+export const approveInvoiceResponseExtractionAttemptsDefault = 0;
 export const approveInvoiceResponseRoleDefault = `AP_PROCESSOR`;
 
 export const ApproveInvoiceResponse = zod.object({
@@ -549,6 +571,8 @@ export const ApproveInvoiceResponse = zod.object({
   "validationDetails": zod.string().nullish().describe('JSON detail of all validation checks, blocking issues, and warnings.'),
   "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(approveInvoiceResponseExtractionStatusDefault),
   "extractionError": zod.string().nullish(),
+  "extractionAttempts": zod.number().default(approveInvoiceResponseExtractionAttemptsDefault),
+  "extractionErrorDetail": zod.string().nullish().describe('Safe JSON troubleshooting detail for a failed extraction (no sensitive data).'),
   "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
   "extractionNotes": zod.string().nullish(),
   "lastExtractedAt": zod.coerce.date().nullish(),
@@ -574,6 +598,7 @@ export const RejectInvoiceBody = zod.object({
 
 export const rejectInvoiceResponseCurrencyDefault = `USD`;
 export const rejectInvoiceResponseExtractionStatusDefault = `PENDING`;
+export const rejectInvoiceResponseExtractionAttemptsDefault = 0;
 export const rejectInvoiceResponseRoleDefault = `AP_PROCESSOR`;
 
 export const RejectInvoiceResponse = zod.object({
@@ -611,6 +636,8 @@ export const RejectInvoiceResponse = zod.object({
   "validationDetails": zod.string().nullish().describe('JSON detail of all validation checks, blocking issues, and warnings.'),
   "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(rejectInvoiceResponseExtractionStatusDefault),
   "extractionError": zod.string().nullish(),
+  "extractionAttempts": zod.number().default(rejectInvoiceResponseExtractionAttemptsDefault),
+  "extractionErrorDetail": zod.string().nullish().describe('Safe JSON troubleshooting detail for a failed extraction (no sensitive data).'),
   "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
   "extractionNotes": zod.string().nullish(),
   "lastExtractedAt": zod.coerce.date().nullish(),
@@ -629,6 +656,7 @@ export const SubmitInvoiceParams = zod.object({
 
 export const submitInvoiceResponseCurrencyDefault = `USD`;
 export const submitInvoiceResponseExtractionStatusDefault = `PENDING`;
+export const submitInvoiceResponseExtractionAttemptsDefault = 0;
 export const submitInvoiceResponseRoleDefault = `AP_PROCESSOR`;
 
 export const SubmitInvoiceResponse = zod.object({
@@ -666,6 +694,8 @@ export const SubmitInvoiceResponse = zod.object({
   "validationDetails": zod.string().nullish().describe('JSON detail of all validation checks, blocking issues, and warnings.'),
   "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(submitInvoiceResponseExtractionStatusDefault),
   "extractionError": zod.string().nullish(),
+  "extractionAttempts": zod.number().default(submitInvoiceResponseExtractionAttemptsDefault),
+  "extractionErrorDetail": zod.string().nullish().describe('Safe JSON troubleshooting detail for a failed extraction (no sensitive data).'),
   "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
   "extractionNotes": zod.string().nullish(),
   "lastExtractedAt": zod.coerce.date().nullish(),
