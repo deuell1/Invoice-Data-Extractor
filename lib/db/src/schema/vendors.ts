@@ -1,4 +1,4 @@
-import { pgTable, serial, text, boolean, timestamp, json } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, boolean, timestamp, json, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -11,6 +11,7 @@ export const vendorIdTable = pgTable("vendor_id", {
   contactEmail: text("contact_email"),
   contactPhone: text("contact_phone"),
   paymentTerms: text("payment_terms"),
+  termsDays: integer("terms_days"),
   aliases: json("aliases").$type<string[]>().default([]),
   onHold: boolean("on_hold").notNull().default(false),
   isActive: boolean("is_active").notNull().default(true),

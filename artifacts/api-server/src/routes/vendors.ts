@@ -70,6 +70,11 @@ router.post("/vendors", async (req, res): Promise<void> => {
     return;
   }
 
+  if (parsed.data.vendorName.trim().length === 0) {
+    res.status(400).json({ error: "Vendor name cannot be blank" });
+    return;
+  }
+
   const existing = await db
     .select()
     .from(vendorIdTable)
@@ -83,6 +88,7 @@ router.post("/vendors", async (req, res): Promise<void> => {
 
   const [vendor] = await db.insert(vendorIdTable).values({
     ...parsed.data,
+    vendorName: parsed.data.vendorName.trim(),
     onHold: parsed.data.onHold ?? false,
     aliases: parsed.data.aliases ?? [],
   }).returning();
@@ -102,6 +108,12 @@ router.post("/vendors/import", async (req, res): Promise<void> => {
 
   for (const vendor of parsed.data.vendors) {
     try {
+      if (vendor.vendorName.trim().length === 0) {
+        skipped++;
+        errors.push(`${vendor.vendorCode || "(missing code)"}: vendor name cannot be blank`);
+        continue;
+      }
+
       const existing = await db
         .select({ id: vendorIdTable.id })
         .from(vendorIdTable)
@@ -113,6 +125,7 @@ router.post("/vendors/import", async (req, res): Promise<void> => {
       } else {
         await db.insert(vendorIdTable).values({
           ...vendor,
+          vendorName: vendor.vendorName.trim(),
           onHold: (vendor as { onHold?: boolean | null }).onHold ?? false,
           aliases: (vendor as { aliases?: string[] | null }).aliases ?? [],
         });
@@ -160,14 +173,27 @@ router.patch("/vendors/:id", async (req, res): Promise<void> => {
     return;
   }
 
+  // Reject blank vendor names — vendorName must not be cleared or whitespace-only.
+  if (parsed.data.vendorName != null && parsed.data.vendorName.trim().length === 0) {
+    res.status(400).json({ error: "Vendor name cannot be blank" });
+    return;
+  }
+
   const updates: Record<string, unknown> = {};
-  if (parsed.data.vendorName != null) updates.vendorName = parsed.data.vendorName;
+  if (parsed.data.vendorName != null) updates.vendorName = parsed.data.vendorName.trim();
   if (parsed.data.taxId !== undefined) updates.taxId = parsed.data.taxId;
   if (parsed.data.address !== undefined) updates.address = parsed.data.address;
   if (parsed.data.contactEmail !== undefined) updates.contactEmail = parsed.data.contactEmail;
   if (parsed.data.contactPhone !== undefined) updates.contactPhone = parsed.data.contactPhone;
   if (parsed.data.paymentTerms !== undefined) updates.paymentTerms = parsed.data.paymentTerms;
-  if (parsed.data.aliases !== undefined) updates.aliases = parsed.data.aliases;
+  if (parsed.data.termsDays !== undefined) updates.termsDays = parsed.data.termsDays;
+  if (parsed.data.aliases !== undefined) {
+    // De-duplicate and drop blank aliases before persisting.
+    const cleaned = Array.from(
+      new Set(parsed.data.aliases.map((a) => a.trim()).filter((a) => a.length > 0))
+    );
+    updates.aliases = cleaned;
+  }
   if (parsed.data.onHold != null) updates.onHold = parsed.data.onHold;
   if (parsed.data.isActive != null) updates.isActive = parsed.data.isActive;
 

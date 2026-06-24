@@ -293,6 +293,8 @@ export interface Vendor {
   contactPhone?: string | null;
   /** @nullable */
   paymentTerms?: string | null;
+  /** @nullable */
+  termsDays?: number | null;
   aliases?: string[];
   onHold?: boolean;
   isActive: boolean;
@@ -316,6 +318,8 @@ export interface VendorInput {
   contactPhone?: string | null;
   /** @nullable */
   paymentTerms?: string | null;
+  /** @nullable */
+  termsDays?: number | null;
   aliases?: string[];
   /** @nullable */
   onHold?: boolean | null;
@@ -334,6 +338,8 @@ export interface VendorUpdate {
   contactPhone?: string | null;
   /** @nullable */
   paymentTerms?: string | null;
+  /** @nullable */
+  termsDays?: number | null;
   aliases?: string[];
   /** @nullable */
   onHold?: boolean | null;

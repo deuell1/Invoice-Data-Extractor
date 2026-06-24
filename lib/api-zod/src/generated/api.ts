@@ -713,6 +713,7 @@ export const ListVendorsResponse = zod.object({
   "contactEmail": zod.string().nullish(),
   "contactPhone": zod.string().nullish(),
   "paymentTerms": zod.string().nullish(),
+  "termsDays": zod.number().nullish(),
   "aliases": zod.array(zod.string()).default(listVendorsResponseDataItemAliasesDefault),
   "onHold": zod.boolean().default(listVendorsResponseDataItemOnHoldDefault),
   "isActive": zod.boolean(),
@@ -740,6 +741,7 @@ export const CreateVendorBody = zod.object({
   "contactEmail": zod.string().nullish(),
   "contactPhone": zod.string().nullish(),
   "paymentTerms": zod.string().nullish(),
+  "termsDays": zod.number().nullish(),
   "aliases": zod.array(zod.string()).default(createVendorBodyAliasesDefault),
   "onHold": zod.boolean().nullish()
 })
@@ -761,6 +763,7 @@ export const ImportVendorsBody = zod.object({
   "contactEmail": zod.string().nullish(),
   "contactPhone": zod.string().nullish(),
   "paymentTerms": zod.string().nullish(),
+  "termsDays": zod.number().nullish(),
   "aliases": zod.array(zod.string()).default(importVendorsBodyVendorsItemAliasesDefault),
   "onHold": zod.boolean().nullish()
 }))
@@ -792,6 +795,7 @@ export const GetVendorResponse = zod.object({
   "contactEmail": zod.string().nullish(),
   "contactPhone": zod.string().nullish(),
   "paymentTerms": zod.string().nullish(),
+  "termsDays": zod.number().nullish(),
   "aliases": zod.array(zod.string()).default(getVendorResponseAliasesDefault),
   "onHold": zod.boolean().default(getVendorResponseOnHoldDefault),
   "isActive": zod.boolean(),
@@ -814,6 +818,7 @@ export const UpdateVendorBody = zod.object({
   "contactEmail": zod.string().nullish(),
   "contactPhone": zod.string().nullish(),
   "paymentTerms": zod.string().nullish(),
+  "termsDays": zod.number().nullish(),
   "aliases": zod.array(zod.string()).optional(),
   "onHold": zod.boolean().nullish(),
   "isActive": zod.boolean().nullish()
@@ -831,6 +836,7 @@ export const UpdateVendorResponse = zod.object({
   "contactEmail": zod.string().nullish(),
   "contactPhone": zod.string().nullish(),
   "paymentTerms": zod.string().nullish(),
+  "termsDays": zod.number().nullish(),
   "aliases": zod.array(zod.string()).default(updateVendorResponseAliasesDefault),
   "onHold": zod.boolean().default(updateVendorResponseOnHoldDefault),
   "isActive": zod.boolean(),

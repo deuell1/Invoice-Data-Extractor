@@ -1033,6 +1033,8 @@ components:
           type: ["string", "null"]
         paymentTerms:
           type: ["string", "null"]
+        termsDays:
+          type: ["integer", "null"]
         aliases:
           type: array
           items:
@@ -1071,6 +1073,8 @@ components:
           type: ["string", "null"]
         paymentTerms:
           type: ["string", "null"]
+        termsDays:
+          type: ["integer", "null"]
         aliases:
           type: array
           items:
@@ -1094,6 +1098,8 @@ components:
           type: ["string", "null"]
         paymentTerms:
           type: ["string", "null"]
+        termsDays:
+          type: ["integer", "null"]
         aliases:
           type: array
           items:

@@ -128,6 +128,7 @@ export async function validateInvoice(invoiceId: number): Promise<ValidationOutc
       vendorIsActive: vendorIdTable.isActive,
       vendorOnHold: vendorIdTable.onHold,
       vendorPaymentTerms: vendorIdTable.paymentTerms,
+      vendorTermsDays: vendorIdTable.termsDays,
     })
     .from(invoiceCaptureTable)
     .leftJoin(vendorIdTable, eq(invoiceCaptureTable.vendorId, vendorIdTable.id))
@@ -190,7 +191,8 @@ export async function validateInvoice(invoiceId: number): Promise<ValidationOutc
   let derivedDueDate: string | null = null;
   let dueDate = parseDate(row.dueDate);
   if (!row.dueDate) {
-    const netDays = parseNetTermsDays(row.vendorPaymentTerms ?? row.paymentTerms);
+    const netDays =
+      row.vendorTermsDays ?? parseNetTermsDays(row.vendorPaymentTerms ?? row.paymentTerms);
     if (invoiceDate && netDays != null) {
       derivedDueDate = addDays(invoiceDate, netDays);
       dueDate = parseDate(derivedDueDate);

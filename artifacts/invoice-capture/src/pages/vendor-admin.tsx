@@ -15,7 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2, Plus, Upload, Users, Search, AlertCircle, CheckCircle2, Pencil } from "lucide-react";
+import { Loader2, Plus, Upload, Users, Search, AlertCircle, CheckCircle2, Pencil, Ban, X } from "lucide-react";
 import { format } from "date-fns";
 import {
   Dialog,
@@ -48,33 +48,111 @@ export function VendorAdmin() {
   const [newVendor, setNewVendor] = useState({ vendorCode: "", vendorName: "", taxId: "", contactEmail: "" });
 
   const [editVendor, setEditVendor] = useState<Vendor | null>(null);
-  const [editForm, setEditForm] = useState({ aliases: "", onHold: false, isActive: true });
+  const [editForm, setEditForm] = useState({
+    vendorName: "",
+    aliases: [] as string[],
+    onHold: false,
+    isActive: true,
+    paymentTerms: "",
+    termsDays: "",
+    address: "",
+  });
+  const [aliasDraft, setAliasDraft] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
 
   const openEdit = (vendor: Vendor) => {
     setEditVendor(vendor);
+    setEditError(null);
+    setAliasDraft("");
     setEditForm({
-      aliases: (vendor.aliases ?? []).join(", "),
+      vendorName: vendor.vendorName,
+      aliases: vendor.aliases ?? [],
       onHold: Boolean(vendor.onHold),
       isActive: vendor.isActive,
+      paymentTerms: vendor.paymentTerms ?? "",
+      termsDays: vendor.termsDays != null ? String(vendor.termsDays) : "",
+      address: vendor.address ?? "",
     });
+  };
+
+  const addAlias = () => {
+    const value = aliasDraft.trim();
+    if (!value) return;
+    setEditForm((prev) =>
+      prev.aliases.some((a) => a.toLowerCase() === value.toLowerCase())
+        ? prev
+        : { ...prev, aliases: [...prev.aliases, value] }
+    );
+    setAliasDraft("");
+  };
+
+  const removeAlias = (alias: string) => {
+    setEditForm((prev) => ({ ...prev, aliases: prev.aliases.filter((a) => a !== alias) }));
+  };
+
+  const handleAliasKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addAlias();
+    } else if (e.key === "Backspace" && aliasDraft === "" && editForm.aliases.length > 0) {
+      removeAlias(editForm.aliases[editForm.aliases.length - 1]);
+    }
   };
 
   const handleSaveEdit = async () => {
     if (!editVendor) return;
-    const aliases = editForm.aliases
-      .split(",")
-      .map((a) => a.trim())
-      .filter((a) => a.length > 0);
+    setEditError(null);
+
+    if (editForm.vendorName.trim().length === 0) {
+      setEditError("Vendor name cannot be blank.");
+      return;
+    }
+
+    const termsDaysTrimmed = editForm.termsDays.trim();
+    let termsDays: number | null = null;
+    if (termsDaysTrimmed.length > 0) {
+      const parsed = Number(termsDaysTrimmed);
+      if (!Number.isInteger(parsed) || parsed < 0) {
+        setEditError("Default terms days must be a whole number of 0 or more.");
+        return;
+      }
+      termsDays = parsed;
+    }
+
+    // Fold any text still in the alias input into the saved list.
+    const pendingAlias = aliasDraft.trim();
+    const aliases = Array.from(
+      new Set(
+        [...editForm.aliases, ...(pendingAlias ? [pendingAlias] : [])]
+          .map((a) => a.trim())
+          .filter((a) => a.length > 0)
+      )
+    );
+
     try {
       await updateVendor.mutateAsync({
         id: editVendor.id,
-        data: { aliases, onHold: editForm.onHold, isActive: editForm.isActive },
+        data: {
+          vendorName: editForm.vendorName.trim(),
+          aliases,
+          onHold: editForm.onHold,
+          isActive: editForm.isActive,
+          paymentTerms: editForm.paymentTerms.trim() || null,
+          termsDays,
+          address: editForm.address.trim() || null,
+        },
       });
-      toast({ title: "Vendor Updated", description: `${editVendor.vendorName} saved.` });
+      toast({ title: "Vendor Updated", description: `${editForm.vendorName.trim()} saved successfully.` });
       setEditVendor(null);
+      setAliasDraft("");
       queryClient.invalidateQueries();
-    } catch {
-      toast({ variant: "destructive", title: "Error", description: "Failed to update vendor" });
+    } catch (e: any) {
+      const message =
+        e?.status === 400
+          ? "Please check the vendor details — the name cannot be blank."
+          : "Failed to update vendor. Please try again.";
+      setEditError(message);
+      toast({ variant: "destructive", title: "Error", description: message });
     }
   };
 
@@ -277,19 +355,29 @@ export function VendorAdmin() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8">
+                  <TableCell colSpan={8} className="text-center py-8">
                     <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                   </TableCell>
                 </TableRow>
               ) : vendorsRes?.data?.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                     No vendors found.
                   </TableCell>
                 </TableRow>
               ) : (
                 vendorsRes?.data?.map((vendor) => (
-                  <TableRow key={vendor.id} data-testid={`row-vendor-${vendor.id}`}>
+                  <TableRow
+                    key={vendor.id}
+                    data-testid={`row-vendor-${vendor.id}`}
+                    className={
+                      vendor.onHold
+                        ? "bg-destructive/5 hover:bg-destructive/10"
+                        : !vendor.isActive
+                        ? "opacity-60"
+                        : undefined
+                    }
+                  >
                     <TableCell className="font-medium">{vendor.vendorCode}</TableCell>
                     <TableCell>{vendor.vendorName}</TableCell>
                     <TableCell className="max-w-[180px]">
@@ -306,15 +394,17 @@ export function VendorAdmin() {
                     <TableCell>{vendor.taxId || "—"}</TableCell>
                     <TableCell>{vendor.contactEmail || "—"}</TableCell>
                     <TableCell>
-                      <div className="flex flex-col gap-1">
-                        <div className="flex items-center">
+                      {vendor.onHold ? (
+                        <Badge variant="destructive" className="text-xs gap-1" data-testid={`status-vendor-${vendor.id}`}>
+                          <Ban className="h-3 w-3" />
+                          On Hold
+                        </Badge>
+                      ) : (
+                        <div className="flex items-center" data-testid={`status-vendor-${vendor.id}`}>
                           <div className={`h-2 w-2 rounded-full mr-2 ${vendor.isActive ? 'bg-emerald-500' : 'bg-muted-foreground'}`} />
                           {vendor.isActive ? 'Active' : 'Inactive'}
                         </div>
-                        {vendor.onHold && (
-                          <Badge variant="destructive" className="text-xs w-fit">On Hold</Badge>
-                        )}
-                      </div>
+                      )}
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground">
                       {format(new Date(vendor.createdAt), "MMM d, yyyy")}
@@ -337,24 +427,87 @@ export function VendorAdmin() {
         </CardContent>
       </Card>
 
-      <Dialog open={!!editVendor} onOpenChange={(open) => { if (!open) setEditVendor(null); }}>
-        <DialogContent>
+      <Dialog open={!!editVendor} onOpenChange={(open) => { if (!open) { setEditVendor(null); setEditError(null); } }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Edit Vendor{editVendor ? ` — ${editVendor.vendorName}` : ""}</DialogTitle>
+            <DialogTitle>Edit Vendor{editVendor ? ` — ${editVendor.vendorCode}` : ""}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label>Aliases</Label>
+              <Label>Vendor Name *</Label>
               <Input
-                value={editForm.aliases}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, aliases: e.target.value }))}
-                placeholder="Comma-separated, e.g. Acme Inc, Acme Corp"
-                data-testid="input-edit-aliases"
+                value={editForm.vendorName}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, vendorName: e.target.value }))}
+                placeholder="Acme Corporation"
+                data-testid="input-edit-name"
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Aliases</Label>
+              <div className="flex flex-wrap gap-1.5 rounded-md border px-2 py-2 min-h-[42px]">
+                {editForm.aliases.map((alias) => (
+                  <Badge key={alias} variant="secondary" className="gap-1 font-normal" data-testid={`badge-alias-${alias}`}>
+                    {alias}
+                    <button
+                      type="button"
+                      onClick={() => removeAlias(alias)}
+                      className="ml-0.5 rounded-sm hover:text-destructive focus:outline-none"
+                      aria-label={`Remove alias ${alias}`}
+                      data-testid={`button-remove-alias-${alias}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+                <input
+                  value={aliasDraft}
+                  onChange={(e) => setAliasDraft(e.target.value)}
+                  onKeyDown={handleAliasKeyDown}
+                  onBlur={addAlias}
+                  placeholder={editForm.aliases.length === 0 ? "Type an alias and press Enter" : "Add another…"}
+                  className="flex-1 min-w-[120px] bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                  data-testid="input-edit-alias"
+                />
+              </div>
               <p className="text-xs text-muted-foreground">
-                Alternate names used to match this vendor during extraction. Separate with commas.
+                Alternate names used to match this vendor during extraction. Press Enter or comma to add; click the × to remove.
               </p>
             </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label>Default Payment Terms</Label>
+                <Input
+                  value={editForm.paymentTerms}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, paymentTerms: e.target.value }))}
+                  placeholder="e.g. Net 30"
+                  data-testid="input-edit-payment-terms"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Default Terms Days</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={editForm.termsDays}
+                  onChange={(e) => setEditForm((prev) => ({ ...prev, termsDays: e.target.value }))}
+                  placeholder="e.g. 30"
+                  data-testid="input-edit-terms-days"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Remit-To Address</Label>
+              <Input
+                value={editForm.address}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, address: e.target.value }))}
+                placeholder="Street, City, State ZIP"
+                data-testid="input-edit-address"
+              />
+            </div>
+
             <div className="flex items-center justify-between rounded-md border px-3 py-2">
               <div>
                 <Label className="cursor-pointer">On Hold</Label>
@@ -369,7 +522,7 @@ export function VendorAdmin() {
             <div className="flex items-center justify-between rounded-md border px-3 py-2">
               <div>
                 <Label className="cursor-pointer">Active</Label>
-                <p className="text-xs text-muted-foreground">Inactive vendors cannot be matched.</p>
+                <p className="text-xs text-muted-foreground">Inactive vendors cannot be matched and route to exceptions.</p>
               </div>
               <Switch
                 checked={editForm.isActive}
@@ -377,9 +530,16 @@ export function VendorAdmin() {
                 data-testid="switch-edit-active"
               />
             </div>
+
+            {editError && (
+              <div className="flex items-center gap-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive" data-testid="text-edit-error">
+                <AlertCircle className="h-4 w-4 shrink-0" />
+                {editError}
+              </div>
+            )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditVendor(null)}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setEditVendor(null); setEditError(null); }}>Cancel</Button>
             <Button onClick={handleSaveEdit} disabled={updateVendor.isPending} data-testid="button-save-edit-vendor">
               {updateVendor.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving…</> : "Save Changes"}
             </Button>
