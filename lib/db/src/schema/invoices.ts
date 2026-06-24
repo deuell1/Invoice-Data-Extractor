@@ -45,6 +45,8 @@ export const invoiceCaptureTable = pgTable("invoice_capture", {
   lowConfidenceFields: text("low_confidence_fields"),
   fieldConfidence: text("field_confidence"),
   rawExtraction: text("raw_extraction"),
+  extractionNotes: text("extraction_notes"),
+  lastExtractedAt: timestamp("last_extracted_at", { withTimezone: true }),
   confidenceScore: numeric("confidence_score", { precision: 5, scale: 4 }),
   subtotal: numeric("subtotal", { precision: 18, scale: 2 }),
   freightAmount: numeric("freight_amount", { precision: 18, scale: 2 }),

@@ -61,6 +61,7 @@ async function getInvoiceById(id: number) {
       voucherId: invoiceCaptureTable.voucherId,
       exceptionReason: invoiceCaptureTable.exceptionReason,
       lowConfidenceFields: invoiceCaptureTable.lowConfidenceFields,
+      fieldConfidence: invoiceCaptureTable.fieldConfidence,
       confidenceScore: invoiceCaptureTable.confidenceScore,
       subtotal: invoiceCaptureTable.subtotal,
       freightAmount: invoiceCaptureTable.freightAmount,
@@ -68,6 +69,8 @@ async function getInvoiceById(id: number) {
       vendorMatchScore: invoiceCaptureTable.vendorMatchScore,
       extractionStatus: invoiceCaptureTable.extractionStatus,
       extractionError: invoiceCaptureTable.extractionError,
+      extractionNotes: invoiceCaptureTable.extractionNotes,
+      lastExtractedAt: invoiceCaptureTable.lastExtractedAt,
       role: invoiceCaptureTable.role,
       createdAt: invoiceCaptureTable.createdAt,
       updatedAt: invoiceCaptureTable.updatedAt,
@@ -134,6 +137,10 @@ function serializeInvoice(row: Awaited<ReturnType<typeof getInvoiceById>>) {
     subtotal: row.subtotal != null ? Number(row.subtotal) : null,
     freightAmount: row.freightAmount != null ? Number(row.freightAmount) : null,
     vendorMatchScore: row.vendorMatchScore != null ? Number(row.vendorMatchScore) : null,
+    lastExtractedAt:
+      row.lastExtractedAt instanceof Date
+        ? row.lastExtractedAt.toISOString()
+        : (row.lastExtractedAt ?? null),
   };
 }
 
@@ -196,6 +203,7 @@ router.get("/invoices", async (req, res): Promise<void> => {
       voucherId: invoiceCaptureTable.voucherId,
       exceptionReason: invoiceCaptureTable.exceptionReason,
       lowConfidenceFields: invoiceCaptureTable.lowConfidenceFields,
+      fieldConfidence: invoiceCaptureTable.fieldConfidence,
       confidenceScore: invoiceCaptureTable.confidenceScore,
       subtotal: invoiceCaptureTable.subtotal,
       freightAmount: invoiceCaptureTable.freightAmount,
@@ -203,6 +211,8 @@ router.get("/invoices", async (req, res): Promise<void> => {
       vendorMatchScore: invoiceCaptureTable.vendorMatchScore,
       extractionStatus: invoiceCaptureTable.extractionStatus,
       extractionError: invoiceCaptureTable.extractionError,
+      extractionNotes: invoiceCaptureTable.extractionNotes,
+      lastExtractedAt: invoiceCaptureTable.lastExtractedAt,
       role: invoiceCaptureTable.role,
       createdAt: invoiceCaptureTable.createdAt,
       updatedAt: invoiceCaptureTable.updatedAt,

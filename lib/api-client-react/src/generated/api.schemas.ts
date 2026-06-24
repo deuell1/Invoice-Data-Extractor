@@ -83,6 +83,15 @@ export interface Invoice {
   extractionStatus?: InvoiceExtractionStatus;
   /** @nullable */
   extractionError?: string | null;
+  /**
+     * JSON map of per-field confidence (0-100) keyed by field name.
+     * @nullable
+     */
+  fieldConfidence?: string | null;
+  /** @nullable */
+  extractionNotes?: string | null;
+  /** @nullable */
+  lastExtractedAt?: string | null;
   role?: InvoiceRole;
   createdAt: string;
   updatedAt: string;

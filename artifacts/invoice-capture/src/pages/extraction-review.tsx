@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useLocation } from "wouter";
 import { format } from "date-fns";
 import {
@@ -24,13 +24,40 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge } from "@/components/status-badge";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, AlertCircle, CheckCircle2, AlertTriangle, RefreshCw } from "lucide-react";
+import { Loader2, AlertCircle, CheckCircle2, AlertTriangle, RefreshCw, Clock, FileText, Info } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+
+const FIELD_LABELS: Record<string, string> = {
+  vendorId: "Vendor",
+  vendorRawName: "Vendor Name",
+  invoiceNumber: "Invoice Number",
+  invoiceDate: "Invoice Date",
+  dueDate: "Due Date",
+  paymentTerms: "Payment Terms",
+  poNumber: "PO Number",
+  subtotal: "Subtotal",
+  taxAmount: "Tax Amount",
+  freightAmount: "Freight Amount",
+  totalAmount: "Total Amount",
+  currency: "Currency",
+};
+
+const FIELD_CONFIDENCE_THRESHOLD = 85;
 
 export function ExtractionReview() {
   const params = useParams();
@@ -63,8 +90,33 @@ export function ExtractionReview() {
 
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [duplicateResult, setDuplicateResult] = useState<DuplicateCheckResult | null>(null);
+  const [confirmRerunOpen, setConfirmRerunOpen] = useState(false);
   const initialized = useRef(false);
   const duplicateChecked = useRef(false);
+
+  const hasManualEdits = useMemo(
+    () => (auditLogs ?? []).some((log) => log.action === "FIELD_UPDATED"),
+    [auditLogs],
+  );
+
+  const fieldConfidence = useMemo<Record<string, number>>(() => {
+    if (!invoice?.fieldConfidence) return {};
+    try {
+      const parsed = JSON.parse(invoice.fieldConfidence);
+      return parsed && typeof parsed === "object" ? (parsed as Record<string, number>) : {};
+    } catch {
+      return {};
+    }
+  }, [invoice?.fieldConfidence]);
+
+  const lowConfidenceList = useMemo<string[]>(
+    () =>
+      (invoice?.lowConfidenceFields ?? "")
+        .split(",")
+        .map((f) => f.trim())
+        .filter(Boolean),
+    [invoice?.lowConfidenceFields],
+  );
 
   useEffect(() => {
     if (invoice && !initialized.current) {
@@ -160,6 +212,22 @@ export function ExtractionReview() {
     }
   };
 
+  // Re-run extraction. If the user has manually edited any field, warn before
+  // overwriting their work; otherwise re-run immediately. The audit history is
+  // always preserved server-side.
+  const handleRerunExtraction = () => {
+    if (hasManualEdits) {
+      setConfirmRerunOpen(true);
+    } else {
+      handleRetryExtraction();
+    }
+  };
+
+  const confirmRerunExtraction = () => {
+    setConfirmRerunOpen(false);
+    handleRetryExtraction();
+  };
+
   const handleRerunVendorMatch = async () => {
     try {
       await matchVendor.mutateAsync({ id });
@@ -188,7 +256,49 @@ export function ExtractionReview() {
   if (isLoading) return <div className="flex justify-center p-12"><Loader2 className="h-8 w-8 animate-spin" /></div>;
   if (error || !invoice) return <div className="p-8 text-center text-destructive">Failed to load invoice</div>;
 
-  const isLowConfidence = (field: string) => invoice.lowConfidenceFields?.includes(field) || false;
+  const confidenceFor = (field: string): number | null => {
+    const v = fieldConfidence[field];
+    return typeof v === "number" ? v : null;
+  };
+
+  const isLowConfidence = (field: string) => {
+    const c = confidenceFor(field);
+    if (c != null) return c < FIELD_CONFIDENCE_THRESHOLD;
+    return lowConfidenceList.includes(field);
+  };
+
+  // Visual emphasis applied to the field control itself when confidence is low,
+  // so reviewers can spot fields needing attention at a glance.
+  const lowConfidenceClass = (field: string) =>
+    isLowConfidence(field)
+      ? "border-amber-400 bg-amber-50/60 focus-visible:ring-amber-400 dark:border-amber-500/60 dark:bg-amber-500/10"
+      : "";
+
+  // Per-field confidence indicator shown beside each label. Renders the % when a
+  // per-field score exists, otherwise a plain low-confidence flag.
+  const renderConfidence = (field: string) => {
+    const c = confidenceFor(field);
+    if (c == null) {
+      return isLowConfidence(field) ? (
+        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-600 dark:text-amber-400" data-testid={`confidence-${field}`}>
+          <AlertCircle className="h-3 w-3" /> Low
+        </span>
+      ) : null;
+    }
+    const low = c < FIELD_CONFIDENCE_THRESHOLD;
+    return (
+      <span
+        className={`inline-flex items-center gap-1 text-[10px] font-medium ${low ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}
+        data-testid={`confidence-${field}`}
+      >
+        {low && <AlertCircle className="h-3 w-3" />}
+        {Math.round(c)}%
+      </span>
+    );
+  };
+
+  const formatTimestamp = (value?: string | null) =>
+    value ? format(new Date(value), "MMM d, yyyy HH:mm") : null;
 
   return (
     <div className="flex flex-col h-full space-y-4">
@@ -259,6 +369,47 @@ export function ExtractionReview() {
               {" "}Risk score: {Math.round(duplicateResult.riskScore * 100)}%.
             </p>
           </div>
+        </div>
+      )}
+
+      {invoice.extractionStatus === "COMPLETED" && (lowConfidenceList.length > 0 || invoice.extractionNotes) && (
+        <div
+          className="rounded-md border border-amber-500/40 bg-amber-500/5 px-4 py-3 text-sm"
+          data-testid="validation-summary"
+        >
+          {lowConfidenceList.length > 0 && (
+            <div className="flex items-start gap-3 text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+              <div>
+                <p className="font-medium">
+                  {lowConfidenceList.length} field{lowConfidenceList.length > 1 ? "s" : ""} need review (confidence below {FIELD_CONFIDENCE_THRESHOLD}%)
+                </p>
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  {lowConfidenceList.map((f) => {
+                    const c = fieldConfidence[f];
+                    return (
+                      <Badge key={f} variant="secondary" className="text-[10px]" data-testid={`low-confidence-${f}`}>
+                        {FIELD_LABELS[f] ?? f}
+                        {typeof c === "number" ? ` · ${Math.round(c)}%` : ""}
+                      </Badge>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+          {invoice.extractionNotes && (
+            <div
+              className={`flex items-start gap-3 text-muted-foreground ${lowConfidenceList.length > 0 ? "mt-3 pt-3 border-t border-amber-500/20" : ""}`}
+              data-testid="extraction-notes"
+            >
+              <Info className="h-4 w-4 mt-0.5 shrink-0" />
+              <div>
+                <p className="font-medium text-foreground">Extraction notes</p>
+                <p className="text-xs mt-0.5">{invoice.extractionNotes}</p>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -333,7 +484,7 @@ export function ExtractionReview() {
         {/* Data Form */}
         <div className="flex flex-col h-full space-y-4">
           <Card className="flex-1 overflow-auto">
-            <CardHeader className="py-3 px-4 shrink-0 bg-muted/30 border-b">
+            <CardHeader className="py-3 px-4 shrink-0 bg-muted/30 border-b space-y-2">
               <div className="flex justify-between items-center">
                 <CardTitle className="text-sm font-medium">Extracted Data</CardTitle>
                 <div className="flex items-center gap-2">
@@ -343,18 +494,50 @@ export function ExtractionReview() {
                     </Badge>
                   )}
                   {invoice.confidenceScore != null && (
-                    <Badge variant={invoice.confidenceScore > 0.8 ? "outline" : "secondary"}>
+                    <Badge
+                      variant={invoice.confidenceScore >= 0.85 ? "outline" : "secondary"}
+                      data-testid="badge-overall-confidence"
+                    >
                       {Math.round(Number(invoice.confidenceScore) * 100)}% Confidence
                     </Badge>
                   )}
                 </div>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
+                  <FileText className="h-3.5 w-3.5 shrink-0" />
+                  <span className="font-medium capitalize" data-testid="text-extraction-status">
+                    {(invoice.extractionStatus ?? "PENDING").toLowerCase()}
+                  </span>
+                  {invoice.lastExtractedAt && (
+                    <span className="flex items-center gap-1 truncate" data-testid="text-last-extracted">
+                      <Clock className="h-3.5 w-3.5 shrink-0" />
+                      {formatTimestamp(invoice.lastExtractedAt)}
+                    </span>
+                  )}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 shrink-0"
+                  onClick={handleRerunExtraction}
+                  disabled={extractInvoice.isPending || invoice.extractionStatus === "PROCESSING"}
+                  data-testid="button-rerun-extraction"
+                >
+                  {extractInvoice.isPending || invoice.extractionStatus === "PROCESSING" ? (
+                    <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-3.5 w-3.5" />
+                  )}
+                  Re-run Extraction
+                </Button>
               </div>
             </CardHeader>
             <CardContent className="p-4 space-y-4">
               <div className="space-y-2">
                 <Label className="flex items-center justify-between">
                   Vendor
-                  {isLowConfidence("vendorId") && <AlertCircle className="h-3 w-3 text-amber-500" />}
+                  {renderConfidence("vendorId")}
                 </Label>
                 <Select
                   value={formData.vendorId}
@@ -363,7 +546,7 @@ export function ExtractionReview() {
                     handleSaveField("vendorId", val);
                   }}
                 >
-                  <SelectTrigger className="w-full" data-testid="select-vendor">
+                  <SelectTrigger className={`w-full ${lowConfidenceClass("vendorId")}`} data-testid="select-vendor">
                     <SelectValue placeholder="Select Vendor" />
                   </SelectTrigger>
                   <SelectContent>
@@ -379,7 +562,7 @@ export function ExtractionReview() {
               <div className="space-y-2">
                 <Label className="flex items-center justify-between">
                   Vendor Name (as on document)
-                  {isLowConfidence("vendorRawName") && <AlertCircle className="h-3 w-3 text-amber-500" />}
+                  {renderConfidence("vendorRawName")}
                 </Label>
                 <div className="flex gap-2">
                   <Input
@@ -388,7 +571,7 @@ export function ExtractionReview() {
                     onBlur={(e) => handleSaveField("vendorRawName", e.target.value)}
                     placeholder="Raw vendor name from invoice"
                     data-testid="input-vendor-raw-name"
-                    className="flex-1"
+                    className={`flex-1 ${lowConfidenceClass("vendorRawName")}`}
                   />
                   <Button
                     variant="outline"
@@ -411,19 +594,20 @@ export function ExtractionReview() {
                 <div className="space-y-2">
                   <Label className="flex items-center justify-between">
                     Invoice Number
-                    {isLowConfidence("invoiceNumber") && <AlertCircle className="h-3 w-3 text-amber-500" />}
+                    {renderConfidence("invoiceNumber")}
                   </Label>
                   <Input
                     value={formData.invoiceNumber}
                     onChange={(e) => handleInputChange("invoiceNumber", e.target.value)}
                     onBlur={(e) => handleSaveField("invoiceNumber", e.target.value)}
                     data-testid="input-invoice-number"
+                    className={lowConfidenceClass("invoiceNumber")}
                   />
                 </div>
                 <div className="space-y-2">
                   <Label className="flex items-center justify-between">
                     Invoice Date
-                    {isLowConfidence("invoiceDate") && <AlertCircle className="h-3 w-3 text-amber-500" />}
+                    {renderConfidence("invoiceDate")}
                   </Label>
                   <Input
                     type="date"
@@ -431,6 +615,7 @@ export function ExtractionReview() {
                     onChange={(e) => handleInputChange("invoiceDate", e.target.value)}
                     onBlur={(e) => handleSaveField("invoiceDate", e.target.value)}
                     data-testid="input-invoice-date"
+                    className={lowConfidenceClass("invoiceDate")}
                   />
                 </div>
               </div>
@@ -439,7 +624,7 @@ export function ExtractionReview() {
                 <div className="space-y-2">
                   <Label className="flex items-center justify-between">
                     Due Date
-                    {isLowConfidence("dueDate") && <AlertCircle className="h-3 w-3 text-amber-500" />}
+                    {renderConfidence("dueDate")}
                   </Label>
                   <Input
                     type="date"
@@ -447,6 +632,7 @@ export function ExtractionReview() {
                     onChange={(e) => handleInputChange("dueDate", e.target.value)}
                     onBlur={(e) => handleSaveField("dueDate", e.target.value)}
                     data-testid="input-due-date"
+                    className={lowConfidenceClass("dueDate")}
                   />
                 </div>
                 <div className="space-y-2">
@@ -461,7 +647,7 @@ export function ExtractionReview() {
                 <div className="space-y-2">
                   <Label className="flex items-center justify-between">
                     Total Amount
-                    {isLowConfidence("totalAmount") && <AlertCircle className="h-3 w-3 text-amber-500" />}
+                    {renderConfidence("totalAmount")}
                   </Label>
                   <Input
                     type="number"
@@ -470,12 +656,13 @@ export function ExtractionReview() {
                     onChange={(e) => handleInputChange("totalAmount", e.target.value)}
                     onBlur={(e) => handleSaveField("totalAmount", e.target.value)}
                     data-testid="input-total-amount"
+                    className={lowConfidenceClass("totalAmount")}
                   />
                 </div>
                 <div className="space-y-2">
                   <Label className="flex items-center justify-between">
                     Tax Amount
-                    {isLowConfidence("taxAmount") && <AlertCircle className="h-3 w-3 text-amber-500" />}
+                    {renderConfidence("taxAmount")}
                   </Label>
                   <Input
                     type="number"
@@ -484,22 +671,30 @@ export function ExtractionReview() {
                     onChange={(e) => handleInputChange("taxAmount", e.target.value)}
                     onBlur={(e) => handleSaveField("taxAmount", e.target.value)}
                     data-testid="input-tax-amount"
+                    className={lowConfidenceClass("taxAmount")}
                   />
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>PO Number</Label>
+                  <Label className="flex items-center justify-between">
+                    PO Number
+                    {renderConfidence("poNumber")}
+                  </Label>
                   <Input
                     value={formData.poNumber}
                     onChange={(e) => handleInputChange("poNumber", e.target.value)}
                     onBlur={(e) => handleSaveField("poNumber", e.target.value)}
                     data-testid="input-po-number"
+                    className={lowConfidenceClass("poNumber")}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Currency</Label>
+                  <Label className="flex items-center justify-between">
+                    Currency
+                    {renderConfidence("currency")}
+                  </Label>
                   <Select
                     value={formData.currency}
                     onValueChange={(val) => {
@@ -507,7 +702,7 @@ export function ExtractionReview() {
                       handleSaveField("currency", val);
                     }}
                   >
-                    <SelectTrigger data-testid="select-currency">
+                    <SelectTrigger className={lowConfidenceClass("currency")} data-testid="select-currency">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -557,6 +752,26 @@ export function ExtractionReview() {
           </Card>
         </div>
       </div>
+
+      <AlertDialog open={confirmRerunOpen} onOpenChange={setConfirmRerunOpen}>
+        <AlertDialogContent data-testid="dialog-confirm-rerun">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Re-run extraction?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This invoice has manual edits. Re-running extraction will overwrite the
+              current field values with fresh results from the document. Your manual
+              changes will be replaced, but the full edit history is preserved in the
+              audit trail.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-rerun">Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmRerunExtraction} data-testid="button-confirm-rerun">
+              Re-run &amp; Overwrite
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

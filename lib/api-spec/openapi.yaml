@@ -759,6 +759,14 @@ components:
           default: PENDING
         extractionError:
           type: ["string", "null"]
+        fieldConfidence:
+          type: ["string", "null"]
+          description: JSON map of per-field confidence (0-100) keyed by field name.
+        extractionNotes:
+          type: ["string", "null"]
+        lastExtractedAt:
+          type: ["string", "null"]
+          format: date-time
         role:
           type: string
           enum: [AP_PROCESSOR, AP_APPROVER]

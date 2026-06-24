@@ -66,6 +66,9 @@ export const ListInvoicesResponse = zod.object({
   "vendorMatchScore": zod.number().nullish(),
   "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(listInvoicesResponseDataItemExtractionStatusDefault),
   "extractionError": zod.string().nullish(),
+  "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
+  "extractionNotes": zod.string().nullish(),
+  "lastExtractedAt": zod.coerce.date().nullish(),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(listInvoicesResponseDataItemRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -159,6 +162,9 @@ export const GetInvoiceResponse = zod.object({
   "vendorMatchScore": zod.number().nullish(),
   "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(getInvoiceResponseExtractionStatusDefault),
   "extractionError": zod.string().nullish(),
+  "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
+  "extractionNotes": zod.string().nullish(),
+  "lastExtractedAt": zod.coerce.date().nullish(),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(getInvoiceResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -222,6 +228,9 @@ export const UpdateInvoiceResponse = zod.object({
   "vendorMatchScore": zod.number().nullish(),
   "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(updateInvoiceResponseExtractionStatusDefault),
   "extractionError": zod.string().nullish(),
+  "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
+  "extractionNotes": zod.string().nullish(),
+  "lastExtractedAt": zod.coerce.date().nullish(),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(updateInvoiceResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -266,6 +275,9 @@ export const MatchInvoiceVendorResponse = zod.object({
   "vendorMatchScore": zod.number().nullish(),
   "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(matchInvoiceVendorResponseExtractionStatusDefault),
   "extractionError": zod.string().nullish(),
+  "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
+  "extractionNotes": zod.string().nullish(),
+  "lastExtractedAt": zod.coerce.date().nullish(),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(matchInvoiceVendorResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -310,6 +322,9 @@ export const ExtractInvoiceResponse = zod.object({
   "vendorMatchScore": zod.number().nullish(),
   "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(extractInvoiceResponseExtractionStatusDefault),
   "extractionError": zod.string().nullish(),
+  "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
+  "extractionNotes": zod.string().nullish(),
+  "lastExtractedAt": zod.coerce.date().nullish(),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(extractInvoiceResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -358,6 +373,9 @@ export const UpdateInvoiceStatusResponse = zod.object({
   "vendorMatchScore": zod.number().nullish(),
   "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(updateInvoiceStatusResponseExtractionStatusDefault),
   "extractionError": zod.string().nullish(),
+  "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
+  "extractionNotes": zod.string().nullish(),
+  "lastExtractedAt": zod.coerce.date().nullish(),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(updateInvoiceStatusResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -408,6 +426,9 @@ export const SetVoucherIdResponse = zod.object({
   "vendorMatchScore": zod.number().nullish(),
   "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(setVoucherIdResponseExtractionStatusDefault),
   "extractionError": zod.string().nullish(),
+  "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
+  "extractionNotes": zod.string().nullish(),
+  "lastExtractedAt": zod.coerce.date().nullish(),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(setVoucherIdResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -451,6 +472,9 @@ export const ApproveInvoiceResponse = zod.object({
   "vendorMatchScore": zod.number().nullish(),
   "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(approveInvoiceResponseExtractionStatusDefault),
   "extractionError": zod.string().nullish(),
+  "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
+  "extractionNotes": zod.string().nullish(),
+  "lastExtractedAt": zod.coerce.date().nullish(),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(approveInvoiceResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -501,6 +525,9 @@ export const RejectInvoiceResponse = zod.object({
   "vendorMatchScore": zod.number().nullish(),
   "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(rejectInvoiceResponseExtractionStatusDefault),
   "extractionError": zod.string().nullish(),
+  "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
+  "extractionNotes": zod.string().nullish(),
+  "lastExtractedAt": zod.coerce.date().nullish(),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(rejectInvoiceResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -544,6 +571,9 @@ export const SubmitInvoiceResponse = zod.object({
   "vendorMatchScore": zod.number().nullish(),
   "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(submitInvoiceResponseExtractionStatusDefault),
   "extractionError": zod.string().nullish(),
+  "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
+  "extractionNotes": zod.string().nullish(),
+  "lastExtractedAt": zod.coerce.date().nullish(),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(submitInvoiceResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
