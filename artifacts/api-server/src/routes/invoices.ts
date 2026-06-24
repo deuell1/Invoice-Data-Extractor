@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { applyVendorMatch } from "../services/vendorMatcher";
+import { triggerExtraction } from "../services/extractionService";
 import { eq, sql, and, inArray, ilike, or, asc, desc } from "drizzle-orm";
 import { db, invoiceCaptureTable, invoiceAuditLogTable, vendorIdTable } from "@workspace/db";
 import {
@@ -65,6 +66,8 @@ async function getInvoiceById(id: number) {
       freightAmount: invoiceCaptureTable.freightAmount,
       paymentTerms: invoiceCaptureTable.paymentTerms,
       vendorMatchScore: invoiceCaptureTable.vendorMatchScore,
+      extractionStatus: invoiceCaptureTable.extractionStatus,
+      extractionError: invoiceCaptureTable.extractionError,
       role: invoiceCaptureTable.role,
       createdAt: invoiceCaptureTable.createdAt,
       updatedAt: invoiceCaptureTable.updatedAt,
@@ -194,6 +197,12 @@ router.get("/invoices", async (req, res): Promise<void> => {
       exceptionReason: invoiceCaptureTable.exceptionReason,
       lowConfidenceFields: invoiceCaptureTable.lowConfidenceFields,
       confidenceScore: invoiceCaptureTable.confidenceScore,
+      subtotal: invoiceCaptureTable.subtotal,
+      freightAmount: invoiceCaptureTable.freightAmount,
+      paymentTerms: invoiceCaptureTable.paymentTerms,
+      vendorMatchScore: invoiceCaptureTable.vendorMatchScore,
+      extractionStatus: invoiceCaptureTable.extractionStatus,
+      extractionError: invoiceCaptureTable.extractionError,
       role: invoiceCaptureTable.role,
       createdAt: invoiceCaptureTable.createdAt,
       updatedAt: invoiceCaptureTable.updatedAt,
@@ -261,14 +270,52 @@ router.post("/invoices", async (req, res): Promise<void> => {
     note: `Invoice created from file: ${invoice.originalFileName}`,
   });
 
-  // Run vendor matching synchronously if vendorRawName was supplied
   const rawName = parsed.data.vendorRawName ?? null;
   if (rawName) {
+    // Fields were supplied directly (e.g. manual entry): match synchronously.
     await applyVendorMatch(invoice.id, rawName);
+    await db
+      .update(invoiceCaptureTable)
+      .set({ extractionStatus: "COMPLETED" })
+      .where(eq(invoiceCaptureTable.id, invoice.id));
+  } else {
+    // No extracted fields yet: kick off extraction in the background.
+    triggerExtraction(invoice.id);
   }
 
   const row = await getInvoiceById(invoice.id);
   res.status(201).json(GetInvoiceResponse.parse(serializeInvoice(row)));
+});
+
+// ─── POST /invoices/:id/extract ──────────────────────────────────────────────
+router.post("/invoices/:id/extract", async (req, res): Promise<void> => {
+  const params = GetInvoiceParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const existing = await getInvoiceById(params.data.id);
+  if (!existing) {
+    res.status(404).json({ error: "Invoice not found" });
+    return;
+  }
+
+  // Idempotency guard: don't kick off a second run while one is already in flight.
+  if (existing.extractionStatus === "PROCESSING") {
+    res.json(GetInvoiceResponse.parse(serializeInvoice(existing)));
+    return;
+  }
+
+  await db
+    .update(invoiceCaptureTable)
+    .set({ extractionStatus: "PROCESSING", extractionError: null })
+    .where(eq(invoiceCaptureTable.id, params.data.id));
+
+  triggerExtraction(params.data.id);
+
+  const row = await getInvoiceById(params.data.id);
+  res.json(GetInvoiceResponse.parse(serializeInvoice(row)));
 });
 
 // ─── GET /invoices/stats ─────────────────────────────────────────────────────
@@ -322,11 +369,16 @@ router.get("/invoices/export", async (req, res): Promise<void> => {
       invoiceNumber: invoiceCaptureTable.invoiceNumber,
       invoiceDate: invoiceCaptureTable.invoiceDate,
       dueDate: invoiceCaptureTable.dueDate,
+      subtotal: invoiceCaptureTable.subtotal,
+      freightAmount: invoiceCaptureTable.freightAmount,
       totalAmount: invoiceCaptureTable.totalAmount,
       taxAmount: invoiceCaptureTable.taxAmount,
       poNumber: invoiceCaptureTable.poNumber,
+      paymentTerms: invoiceCaptureTable.paymentTerms,
       currency: invoiceCaptureTable.currency,
       voucherId: invoiceCaptureTable.voucherId,
+      confidenceScore: invoiceCaptureTable.confidenceScore,
+      vendorMatchScore: invoiceCaptureTable.vendorMatchScore,
       createdAt: invoiceCaptureTable.createdAt,
     })
     .from(invoiceCaptureTable)
@@ -334,7 +386,7 @@ router.get("/invoices/export", async (req, res): Promise<void> => {
     .where(eq(invoiceCaptureTable.status, status as "APPROVED" | "POSTED"))
     .orderBy(invoiceCaptureTable.createdAt);
 
-  const header = "documentId,id,status,vendorName,vendorRawName,invoiceNumber,invoiceDate,dueDate,totalAmount,taxAmount,currency,poNumber,voucherId,createdAt";
+  const header = "documentId,id,status,vendorName,vendorRawName,invoiceNumber,invoiceDate,dueDate,subtotal,freightAmount,totalAmount,taxAmount,currency,paymentTerms,poNumber,voucherId,confidenceScore,vendorMatchScore,createdAt";
   const csvRows = rows.map((r) =>
     [
       r.documentId ?? "",
@@ -345,11 +397,16 @@ router.get("/invoices/export", async (req, res): Promise<void> => {
       r.invoiceNumber ?? "",
       r.invoiceDate ?? "",
       r.dueDate ?? "",
+      r.subtotal ?? "",
+      r.freightAmount ?? "",
       r.totalAmount ?? "",
       r.taxAmount ?? "",
       r.currency,
+      r.paymentTerms ?? "",
       r.poNumber ?? "",
       r.voucherId ?? "",
+      r.confidenceScore ?? "",
+      r.vendorMatchScore ?? "",
       r.createdAt.toISOString(),
     ]
       .map((v) => `"${String(v).replace(/"/g, '""')}"`)

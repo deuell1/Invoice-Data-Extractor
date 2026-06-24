@@ -673,6 +673,77 @@ export const useMatchInvoiceVendor = <TError = ErrorType<ErrorEnvelope>,
       return useMutation(getMatchInvoiceVendorMutationOptions(options));
     }
 
+export const getExtractInvoiceUrl = (id: number,) => {
+
+
+
+
+  return `/api/invoices/${id}/extract`
+}
+
+/**
+ * Triggers the extraction service for the invoice. Uses OpenAI when configured, otherwise a development mock. Returns the invoice with extractionStatus set to PROCESSING.
+ * @summary Run (or re-run) extraction on an invoice
+ */
+export const extractInvoice = async (id: number, options?: RequestInit): Promise<Invoice> => {
+
+  return customFetch<Invoice>(getExtractInvoiceUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getExtractInvoiceMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof extractInvoice>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof extractInvoice>>, TError,{id: number}, TContext> => {
+
+const mutationKey = ['extractInvoice'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof extractInvoice>>, {id: number}> = (props) => {
+          const {id} = props ?? {};
+
+          return  extractInvoice(id,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ExtractInvoiceMutationResult = NonNullable<Awaited<ReturnType<typeof extractInvoice>>>
+
+    export type ExtractInvoiceMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Run (or re-run) extraction on an invoice
+ */
+export const useExtractInvoice = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof extractInvoice>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof extractInvoice>>,
+        TError,
+        {id: number},
+        TContext
+      > => {
+      return useMutation(getExtractInvoiceMutationOptions(options));
+    }
+
 export const getUpdateInvoiceStatusUrl = (id: number,) => {
 
 

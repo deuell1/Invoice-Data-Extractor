@@ -13,6 +13,7 @@ import { StatusBadge } from "@/components/status-badge";
 import {
   FileText, AlertCircle, CheckSquare, CheckCircle, FilePlus, Loader2,
   Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown,
+  Send, DollarSign,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -107,7 +108,7 @@ export function InvoiceList() {
         </Link>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 shrink-0">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 shrink-0">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Invoices</CardTitle>
@@ -149,6 +150,37 @@ export function InvoiceList() {
           <CardContent>
             <div className="text-2xl font-bold text-emerald-500" data-testid="stat-approved">
               {statsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : stats?.approved || 0}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Posted</CardTitle>
+            <Send className="h-4 w-4 text-blue-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-blue-500" data-testid="stat-posted">
+              {statsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : stats?.posted || 0}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Approved Value</CardTitle>
+            <DollarSign className="h-4 w-4 text-emerald-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold" data-testid="stat-approved-amount">
+              {statsLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                new Intl.NumberFormat("en-US", {
+                  style: "currency",
+                  currency: "USD",
+                  notation: (stats?.totalApprovedAmount ?? 0) >= 100000 ? "compact" : "standard",
+                  maximumFractionDigits: (stats?.totalApprovedAmount ?? 0) >= 100000 ? 1 : 0,
+                }).format(stats?.totalApprovedAmount ?? 0)
+              )}
             </div>
           </CardContent>
         </Card>

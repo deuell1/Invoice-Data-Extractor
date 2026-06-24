@@ -1,21 +1,60 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { UploadCloud, File, Loader2 } from "lucide-react";
-import { useCreateInvoice, useRequestUploadUrl } from "@workspace/api-client-react";
+import { UploadCloud, File, Loader2, ScanLine } from "lucide-react";
+import { useCreateInvoice, useRequestUploadUrl, getInvoice } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 
+type Phase = "idle" | "uploading" | "extracting";
+
+const EXTRACTION_POLL_INTERVAL_MS = 1500;
+const EXTRACTION_MAX_POLLS = 20;
+
 export function InvoiceIntake() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [file, setFile] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
+  const [phase, setPhase] = useState<Phase>("idle");
   const [progress, setProgress] = useState(0);
+
+  const isUploading = phase !== "idle";
 
   const requestUploadUrl = useRequestUploadUrl();
   const createInvoice = useCreateInvoice();
+
+  // Poll the invoice until extraction completes (or fails), then navigate.
+  const waitForExtraction = async (invoiceId: number): Promise<void> => {
+    for (let i = 0; i < EXTRACTION_MAX_POLLS; i++) {
+      await new Promise((r) => setTimeout(r, EXTRACTION_POLL_INTERVAL_MS));
+      try {
+        const inv = await getInvoice(invoiceId);
+        if (inv.extractionStatus === "COMPLETED") {
+          toast({
+            title: "Extraction complete",
+            description: "Invoice data was extracted. Please review.",
+          });
+          return;
+        }
+        if (inv.extractionStatus === "FAILED") {
+          toast({
+            variant: "destructive",
+            title: "Extraction failed",
+            description: "You can retry extraction from the review screen.",
+          });
+          return;
+        }
+      } catch {
+        // transient error — keep polling
+      }
+    }
+    // Timed out — still navigate so the user can retry from review.
+    toast({
+      title: "Still processing",
+      description: "Extraction is taking longer than expected. Opening review…",
+    });
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -26,7 +65,7 @@ export function InvoiceIntake() {
   const handleUpload = async () => {
     if (!file) return;
 
-    setIsUploading(true);
+    setPhase("uploading");
     setProgress(10);
 
     try {
@@ -64,23 +103,28 @@ export function InvoiceIntake() {
         },
       });
 
-      setProgress(100);
+      setProgress(85);
 
       toast({
         title: "Upload Successful",
-        description: "Invoice has been uploaded and queued for extraction.",
+        description: "Invoice uploaded. Extracting data…",
       });
+
+      // 4. Wait for background extraction to finish, then open review.
+      setPhase("extracting");
+      await waitForExtraction(invoice.id);
+      setProgress(100);
 
       setTimeout(() => {
         setLocation(`/invoices/${invoice.id}`);
-      }, 500);
+      }, 400);
     } catch (error) {
       toast({
         variant: "destructive",
         title: "Upload Failed",
         description: "There was an error uploading your invoice. Please try again.",
       });
-      setIsUploading(false);
+      setPhase("idle");
       setProgress(0);
     }
   };
@@ -122,9 +166,18 @@ export function InvoiceIntake() {
             </div>
 
             {isUploading && (
-              <div className="space-y-2">
+              <div className="space-y-2" data-testid="extraction-status">
                 <div className="flex justify-between text-xs">
-                  <span>Uploading...</span>
+                  <span className="flex items-center gap-1.5">
+                    {phase === "extracting" ? (
+                      <>
+                        <ScanLine className="h-3.5 w-3.5 animate-pulse text-primary" />
+                        Extracting invoice data…
+                      </>
+                    ) : (
+                      "Uploading…"
+                    )}
+                  </span>
                   <span>{progress}%</span>
                 </div>
                 <Progress value={progress} className="h-2" data-testid="progress-upload" />
@@ -146,7 +199,7 @@ export function InvoiceIntake() {
                 data-testid="button-upload"
               >
                 {isUploading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Upload & Process
+                {phase === "extracting" ? "Extracting…" : "Upload & Process"}
               </Button>
             </div>
           </div>

@@ -3,16 +3,19 @@ import {
   useListVendors,
   useCreateVendor,
   useImportVendors,
+  useUpdateVendor,
 } from "@workspace/api-client-react";
+import type { Vendor } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2, Plus, Upload, Users, Search, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Loader2, Plus, Upload, Users, Search, AlertCircle, CheckCircle2, Pencil } from "lucide-react";
 import { format } from "date-fns";
 import {
   Dialog,
@@ -39,9 +42,41 @@ export function VendorAdmin() {
   const { data: vendorsRes, isLoading } = useListVendors({ search, limit: 100 });
   const createVendor = useCreateVendor();
   const importVendors = useImportVendors();
+  const updateVendor = useUpdateVendor();
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [newVendor, setNewVendor] = useState({ vendorCode: "", vendorName: "", taxId: "", contactEmail: "" });
+
+  const [editVendor, setEditVendor] = useState<Vendor | null>(null);
+  const [editForm, setEditForm] = useState({ aliases: "", onHold: false, isActive: true });
+
+  const openEdit = (vendor: Vendor) => {
+    setEditVendor(vendor);
+    setEditForm({
+      aliases: (vendor.aliases ?? []).join(", "),
+      onHold: Boolean(vendor.onHold),
+      isActive: vendor.isActive,
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editVendor) return;
+    const aliases = editForm.aliases
+      .split(",")
+      .map((a) => a.trim())
+      .filter((a) => a.length > 0);
+    try {
+      await updateVendor.mutateAsync({
+        id: editVendor.id,
+        data: { aliases, onHold: editForm.onHold, isActive: editForm.isActive },
+      });
+      toast({ title: "Vendor Updated", description: `${editVendor.vendorName} saved.` });
+      setEditVendor(null);
+      queryClient.invalidateQueries();
+    } catch {
+      toast({ variant: "destructive", title: "Error", description: "Failed to update vendor" });
+    }
+  };
 
   const [importPreview, setImportPreview] = useState<ParsedVendorRow[] | null>(null);
   const [importFileName, setImportFileName] = useState("");
@@ -236,18 +271,19 @@ export function VendorAdmin() {
                 <TableHead>Contact</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="text-right">Added</TableHead>
+                <TableHead className="text-right">Edit</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8">
+                  <TableCell colSpan={7} className="text-center py-8">
                     <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                   </TableCell>
                 </TableRow>
               ) : vendorsRes?.data?.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
+                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                     No vendors found.
                   </TableCell>
                 </TableRow>
@@ -283,6 +319,16 @@ export function VendorAdmin() {
                     <TableCell className="text-right text-muted-foreground">
                       {format(new Date(vendor.createdAt), "MMM d, yyyy")}
                     </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openEdit(vendor)}
+                        data-testid={`button-edit-vendor-${vendor.id}`}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
                   </TableRow>
                 ))
               )}
@@ -290,6 +336,56 @@ export function VendorAdmin() {
           </Table>
         </CardContent>
       </Card>
+
+      <Dialog open={!!editVendor} onOpenChange={(open) => { if (!open) setEditVendor(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Vendor{editVendor ? ` — ${editVendor.vendorName}` : ""}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Aliases</Label>
+              <Input
+                value={editForm.aliases}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, aliases: e.target.value }))}
+                placeholder="Comma-separated, e.g. Acme Inc, Acme Corp"
+                data-testid="input-edit-aliases"
+              />
+              <p className="text-xs text-muted-foreground">
+                Alternate names used to match this vendor during extraction. Separate with commas.
+              </p>
+            </div>
+            <div className="flex items-center justify-between rounded-md border px-3 py-2">
+              <div>
+                <Label className="cursor-pointer">On Hold</Label>
+                <p className="text-xs text-muted-foreground">Invoices for held vendors route to exceptions.</p>
+              </div>
+              <Switch
+                checked={editForm.onHold}
+                onCheckedChange={(v) => setEditForm((prev) => ({ ...prev, onHold: v }))}
+                data-testid="switch-edit-onhold"
+              />
+            </div>
+            <div className="flex items-center justify-between rounded-md border px-3 py-2">
+              <div>
+                <Label className="cursor-pointer">Active</Label>
+                <p className="text-xs text-muted-foreground">Inactive vendors cannot be matched.</p>
+              </div>
+              <Switch
+                checked={editForm.isActive}
+                onCheckedChange={(v) => setEditForm((prev) => ({ ...prev, isActive: v }))}
+                data-testid="switch-edit-active"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditVendor(null)}>Cancel</Button>
+            <Button onClick={handleSaveEdit} disabled={updateVendor.isPending} data-testid="button-save-edit-vendor">
+              {updateVendor.isPending ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving…</> : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={isImportOpen} onOpenChange={(open) => { if (!open) { setIsImportOpen(false); setImportPreview(null); setImportResult(null); } }}>
         <DialogContent className="max-w-2xl">

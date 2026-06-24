@@ -36,6 +36,7 @@ export const ListInvoicesQueryParams = zod.object({
 })
 
 export const listInvoicesResponseDataItemCurrencyDefault = `USD`;
+export const listInvoicesResponseDataItemExtractionStatusDefault = `PENDING`;
 export const listInvoicesResponseDataItemRoleDefault = `AP_PROCESSOR`;
 
 export const ListInvoicesResponse = zod.object({
@@ -63,6 +64,8 @@ export const ListInvoicesResponse = zod.object({
   "freightAmount": zod.number().nullish(),
   "paymentTerms": zod.string().nullish(),
   "vendorMatchScore": zod.number().nullish(),
+  "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(listInvoicesResponseDataItemExtractionStatusDefault),
+  "extractionError": zod.string().nullish(),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(listInvoicesResponseDataItemRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -127,6 +130,7 @@ export const GetInvoiceParams = zod.object({
 })
 
 export const getInvoiceResponseCurrencyDefault = `USD`;
+export const getInvoiceResponseExtractionStatusDefault = `PENDING`;
 export const getInvoiceResponseRoleDefault = `AP_PROCESSOR`;
 
 export const GetInvoiceResponse = zod.object({
@@ -153,6 +157,8 @@ export const GetInvoiceResponse = zod.object({
   "freightAmount": zod.number().nullish(),
   "paymentTerms": zod.string().nullish(),
   "vendorMatchScore": zod.number().nullish(),
+  "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(getInvoiceResponseExtractionStatusDefault),
+  "extractionError": zod.string().nullish(),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(getInvoiceResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -187,6 +193,7 @@ export const UpdateInvoiceBody = zod.object({
 })
 
 export const updateInvoiceResponseCurrencyDefault = `USD`;
+export const updateInvoiceResponseExtractionStatusDefault = `PENDING`;
 export const updateInvoiceResponseRoleDefault = `AP_PROCESSOR`;
 
 export const UpdateInvoiceResponse = zod.object({
@@ -213,6 +220,8 @@ export const UpdateInvoiceResponse = zod.object({
   "freightAmount": zod.number().nullish(),
   "paymentTerms": zod.string().nullish(),
   "vendorMatchScore": zod.number().nullish(),
+  "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(updateInvoiceResponseExtractionStatusDefault),
+  "extractionError": zod.string().nullish(),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(updateInvoiceResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -228,6 +237,7 @@ export const MatchInvoiceVendorParams = zod.object({
 })
 
 export const matchInvoiceVendorResponseCurrencyDefault = `USD`;
+export const matchInvoiceVendorResponseExtractionStatusDefault = `PENDING`;
 export const matchInvoiceVendorResponseRoleDefault = `AP_PROCESSOR`;
 
 export const MatchInvoiceVendorResponse = zod.object({
@@ -254,7 +264,53 @@ export const MatchInvoiceVendorResponse = zod.object({
   "freightAmount": zod.number().nullish(),
   "paymentTerms": zod.string().nullish(),
   "vendorMatchScore": zod.number().nullish(),
+  "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(matchInvoiceVendorResponseExtractionStatusDefault),
+  "extractionError": zod.string().nullish(),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(matchInvoiceVendorResponseRoleDefault),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * Triggers the extraction service for the invoice. Uses OpenAI when configured, otherwise a development mock. Returns the invoice with extractionStatus set to PROCESSING.
+ * @summary Run (or re-run) extraction on an invoice
+ */
+export const ExtractInvoiceParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const extractInvoiceResponseCurrencyDefault = `USD`;
+export const extractInvoiceResponseExtractionStatusDefault = `PENDING`;
+export const extractInvoiceResponseRoleDefault = `AP_PROCESSOR`;
+
+export const ExtractInvoiceResponse = zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED']),
+  "vendorId": zod.number().nullish(),
+  "vendorName": zod.string().nullish(),
+  "invoiceNumber": zod.string().nullish(),
+  "invoiceDate": zod.string().nullish(),
+  "totalAmount": zod.number().nullish(),
+  "taxAmount": zod.number().nullish(),
+  "poNumber": zod.string().nullish(),
+  "currency": zod.string().default(extractInvoiceResponseCurrencyDefault),
+  "fileObjectPath": zod.string(),
+  "originalFileName": zod.string(),
+  "documentId": zod.string().nullish(),
+  "vendorRawName": zod.string().nullish(),
+  "dueDate": zod.string().nullish(),
+  "voucherId": zod.string().nullish(),
+  "exceptionReason": zod.string().nullish(),
+  "lowConfidenceFields": zod.string().nullish(),
+  "confidenceScore": zod.number().nullish(),
+  "subtotal": zod.number().nullish(),
+  "freightAmount": zod.number().nullish(),
+  "paymentTerms": zod.string().nullish(),
+  "vendorMatchScore": zod.number().nullish(),
+  "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(extractInvoiceResponseExtractionStatusDefault),
+  "extractionError": zod.string().nullish(),
+  "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(extractInvoiceResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -273,6 +329,7 @@ export const UpdateInvoiceStatusBody = zod.object({
 })
 
 export const updateInvoiceStatusResponseCurrencyDefault = `USD`;
+export const updateInvoiceStatusResponseExtractionStatusDefault = `PENDING`;
 export const updateInvoiceStatusResponseRoleDefault = `AP_PROCESSOR`;
 
 export const UpdateInvoiceStatusResponse = zod.object({
@@ -299,6 +356,8 @@ export const UpdateInvoiceStatusResponse = zod.object({
   "freightAmount": zod.number().nullish(),
   "paymentTerms": zod.string().nullish(),
   "vendorMatchScore": zod.number().nullish(),
+  "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(updateInvoiceStatusResponseExtractionStatusDefault),
+  "extractionError": zod.string().nullish(),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(updateInvoiceStatusResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -320,6 +379,7 @@ export const SetVoucherIdBody = zod.object({
 })
 
 export const setVoucherIdResponseCurrencyDefault = `USD`;
+export const setVoucherIdResponseExtractionStatusDefault = `PENDING`;
 export const setVoucherIdResponseRoleDefault = `AP_PROCESSOR`;
 
 export const SetVoucherIdResponse = zod.object({
@@ -346,6 +406,8 @@ export const SetVoucherIdResponse = zod.object({
   "freightAmount": zod.number().nullish(),
   "paymentTerms": zod.string().nullish(),
   "vendorMatchScore": zod.number().nullish(),
+  "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(setVoucherIdResponseExtractionStatusDefault),
+  "extractionError": zod.string().nullish(),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(setVoucherIdResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -360,6 +422,7 @@ export const ApproveInvoiceParams = zod.object({
 })
 
 export const approveInvoiceResponseCurrencyDefault = `USD`;
+export const approveInvoiceResponseExtractionStatusDefault = `PENDING`;
 export const approveInvoiceResponseRoleDefault = `AP_PROCESSOR`;
 
 export const ApproveInvoiceResponse = zod.object({
@@ -386,6 +449,8 @@ export const ApproveInvoiceResponse = zod.object({
   "freightAmount": zod.number().nullish(),
   "paymentTerms": zod.string().nullish(),
   "vendorMatchScore": zod.number().nullish(),
+  "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(approveInvoiceResponseExtractionStatusDefault),
+  "extractionError": zod.string().nullish(),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(approveInvoiceResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -407,6 +472,7 @@ export const RejectInvoiceBody = zod.object({
 })
 
 export const rejectInvoiceResponseCurrencyDefault = `USD`;
+export const rejectInvoiceResponseExtractionStatusDefault = `PENDING`;
 export const rejectInvoiceResponseRoleDefault = `AP_PROCESSOR`;
 
 export const RejectInvoiceResponse = zod.object({
@@ -433,6 +499,8 @@ export const RejectInvoiceResponse = zod.object({
   "freightAmount": zod.number().nullish(),
   "paymentTerms": zod.string().nullish(),
   "vendorMatchScore": zod.number().nullish(),
+  "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(rejectInvoiceResponseExtractionStatusDefault),
+  "extractionError": zod.string().nullish(),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(rejectInvoiceResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -447,6 +515,7 @@ export const SubmitInvoiceParams = zod.object({
 })
 
 export const submitInvoiceResponseCurrencyDefault = `USD`;
+export const submitInvoiceResponseExtractionStatusDefault = `PENDING`;
 export const submitInvoiceResponseRoleDefault = `AP_PROCESSOR`;
 
 export const SubmitInvoiceResponse = zod.object({
@@ -473,6 +542,8 @@ export const SubmitInvoiceResponse = zod.object({
   "freightAmount": zod.number().nullish(),
   "paymentTerms": zod.string().nullish(),
   "vendorMatchScore": zod.number().nullish(),
+  "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(submitInvoiceResponseExtractionStatusDefault),
+  "extractionError": zod.string().nullish(),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(submitInvoiceResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()

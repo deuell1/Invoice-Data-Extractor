@@ -11,6 +11,7 @@ import {
   useUpdateInvoiceStatus,
   useCheckDuplicate,
   useMatchInvoiceVendor,
+  useExtractInvoice,
   getGetInvoiceAuditLogQueryKey,
 } from "@workspace/api-client-react";
 import type { DuplicateCheckResult } from "@workspace/api-client-react";
@@ -39,7 +40,13 @@ export function ExtractionReview() {
   const queryClient = useQueryClient();
 
   const { data: invoice, isLoading, error } = useGetInvoice(id, {
-    query: { enabled: !!id, queryKey: getGetInvoiceQueryKey(id) },
+    query: {
+      enabled: !!id,
+      queryKey: getGetInvoiceQueryKey(id),
+      // Keep polling while extraction is still running.
+      refetchInterval: (query) =>
+        query.state.data?.extractionStatus === "PROCESSING" ? 1500 : false,
+    },
   });
 
   const { data: vendorsData } = useListVendors({ limit: 100 });
@@ -52,6 +59,7 @@ export function ExtractionReview() {
   const updateStatus = useUpdateInvoiceStatus();
   const checkDuplicate = useCheckDuplicate();
   const matchVendor = useMatchInvoiceVendor();
+  const extractInvoice = useExtractInvoice();
 
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [duplicateResult, setDuplicateResult] = useState<DuplicateCheckResult | null>(null);
@@ -140,6 +148,18 @@ export function ExtractionReview() {
     }
   };
 
+  const handleRetryExtraction = async () => {
+    try {
+      await extractInvoice.mutateAsync({ id });
+      toast({ title: "Extraction restarted", description: "Re-running data extraction…" });
+      initialized.current = false;
+      queryClient.invalidateQueries({ queryKey: getGetInvoiceQueryKey(id) });
+      queryClient.invalidateQueries({ queryKey: getGetInvoiceAuditLogQueryKey(id) });
+    } catch {
+      toast({ variant: "destructive", title: "Error", description: "Could not restart extraction." });
+    }
+  };
+
   const handleRerunVendorMatch = async () => {
     try {
       await matchVendor.mutateAsync({ id });
@@ -172,6 +192,48 @@ export function ExtractionReview() {
 
   return (
     <div className="flex flex-col h-full space-y-4">
+      {invoice.extractionStatus === "PROCESSING" && (
+        <div
+          className="flex items-center gap-3 rounded-md border border-primary/40 bg-primary/5 px-4 py-3 text-sm text-primary"
+          data-testid="extraction-banner-processing"
+        >
+          <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+          <p className="font-medium">Extracting invoice data… fields will populate automatically.</p>
+        </div>
+      )}
+
+      {invoice.extractionStatus === "FAILED" && (
+        <div
+          className="flex items-start justify-between gap-3 rounded-md border border-destructive/50 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+          data-testid="extraction-banner-failed"
+        >
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+            <div>
+              <p className="font-medium">Extraction failed</p>
+              <p className="text-xs mt-0.5 opacity-80">
+                {invoice.extractionError || "The document could not be processed."} You can retry, or enter the fields manually below.
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            onClick={handleRetryExtraction}
+            disabled={extractInvoice.isPending}
+            data-testid="button-retry-extraction"
+          >
+            {extractInvoice.isPending ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-2 h-4 w-4" />
+            )}
+            Retry Extraction
+          </Button>
+        </div>
+      )}
+
       {duplicateResult?.isDuplicate && (
         <div
           className={`flex items-start gap-3 rounded-md border px-4 py-3 text-sm ${

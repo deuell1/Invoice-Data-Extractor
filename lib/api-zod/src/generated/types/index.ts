@@ -16,6 +16,7 @@ export * from './exportInvoicesCsvParams';
 export * from './exportInvoicesCsvStatus';
 export * from './healthStatus';
 export * from './invoice';
+export * from './invoiceExtractionStatus';
 export * from './invoiceInput';
 export * from './invoiceListResponse';
 export * from './invoiceRole';

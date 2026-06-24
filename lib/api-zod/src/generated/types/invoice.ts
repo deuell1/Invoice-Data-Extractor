@@ -5,6 +5,7 @@
  * Invoice Capture MVP API
  * OpenAPI spec version: 0.1.0
  */
+import type { InvoiceExtractionStatus } from './invoiceExtractionStatus';
 import type { InvoiceRole } from './invoiceRole';
 import type { InvoiceStatus } from './invoiceStatus';
 
@@ -50,6 +51,9 @@ export interface Invoice {
   paymentTerms?: string | null;
   /** @nullable */
   vendorMatchScore?: number | null;
+  extractionStatus?: InvoiceExtractionStatus;
+  /** @nullable */
+  extractionError?: string | null;
   role?: InvoiceRole;
   createdAt: Date;
   updatedAt: Date;

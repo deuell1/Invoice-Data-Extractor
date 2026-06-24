@@ -233,6 +233,32 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  /invoices/{id}/extract:
+    post:
+      operationId: extractInvoice
+      tags: [invoices]
+      summary: Run (or re-run) extraction on an invoice
+      description: Triggers the extraction service for the invoice. Uses OpenAI when configured, otherwise a development mock. Returns the invoice with extractionStatus set to PROCESSING.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Invoice after extraction was triggered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   /invoices/{id}/status:
     patch:
       operationId: updateInvoiceStatus
@@ -727,6 +753,12 @@ components:
           type: ["string", "null"]
         vendorMatchScore:
           type: ["number", "null"]
+        extractionStatus:
+          type: string
+          enum: [PENDING, PROCESSING, COMPLETED, FAILED]
+          default: PENDING
+        extractionError:
+          type: ["string", "null"]
         role:
           type: string
           enum: [AP_PROCESSOR, AP_APPROVER]

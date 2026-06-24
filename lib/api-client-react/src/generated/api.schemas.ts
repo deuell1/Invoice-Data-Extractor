@@ -20,6 +20,16 @@ export const InvoiceStatus = {
   POSTED: 'POSTED',
 } as const;
 
+export type InvoiceExtractionStatus = typeof InvoiceExtractionStatus[keyof typeof InvoiceExtractionStatus];
+
+
+export const InvoiceExtractionStatus = {
+  PENDING: 'PENDING',
+  PROCESSING: 'PROCESSING',
+  COMPLETED: 'COMPLETED',
+  FAILED: 'FAILED',
+} as const;
+
 export type InvoiceRole = typeof InvoiceRole[keyof typeof InvoiceRole];
 
 
@@ -70,6 +80,9 @@ export interface Invoice {
   paymentTerms?: string | null;
   /** @nullable */
   vendorMatchScore?: number | null;
+  extractionStatus?: InvoiceExtractionStatus;
+  /** @nullable */
+  extractionError?: string | null;
   role?: InvoiceRole;
   createdAt: string;
   updatedAt: string;
