@@ -4,7 +4,27 @@ import { eq, and, ne } from "drizzle-orm";
 // ─── Thresholds ──────────────────────────────────────────────────────────────
 const CONFIDENCE_THRESHOLD = 0.85; // overall confidenceScore is stored 0–1
 const FIELD_CONFIDENCE_THRESHOLD = 85; // per-field fieldConfidence is stored 0–100
+const VENDOR_MATCH_THRESHOLD = 0.85; // vendorMatchScore is stored 0–1
 const TIE_OUT_TOLERANCE = 0.01; // dollars
+
+// ─── Canonical vendor exception reasons ──────────────────────────────────────
+// Used by the validation engine and the approval route. The "hard block" reasons
+// mean there is NO usable matched vendor (name missing or no confident match) —
+// approval is impossible even with a documented override. Inactive/On-Hold are
+// matched vendors and remain overridable with a documented reason.
+export const VENDOR_REASON = {
+  NAME_NOT_EXTRACTED: "Vendor Name Not Extracted",
+  NOT_FOUND: "Vendor Not Found",
+  LOW_CONFIDENCE: "Low Vendor Match Confidence",
+  INACTIVE: "Vendor Inactive",
+  ON_HOLD: "Vendor On Hold",
+} as const;
+
+export const VENDOR_HARD_BLOCK_REASONS: readonly string[] = [
+  VENDOR_REASON.NAME_NOT_EXTRACTED,
+  VENDOR_REASON.NOT_FOUND,
+  VENDOR_REASON.LOW_CONFIDENCE,
+];
 
 // Critical fields whose per-field confidence must clear the threshold.
 const CRITICAL_FIELDS = ["vendorRawName", "invoiceNumber", "invoiceDate", "totalAmount"];
@@ -113,6 +133,7 @@ export async function validateInvoice(invoiceId: number): Promise<ValidationOutc
       status: invoiceCaptureTable.status,
       vendorId: invoiceCaptureTable.vendorId,
       vendorRawName: invoiceCaptureTable.vendorRawName,
+      vendorMatchScore: invoiceCaptureTable.vendorMatchScore,
       invoiceNumber: invoiceCaptureTable.invoiceNumber,
       invoiceDate: invoiceCaptureTable.invoiceDate,
       dueDate: invoiceCaptureTable.dueDate,
@@ -125,6 +146,7 @@ export async function validateInvoice(invoiceId: number): Promise<ValidationOutc
       confidenceScore: invoiceCaptureTable.confidenceScore,
       fieldConfidence: invoiceCaptureTable.fieldConfidence,
       paymentTerms: invoiceCaptureTable.paymentTerms,
+      vendorCode: vendorIdTable.vendorCode,
       vendorIsActive: vendorIdTable.isActive,
       vendorOnHold: vendorIdTable.onHold,
       vendorPaymentTerms: vendorIdTable.paymentTerms,
@@ -155,21 +177,31 @@ export async function validateInvoice(invoiceId: number): Promise<ValidationOutc
   const warnings: string[] = [];
 
   // ── Vendor checks ──────────────────────────────────────────────────────────
+  // An invoice must ALWAYS be flagged (and approval blocked) when the vendor is
+  // missing, unmatched, low-confidence, inactive, or on hold. Canonical reasons
+  // are used so the Extraction Review screen and Exception Queue read clearly.
   let vendorCheck: CheckResult = "PASS";
-  if (!row.vendorRawName) {
-    blocking.push("Vendor name is missing from the document");
+  const vendorScore = row.vendorMatchScore != null ? Number(row.vendorMatchScore) : null;
+  if (!row.vendorRawName?.trim()) {
+    blocking.push(VENDOR_REASON.NAME_NOT_EXTRACTED);
     vendorCheck = "FAIL";
-  }
-  if (row.vendorId == null) {
-    blocking.push("Vendor is not matched to the controlled vendor list");
+  } else if (row.vendorId == null) {
+    // Vendor name extracted but not assigned a controlled Vendor_ID. A recorded
+    // best-match score below threshold is reported as low confidence; otherwise
+    // no candidate was found at all.
+    if (vendorScore != null && vendorScore < VENDOR_MATCH_THRESHOLD) {
+      blocking.push(VENDOR_REASON.LOW_CONFIDENCE);
+    } else {
+      blocking.push(VENDOR_REASON.NOT_FOUND);
+    }
     vendorCheck = "FAIL";
   } else {
     if (row.vendorIsActive === false) {
-      blocking.push("Matched vendor is inactive");
+      blocking.push(VENDOR_REASON.INACTIVE);
       vendorCheck = "FAIL";
     }
     if (row.vendorOnHold === true) {
-      blocking.push("Matched vendor is on hold");
+      blocking.push(VENDOR_REASON.ON_HOLD);
       vendorCheck = "FAIL";
     }
   }
@@ -297,12 +329,23 @@ export async function validateInvoice(invoiceId: number): Promise<ValidationOutc
     overallReviewStatus = warnings.length > 0 ? "NEEDS_REVIEW" : "READY_FOR_APPROVAL";
   }
 
+  // ── Business-facing DocumentID ─────────────────────────────────────────────
+  // "VendorID - InvoiceNumber - Amount" using the matched controlled vendor code
+  // (never OCR/LLM output). Null until vendor matched and invoice number/total
+  // are available — never fabricate a vendor code. The stable internal id and
+  // documentId are left untouched (used for audit, file storage, relationships).
+  const businessDocumentId =
+    row.vendorCode && row.invoiceNumber && total != null
+      ? `${row.vendorCode} - ${row.invoiceNumber} - ${total.toFixed(2)}`
+      : null;
+
   // ── Persist ────────────────────────────────────────────────────────────────
   await db
     .update(invoiceCaptureTable)
     .set({
       ...(isTerminal ? {} : { status: nextStatus }),
       ...(derivedDueDate ? { dueDate: derivedDueDate } : {}),
+      businessDocumentId,
       exceptionReason: !isTerminal && blocking.length > 0 ? blocking.join("; ") : null,
       validationStatus,
       reviewStatus,

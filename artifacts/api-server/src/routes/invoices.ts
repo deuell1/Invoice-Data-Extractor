@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import { applyVendorMatch } from "../services/vendorMatcher";
 import { triggerExtraction } from "../services/extractionService";
-import { validateInvoice } from "../services/validationService";
+import { validateInvoice, VENDOR_HARD_BLOCK_REASONS } from "../services/validationService";
 import { eq, sql, and, inArray, ilike, or, asc, desc } from "drizzle-orm";
 import { db, invoiceCaptureTable, invoiceAuditLogTable, vendorIdTable } from "@workspace/db";
 import {
@@ -54,6 +54,7 @@ async function getInvoiceById(id: number) {
       fileObjectPath: invoiceCaptureTable.fileObjectPath,
       originalFileName: invoiceCaptureTable.originalFileName,
       documentId: invoiceCaptureTable.documentId,
+      businessDocumentId: invoiceCaptureTable.businessDocumentId,
       vendorRawName: invoiceCaptureTable.vendorRawName,
       dueDate: invoiceCaptureTable.dueDate,
       voucherId: invoiceCaptureTable.voucherId,
@@ -207,6 +208,7 @@ router.get("/invoices", async (req, res): Promise<void> => {
       fileObjectPath: invoiceCaptureTable.fileObjectPath,
       originalFileName: invoiceCaptureTable.originalFileName,
       documentId: invoiceCaptureTable.documentId,
+      businessDocumentId: invoiceCaptureTable.businessDocumentId,
       vendorRawName: invoiceCaptureTable.vendorRawName,
       dueDate: invoiceCaptureTable.dueDate,
       voucherId: invoiceCaptureTable.voucherId,
@@ -398,6 +400,7 @@ router.get("/invoices/export", async (req, res): Promise<void> => {
     .select({
       id: invoiceCaptureTable.id,
       documentId: invoiceCaptureTable.documentId,
+      businessDocumentId: invoiceCaptureTable.businessDocumentId,
       status: invoiceCaptureTable.status,
       vendorId: invoiceCaptureTable.vendorId,
       vendorName: vendorIdTable.vendorName,
@@ -467,6 +470,7 @@ router.get("/invoices/export", async (req, res): Promise<void> => {
 
   const header = [
     "DocumentID",
+    "BusinessDocumentID",
     "RecordID",
     "VendorID",
     "VendorNameMatched",
@@ -497,6 +501,7 @@ router.get("/invoices/export", async (req, res): Promise<void> => {
   const csvRows = rows.map((r) =>
     [
       r.documentId,
+      r.businessDocumentId,
       r.id,
       r.vendorId,
       r.vendorName,
@@ -642,6 +647,11 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
         editorRole: parsed.data.editorRole ?? "AP_PROCESSOR",
       });
     }
+
+    // Re-run the authoritative validation engine after manual corrections so the
+    // vendor flagging rules re-apply and the business DocumentID is recomputed
+    // (e.g. AP fixed the vendor, invoice number, or total).
+    await validateInvoice(params.data.id);
   }
 
   const row = await getInvoiceById(params.data.id);
@@ -784,6 +794,20 @@ router.post("/invoices/:id/approve", async (req, res): Promise<void> => {
 
   // Re-run validation before allowing approval.
   const outcome = await validateInvoice(params.data.id);
+
+  // Missing or unverified vendor is a HARD block: an invoice without a vendor name
+  // or without a confident match to the controlled vendor list can never be
+  // approved, even with a documented exception override. (Inactive/On-Hold vendors
+  // are matched and remain overridable with a documented reason.)
+  const vendorHardBlock = outcome.blocking.filter((b) =>
+    VENDOR_HARD_BLOCK_REASONS.includes(b),
+  );
+  if (vendorHardBlock.length > 0) {
+    res.status(422).json({
+      error: `Cannot approve — vendor must be matched to the controlled vendor list: ${vendorHardBlock.join("; ")}`,
+    });
+    return;
+  }
 
   // Block approval if validation now finds blocking issues — unless this is a
   // documented exception override.

@@ -38,6 +38,7 @@ export const invoiceCaptureTable = pgTable("invoice_capture", {
   fileObjectPath: text("file_object_path").notNull(),
   originalFileName: text("original_file_name").notNull(),
   documentId: text("document_id"),
+  businessDocumentId: text("business_document_id"),
   vendorRawName: text("vendor_raw_name"),
   dueDate: text("due_date"),
   voucherId: text("voucher_id"),

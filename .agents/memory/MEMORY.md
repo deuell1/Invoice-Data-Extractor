@@ -1,4 +1,5 @@
 - [Date serialization in Drizzle routes](date-serialization.md) — nullable timestamp columns return Date objects but Zod string schemas reject them; must serialize before parsing.
+- [AP approval vendor hard-block](ap-approval-hard-block.md) — missing-vendor reasons are non-overridable at approval; documented-reason override only covers other exceptions.
 - [Extraction failure routing](extraction-failure-routing.md) — failed extraction must flip invoice status to EXCEPTION, not just extractionStatus, or it sits PENDING forever.
 - [AP state-transition guards](ap-state-transitions.md) — every status-mutating endpoint must enforce the state machine server-side; POSTED is terminal; posting needs APPROVED.
 - [Invoice confidence scaling](invoice-confidence-scaling.md) — overall confidenceScore is 0–1, per-field fieldConfidence is 0–100; don't conflate the two scales/thresholds.

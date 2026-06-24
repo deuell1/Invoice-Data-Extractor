@@ -60,6 +60,11 @@ export interface Invoice {
   originalFileName: string;
   /** @nullable */
   documentId?: string | null;
+  /**
+     * Business-facing display ID formatted as "VendorID - InvoiceNumber - Amount" (e.g. "V-00123 - INV-12345 - 1309.00"). Null until vendor is matched and invoice number/total are available.
+     * @nullable
+     */
+  businessDocumentId?: string | null;
   /** @nullable */
   vendorRawName?: string | null;
   /** @nullable */

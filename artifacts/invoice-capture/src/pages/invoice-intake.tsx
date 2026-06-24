@@ -179,7 +179,8 @@ export function InvoiceIntake() {
   });
 
   const status = deriveStatus(invoice);
-  const documentLabel = invoice?.documentId || (invoiceId ? `#${invoiceId}` : "");
+  const documentLabel =
+    invoice?.businessDocumentId || invoice?.documentId || (invoiceId ? `#${invoiceId}` : "");
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {

@@ -708,7 +708,7 @@ export function ExtractionReview() {
                 <div className="space-y-2">
                   <Label className="text-muted-foreground text-xs">Document ID</Label>
                   <div className="h-9 px-3 py-2 text-sm rounded-md border bg-muted/50 text-muted-foreground font-mono">
-                    {invoice.documentId || "—"}
+                    {invoice.businessDocumentId || invoice.documentId || "—"}
                   </div>
                 </div>
               </div>
