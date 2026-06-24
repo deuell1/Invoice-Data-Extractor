@@ -43,6 +43,8 @@ export const invoiceCaptureTable = pgTable("invoice_capture", {
   voucherId: text("voucher_id"),
   exceptionReason: text("exception_reason"),
   lowConfidenceFields: text("low_confidence_fields"),
+  fieldConfidence: text("field_confidence"),
+  rawExtraction: text("raw_extraction"),
   confidenceScore: numeric("confidence_score", { precision: 5, scale: 4 }),
   subtotal: numeric("subtotal", { precision: 18, scale: 2 }),
   freightAmount: numeric("freight_amount", { precision: 18, scale: 2 }),
