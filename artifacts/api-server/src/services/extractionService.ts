@@ -1,6 +1,7 @@
 import { db, invoiceCaptureTable, invoiceAuditLogTable } from "@workspace/db";
-import { eq, and, ne } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { applyVendorMatch } from "./vendorMatcher";
+import { validateInvoice } from "./validationService";
 import { logger } from "../lib/logger";
 import { ObjectStorageService } from "../lib/objectStorage";
 
@@ -465,96 +466,6 @@ async function openAiExtract(
   return mapModelOutput(parsed, raw);
 }
 
-// ─── Post-extraction validation ──────────────────────────────────────────────
-// Runs after vendor matching. Routes low-confidence, incomplete, or duplicate
-// invoices to the exception queue; clean invoices advance to PENDING_APPROVAL.
-
-const VALIDATION_CONFIDENCE_THRESHOLD = 0.85;
-
-/** True if another invoice already has this vendor + invoice number. */
-async function hasDuplicate(
-  invoiceId: number,
-  vendorId: number | null,
-  invoiceNumber: string | null,
-): Promise<boolean> {
-  if (vendorId == null || !invoiceNumber) return false;
-  const rows = await db
-    .select({ id: invoiceCaptureTable.id })
-    .from(invoiceCaptureTable)
-    .where(
-      and(
-        eq(invoiceCaptureTable.vendorId, vendorId),
-        eq(invoiceCaptureTable.invoiceNumber, invoiceNumber),
-        ne(invoiceCaptureTable.id, invoiceId),
-      ),
-    )
-    .limit(1);
-  return rows.length > 0;
-}
-
-async function runValidation(invoiceId: number, fields: ExtractedFields): Promise<void> {
-  // Vendor matching may have already routed this invoice to EXCEPTION (no match,
-  // low match confidence, inactive, on hold). If so, leave that reason intact.
-  const [current] = await db
-    .select({
-      status: invoiceCaptureTable.status,
-      vendorId: invoiceCaptureTable.vendorId,
-      invoiceNumber: invoiceCaptureTable.invoiceNumber,
-    })
-    .from(invoiceCaptureTable)
-    .where(eq(invoiceCaptureTable.id, invoiceId))
-    .limit(1);
-
-  if (!current || current.status === "EXCEPTION") return;
-
-  const problems: string[] = [];
-
-  if (fields.confidenceScore < VALIDATION_CONFIDENCE_THRESHOLD) {
-    problems.push(`Low extraction confidence (${(fields.confidenceScore * 100).toFixed(0)}%)`);
-  }
-  if (fields.lowConfidenceFields.length > 0) {
-    problems.push(`Low-confidence fields: ${fields.lowConfidenceFields.join(", ")}`);
-  }
-
-  const missing: string[] = [];
-  if (!fields.vendorRawName) missing.push("vendor");
-  if (!fields.invoiceNumber) missing.push("invoice number");
-  if (fields.totalAmount == null) missing.push("total amount");
-  if (!fields.invoiceDate) missing.push("invoice date");
-  if (missing.length > 0) {
-    problems.push(`Missing required fields: ${missing.join(", ")}`);
-  }
-
-  if (await hasDuplicate(invoiceId, current.vendorId, current.invoiceNumber)) {
-    problems.push("Duplicate invoice (same vendor + invoice number)");
-  }
-
-  if (problems.length === 0) {
-    await db
-      .update(invoiceCaptureTable)
-      .set({ status: "PENDING_APPROVAL", exceptionReason: null })
-      .where(eq(invoiceCaptureTable.id, invoiceId));
-
-    await db.insert(invoiceAuditLogTable).values({
-      invoiceId,
-      action: "VALIDATED",
-      note: "Extraction passed validation; routed to pending approval.",
-    });
-    return;
-  }
-
-  await db
-    .update(invoiceCaptureTable)
-    .set({ status: "EXCEPTION", exceptionReason: problems.join("; ") })
-    .where(eq(invoiceCaptureTable.id, invoiceId));
-
-  await db.insert(invoiceAuditLogTable).values({
-    invoiceId,
-    action: "ROUTED_TO_EXCEPTION",
-    note: problems.join("; ").slice(0, 500),
-  });
-}
-
 // ─── Orchestration ───────────────────────────────────────────────────────────
 
 /**
@@ -625,9 +536,9 @@ export async function runExtraction(invoiceId: number): Promise<void> {
       await applyVendorMatch(invoiceId, fields.vendorRawName);
     }
 
-    // Validate the extracted data (confidence + required fields + duplicates);
-    // routes to the exception queue or advances clean invoices to approval.
-    await runValidation(invoiceId, fields);
+    // Run the authoritative validation + routing engine: routes to the exception
+    // queue, flags for review, or advances clean invoices toward approval.
+    await validateInvoice(invoiceId);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger.error({ invoiceId, err: message }, "runExtraction failed");

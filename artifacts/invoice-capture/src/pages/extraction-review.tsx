@@ -59,6 +59,21 @@ const FIELD_LABELS: Record<string, string> = {
 
 const FIELD_CONFIDENCE_THRESHOLD = 85;
 
+const VALIDATION_CHECKS: { key: "vendorCheck" | "duplicateCheck" | "poCheck" | "amountCheck" | "totalTieOut"; label: string }[] = [
+  { key: "vendorCheck", label: "Vendor" },
+  { key: "duplicateCheck", label: "Duplicate" },
+  { key: "amountCheck", label: "Amount" },
+  { key: "totalTieOut", label: "Tie-out" },
+  { key: "poCheck", label: "PO" },
+];
+
+const CHECK_RESULT_CLASS: Record<string, string> = {
+  PASS: "border-emerald-500 text-emerald-600",
+  WARNING: "border-amber-500 text-amber-600",
+  FAIL: "border-destructive text-destructive",
+  SKIPPED: "text-muted-foreground",
+};
+
 export function ExtractionReview() {
   const params = useParams();
   const id = Number(params.id);
@@ -410,6 +425,56 @@ export function ExtractionReview() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {invoice.validationStatus && (
+        <div
+          className="rounded-md border bg-muted/30 px-4 py-3 text-sm"
+          data-testid="validation-checks-summary"
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <p className="font-medium">Validation checks</p>
+            <Badge
+              variant={
+                invoice.validationStatus === "FAILED"
+                  ? "destructive"
+                  : invoice.validationStatus === "NEEDS_REVIEW"
+                    ? "outline"
+                    : "secondary"
+              }
+              className={
+                invoice.validationStatus === "NEEDS_REVIEW"
+                  ? "border-amber-500 text-amber-600"
+                  : invoice.validationStatus === "PASS"
+                    ? "border-emerald-500 text-emerald-600"
+                    : ""
+              }
+              data-testid="badge-validation-status"
+            >
+              {invoice.validationStatus === "FAILED"
+                ? "Exception"
+                : invoice.validationStatus === "NEEDS_REVIEW"
+                  ? "Needs Review"
+                  : "Passed"}
+            </Badge>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {VALIDATION_CHECKS.map(({ key, label }) => {
+              const result = invoice[key] as string | null | undefined;
+              if (!result) return null;
+              return (
+                <Badge
+                  key={key}
+                  variant="outline"
+                  className={`text-[10px] gap-1 ${CHECK_RESULT_CLASS[result] ?? ""}`}
+                  data-testid={`check-${key}`}
+                >
+                  {label}: {result}
+                </Badge>
+              );
+            })}
+          </div>
         </div>
       )}
 

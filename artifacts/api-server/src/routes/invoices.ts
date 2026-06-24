@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { applyVendorMatch } from "../services/vendorMatcher";
 import { triggerExtraction } from "../services/extractionService";
+import { validateInvoice } from "../services/validationService";
 import { eq, sql, and, inArray, ilike, or, asc, desc } from "drizzle-orm";
 import { db, invoiceCaptureTable, invoiceAuditLogTable, vendorIdTable } from "@workspace/db";
 import {
@@ -36,9 +37,6 @@ import {
 
 const router: IRouter = Router();
 
-// Phase 1 requirement: route to EXCEPTION when confidence is below 85%
-const CONFIDENCE_THRESHOLD = 0.85;
-
 // ─── Helper: fetch invoice enriched with vendorName ─────────────────────────
 async function getInvoiceById(id: number) {
   const [row] = await db
@@ -67,6 +65,15 @@ async function getInvoiceById(id: number) {
       freightAmount: invoiceCaptureTable.freightAmount,
       paymentTerms: invoiceCaptureTable.paymentTerms,
       vendorMatchScore: invoiceCaptureTable.vendorMatchScore,
+      validationStatus: invoiceCaptureTable.validationStatus,
+      reviewStatus: invoiceCaptureTable.reviewStatus,
+      overallReviewStatus: invoiceCaptureTable.overallReviewStatus,
+      duplicateCheck: invoiceCaptureTable.duplicateCheck,
+      vendorCheck: invoiceCaptureTable.vendorCheck,
+      poCheck: invoiceCaptureTable.poCheck,
+      amountCheck: invoiceCaptureTable.amountCheck,
+      totalTieOut: invoiceCaptureTable.totalTieOut,
+      validationDetails: invoiceCaptureTable.validationDetails,
       extractionStatus: invoiceCaptureTable.extractionStatus,
       extractionError: invoiceCaptureTable.extractionError,
       extractionNotes: invoiceCaptureTable.extractionNotes,
@@ -209,6 +216,15 @@ router.get("/invoices", async (req, res): Promise<void> => {
       freightAmount: invoiceCaptureTable.freightAmount,
       paymentTerms: invoiceCaptureTable.paymentTerms,
       vendorMatchScore: invoiceCaptureTable.vendorMatchScore,
+      validationStatus: invoiceCaptureTable.validationStatus,
+      reviewStatus: invoiceCaptureTable.reviewStatus,
+      overallReviewStatus: invoiceCaptureTable.overallReviewStatus,
+      duplicateCheck: invoiceCaptureTable.duplicateCheck,
+      vendorCheck: invoiceCaptureTable.vendorCheck,
+      poCheck: invoiceCaptureTable.poCheck,
+      amountCheck: invoiceCaptureTable.amountCheck,
+      totalTieOut: invoiceCaptureTable.totalTieOut,
+      validationDetails: invoiceCaptureTable.validationDetails,
       extractionStatus: invoiceCaptureTable.extractionStatus,
       extractionError: invoiceCaptureTable.extractionError,
       extractionNotes: invoiceCaptureTable.extractionNotes,
@@ -449,6 +465,9 @@ router.post("/invoices/:id/match-vendor", async (req, res): Promise<void> => {
 
   await applyVendorMatch(params.data.id, existing.vendorRawName);
 
+  // Re-run validation so check fields and routing reflect the new vendor match.
+  await validateInvoice(params.data.id);
+
   const row = await getInvoiceById(params.data.id);
   res.json(GetInvoiceResponse.parse(serializeInvoice(row)));
 });
@@ -629,9 +648,37 @@ router.post("/invoices/:id/approve", async (req, res): Promise<void> => {
     return;
   }
 
+  if (existing.status === "APPROVED" || existing.status === "POSTED") {
+    res.status(409).json({ error: "Invoice is already approved." });
+    return;
+  }
+
+  const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+  const isExceptionApproval = existing.status === "EXCEPTION";
+
+  // Exception approval requires a documented reason (override).
+  if (isExceptionApproval && !reason) {
+    res.status(422).json({
+      error: "A documented reason is required to approve an invoice that is in exception.",
+    });
+    return;
+  }
+
+  // Re-run validation before allowing approval.
+  const outcome = await validateInvoice(params.data.id);
+
+  // Block approval if validation now finds blocking issues — unless this is a
+  // documented exception override.
+  if (outcome.blocking.length > 0 && !isExceptionApproval) {
+    res.status(422).json({
+      error: `Cannot approve — validation failed: ${outcome.blocking.join("; ")}`,
+    });
+    return;
+  }
+
   await db
     .update(invoiceCaptureTable)
-    .set({ status: "APPROVED" })
+    .set({ status: "APPROVED", overallReviewStatus: "APPROVED" })
     .where(eq(invoiceCaptureTable.id, params.data.id));
 
   await appendAudit({
@@ -640,6 +687,9 @@ router.post("/invoices/:id/approve", async (req, res): Promise<void> => {
     oldValue: existing.status,
     newValue: "APPROVED",
     editorRole: "AP_APPROVER",
+    note: isExceptionApproval
+      ? `Exception override. Reason: ${reason}${outcome.blocking.length > 0 ? ` | Overridden: ${outcome.blocking.join("; ")}` : ""}`
+      : reason || undefined,
   });
 
   const row = await getInvoiceById(params.data.id);
@@ -701,53 +751,25 @@ router.post("/invoices/:id/submit", async (req, res): Promise<void> => {
     return;
   }
 
-  // Vendor must be matched before submission
-  if (!existing.vendorId) {
-    res.status(422).json({ error: "A vendor must be selected before submitting this invoice for approval." });
-    return;
-  }
+  // Run the authoritative validation engine first — it persists all check
+  // fields and routes the invoice (exception / needs-review / pending approval).
+  // Running it unconditionally ensures submit never bypasses the validator
+  // (a missing vendor, for example, becomes a blocking check → exception).
+  const outcome = await validateInvoice(params.data.id);
 
-  // Check for duplicate before submitting
-  if (await isDuplicate(existing.vendorId, existing.invoiceNumber, params.data.id)) {
+  // Surface duplicates with an explicit 409 for the client. Validation has
+  // already run and persisted, so the validator is never bypassed.
+  if (outcome.checks.duplicateCheck === "FAIL") {
     res.status(409).json({ error: "Duplicate invoice (same vendor + invoice number)" });
     return;
   }
 
-  // Check confidence: route to EXCEPTION if low
-  const score = existing.confidenceScore != null ? Number(existing.confidenceScore) : null;
-  const hasLowConfidence = existing.lowConfidenceFields && existing.lowConfidenceFields.length > 0;
-  const routeToException = score != null && score < CONFIDENCE_THRESHOLD;
-
-  if (routeToException || hasLowConfidence) {
-    await db
-      .update(invoiceCaptureTable)
-      .set({
-        status: "EXCEPTION",
-        exceptionReason: routeToException
-          ? `Low confidence score: ${score?.toFixed(2)}`
-          : `Low confidence fields: ${existing.lowConfidenceFields}`,
-      })
-      .where(eq(invoiceCaptureTable.id, params.data.id));
-
-    await appendAudit({
-      invoiceId: params.data.id,
-      action: "ROUTED_TO_EXCEPTION",
-      oldValue: existing.status,
-      newValue: "EXCEPTION",
-    });
-  } else {
-    await db
-      .update(invoiceCaptureTable)
-      .set({ status: "PENDING_APPROVAL" })
-      .where(eq(invoiceCaptureTable.id, params.data.id));
-
-    await appendAudit({
-      invoiceId: params.data.id,
-      action: "SUBMITTED",
-      oldValue: existing.status,
-      newValue: "PENDING_APPROVAL",
-    });
-  }
+  await appendAudit({
+    invoiceId: params.data.id,
+    action: "SUBMITTED",
+    oldValue: existing.status,
+    newValue: outcome.blocking.length > 0 ? "EXCEPTION" : "PENDING_APPROVAL",
+  });
 
   const row = await getInvoiceById(params.data.id);
   res.json(SubmitInvoiceResponse.parse(serializeInvoice(row)));
@@ -773,9 +795,29 @@ router.post("/invoices/bulk-approve", async (req, res): Promise<void> => {
         errors.push(`Invoice ${id}: not found`);
         continue;
       }
+      if (row.status === "APPROVED" || row.status === "POSTED") {
+        failed++;
+        errors.push(`Invoice ${id}: already approved`);
+        continue;
+      }
+      // Exception invoices require a documented reason — approve individually.
+      if (row.status === "EXCEPTION") {
+        failed++;
+        errors.push(`Invoice ${id}: in exception — approve individually with a documented reason`);
+        continue;
+      }
+
+      // Re-run validation before approving.
+      const outcome = await validateInvoice(id);
+      if (outcome.blocking.length > 0) {
+        failed++;
+        errors.push(`Invoice ${id}: validation failed — ${outcome.blocking.join("; ")}`);
+        continue;
+      }
+
       await db
         .update(invoiceCaptureTable)
-        .set({ status: "APPROVED" })
+        .set({ status: "APPROVED", overallReviewStatus: "APPROVED" })
         .where(eq(invoiceCaptureTable.id, id));
       await appendAudit({
         invoiceId: id,

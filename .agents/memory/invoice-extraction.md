@@ -29,12 +29,22 @@ model JSON for audit; `field_confidence` stores per-field scores keyed by the
 internal field names the review UI understands.
 
 ## Post-extraction routing decision
-Pipeline order: extract -> vendor match -> validation. Validation routes to
-EXCEPTION for low overall confidence, any low-confidence field, missing required
-fields (vendor, invoice number, total, invoice date), or duplicate
-(vendorId + invoiceNumber). A clean invoice is **auto-advanced to
-PENDING_APPROVAL**.
-**Why:** this replaced an earlier manual processor "Submit for Approval" review
-step — done to match the user's written spec for straight-through processing of
-clean invoices. If a human-review gate is reintroduced, this auto-advance is the
-line to change.
+Pipeline order: extract -> vendor match -> validation. A single authoritative
+engine (`validationService.validateInvoice`) runs after extraction, after vendor
+matching, on submit, and on approval. It splits findings into **blocking** vs
+**warnings**:
+- blocking (missing/invalid required fields, vendor required/inactive/on-hold,
+  due date neither present nor derivable, total ≤ 0, non-USD currency, duplicate
+  vendorId+invoiceNumber, header tie-out mismatch) → routes to **EXCEPTION**.
+- warnings/low-confidence (overall conf < 0.85, low critical-field conf, missing
+  PO) → stays **PENDING_APPROVAL** with `reviewStatus = NEEDS_REVIEW` (a flag,
+  not a separate status).
+- clean → **PENDING_APPROVAL**.
+There is **no NEEDS_REVIEW status** in the enum — needs-review is PENDING_APPROVAL
++ the reviewStatus flag.
+**Why:** low confidence / missing PO are NOT hard stops — they should be visible
+for human review but not blocked, per the validation-tightening spec. Earlier
+behavior (any low confidence → EXCEPTION) was too aggressive.
+**How to apply:** only ever downgrade status via this engine; it guards terminal
+states (won't downgrade APPROVED/POSTED). Approval re-runs it; exception override
+on approve requires a documented reason.

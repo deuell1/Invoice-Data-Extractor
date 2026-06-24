@@ -1,5 +1,5 @@
 - [Date serialization in Drizzle routes](date-serialization.md) — nullable timestamp columns return Date objects but Zod string schemas reject them; must serialize before parsing.
 - [Invoice confidence scaling](invoice-confidence-scaling.md) — overall confidenceScore is 0–1, per-field fieldConfidence is 0–100; don't conflate the two scales/thresholds.
 - [Vendor matching service](vendor-matching.md) — controlled vendor ID assignment via fuzzy match on vendorRawName; 85% threshold; clear exception on success only when current exceptionReason mentions "vendor"/"match".
-- [Invoice extraction service](invoice-extraction.md) — OpenAI Responses Structured Outputs shape, 0-100→0-1 confidence convention, model→internal field mapping, clean invoices auto-advance to PENDING_APPROVAL.
+- [Invoice extraction service](invoice-extraction.md) — OpenAI Responses Structured Outputs shape, 0-100→0-1 confidence convention, model→internal field mapping; single validateInvoice engine routes blocking→EXCEPTION, warnings→PENDING_APPROVAL+NEEDS_REVIEW flag.
 - [Monorepo db schema changes](monorepo-db-schema.md) — after editing lib/db schema, run `typecheck:libs` (tsc --build) to refresh dist .d.ts or consumers fail to typecheck against new columns.

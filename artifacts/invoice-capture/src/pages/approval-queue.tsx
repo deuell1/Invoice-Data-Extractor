@@ -10,7 +10,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Download, CheckSquare, CheckCircle2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Loader2, Download, CheckSquare, CheckCircle2, AlertTriangle } from "lucide-react";
 import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -142,7 +143,21 @@ export function ApprovalQueue() {
                           onCheckedChange={(checked) => handleSelect(invoice.id, checked as boolean)}
                         />
                       </TableCell>
-                      <TableCell className="font-medium">{invoice.invoiceNumber || "—"}</TableCell>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-2">
+                          {invoice.invoiceNumber || "—"}
+                          {invoice.reviewStatus === "NEEDS_REVIEW" && (
+                            <Badge
+                              variant="outline"
+                              className="border-amber-500 text-amber-600 gap-1"
+                              data-testid={`badge-needs-review-${invoice.id}`}
+                            >
+                              <AlertTriangle className="h-3 w-3" />
+                              Needs Review
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
                       <TableCell>{invoice.vendorName || "—"}</TableCell>
                       <TableCell>
                         {invoice.totalAmount != null ? new Intl.NumberFormat("en-US", { style: "currency", currency: invoice.currency || "USD" }).format(invoice.totalAmount) : "—"}

@@ -51,6 +51,51 @@ export interface Invoice {
   paymentTerms?: string | null;
   /** @nullable */
   vendorMatchScore?: number | null;
+  /**
+     * Outcome of the authoritative validation engine (e.g. PASS, NEEDS_REVIEW, FAIL).
+     * @nullable
+     */
+  validationStatus?: string | null;
+  /**
+     * Review flag set when an invoice needs human review (e.g. NEEDS_REVIEW).
+     * @nullable
+     */
+  reviewStatus?: string | null;
+  /**
+     * Aggregate human review state (e.g. PENDING, APPROVED).
+     * @nullable
+     */
+  overallReviewStatus?: string | null;
+  /**
+     * Result of the duplicate (vendor + invoice number) check.
+     * @nullable
+     */
+  duplicateCheck?: string | null;
+  /**
+     * Result of the vendor validation check (required/active/not on hold/matched).
+     * @nullable
+     */
+  vendorCheck?: string | null;
+  /**
+     * Result of the purchase order capture check.
+     * @nullable
+     */
+  poCheck?: string | null;
+  /**
+     * Result of the amount validation check (total > 0, currency).
+     * @nullable
+     */
+  amountCheck?: string | null;
+  /**
+     * Result of the header tie-out check (subtotal + tax + freight = total).
+     * @nullable
+     */
+  totalTieOut?: string | null;
+  /**
+     * JSON detail of all validation checks, blocking issues, and warnings.
+     * @nullable
+     */
+  validationDetails?: string | null;
   extractionStatus?: InvoiceExtractionStatus;
   /** @nullable */
   extractionError?: string | null;

@@ -332,6 +332,12 @@ paths:
           required: true
           schema:
             type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApproveInput"
       responses:
         "200":
           description: Approved invoice
@@ -753,6 +759,33 @@ components:
           type: ["string", "null"]
         vendorMatchScore:
           type: ["number", "null"]
+        validationStatus:
+          type: ["string", "null"]
+          description: Outcome of the authoritative validation engine (e.g. PASS, NEEDS_REVIEW, FAIL).
+        reviewStatus:
+          type: ["string", "null"]
+          description: Review flag set when an invoice needs human review (e.g. NEEDS_REVIEW).
+        overallReviewStatus:
+          type: ["string", "null"]
+          description: Aggregate human review state (e.g. PENDING, APPROVED).
+        duplicateCheck:
+          type: ["string", "null"]
+          description: Result of the duplicate (vendor + invoice number) check.
+        vendorCheck:
+          type: ["string", "null"]
+          description: Result of the vendor validation check (required/active/not on hold/matched).
+        poCheck:
+          type: ["string", "null"]
+          description: Result of the purchase order capture check.
+        amountCheck:
+          type: ["string", "null"]
+          description: Result of the amount validation check (total > 0, currency).
+        totalTieOut:
+          type: ["string", "null"]
+          description: Result of the header tie-out check (subtotal + tax + freight = total).
+        validationDetails:
+          type: ["string", "null"]
+          description: JSON detail of all validation checks, blocking issues, and warnings.
         extractionStatus:
           type: string
           enum: [PENDING, PROCESSING, COMPLETED, FAILED]
@@ -875,6 +908,13 @@ components:
         reason:
           type: string
           minLength: 1
+
+    ApproveInput:
+      type: object
+      properties:
+        reason:
+          type: ["string", "null"]
+          description: Documented reason — required when approving an invoice that is in exception (override).
 
     DuplicateCheckResult:
       type: object

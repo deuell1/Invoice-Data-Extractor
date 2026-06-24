@@ -20,6 +20,7 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
+  ApproveInput,
   AuditLogEntry,
   BulkActionInput,
   BulkActionResult,
@@ -899,14 +900,16 @@ export const getApproveInvoiceUrl = (id: number,) => {
 /**
  * @summary Approve an invoice (AP Approver action)
  */
-export const approveInvoice = async (id: number, options?: RequestInit): Promise<Invoice> => {
+export const approveInvoice = async (id: number,
+    approveInput?: ApproveInput, options?: RequestInit): Promise<Invoice> => {
 
   return customFetch<Invoice>(getApproveInvoiceUrl(id),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      approveInput,)
   }
 );}
 
@@ -914,8 +917,8 @@ export const approveInvoice = async (id: number, options?: RequestInit): Promise
 
 
 export const getApproveInvoiceMutationOptions = <TError = ErrorType<ErrorEnvelope>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveInvoice>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof approveInvoice>>, TError,{id: number}, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveInvoice>>, TError,{id: number;data?: BodyType<ApproveInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof approveInvoice>>, TError,{id: number;data?: BodyType<ApproveInput>}, TContext> => {
 
 const mutationKey = ['approveInvoice'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -927,10 +930,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof approveInvoice>>, {id: number}> = (props) => {
-          const {id} = props ?? {};
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof approveInvoice>>, {id: number;data?: BodyType<ApproveInput>}> = (props) => {
+          const {id,data} = props ?? {};
 
-          return  approveInvoice(id,requestOptions)
+          return  approveInvoice(id,data,requestOptions)
         }
 
 
@@ -941,18 +944,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type ApproveInvoiceMutationResult = NonNullable<Awaited<ReturnType<typeof approveInvoice>>>
-
+    export type ApproveInvoiceMutationBody = BodyType<ApproveInput> | undefined
     export type ApproveInvoiceMutationError = ErrorType<ErrorEnvelope>
 
     /**
  * @summary Approve an invoice (AP Approver action)
  */
 export const useApproveInvoice = <TError = ErrorType<ErrorEnvelope>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveInvoice>>, TError,{id: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof approveInvoice>>, TError,{id: number;data?: BodyType<ApproveInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof approveInvoice>>,
         TError,
-        {id: number},
+        {id: number;data?: BodyType<ApproveInput>},
         TContext
       > => {
       return useMutation(getApproveInvoiceMutationOptions(options));
