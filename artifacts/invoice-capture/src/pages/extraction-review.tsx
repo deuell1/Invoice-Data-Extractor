@@ -24,7 +24,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge } from "@/components/status-badge";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, AlertCircle, CheckCircle2, AlertTriangle, RefreshCw, Clock, FileText, Info } from "lucide-react";
+import { Loader2, AlertCircle, CheckCircle2, AlertTriangle, RefreshCw, Clock, FileText, Info, ExternalLink, Download, FileWarning } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -74,6 +74,25 @@ const CHECK_RESULT_CLASS: Record<string, string> = {
   SKIPPED: "text-muted-foreground",
 };
 
+/**
+ * Build the secure, same-origin proxy URL for a stored invoice file. Each path
+ * segment is encoded so spaces and special characters (#, $, %, …) don't break
+ * the URL, and the original filename is passed as ?name= so the server can serve
+ * the correct Content-Type (stored objects are extension-less UUIDs).
+ */
+function buildStorageUrl(fileObjectPath: string, name?: string, download = false): string {
+  const rel = fileObjectPath.replace(/^\/objects/, "");
+  const encoded = rel
+    .split("/")
+    .map((seg) => encodeURIComponent(seg))
+    .join("/");
+  const params = new URLSearchParams();
+  if (name) params.set("name", name);
+  if (download) params.set("download", "1");
+  const qs = params.toString();
+  return `/api/storage/objects${encoded}${qs ? `?${qs}` : ""}`;
+}
+
 export function ExtractionReview() {
   const params = useParams();
   const id = Number(params.id);
@@ -105,9 +124,15 @@ export function ExtractionReview() {
 
   const [formData, setFormData] = useState<Record<string, string>>({});
   const [duplicateResult, setDuplicateResult] = useState<DuplicateCheckResult | null>(null);
+  const [previewError, setPreviewError] = useState(false);
   const [confirmRerunOpen, setConfirmRerunOpen] = useState(false);
   const initialized = useRef(false);
   const duplicateChecked = useRef(false);
+
+  // Reset the preview error state whenever we navigate to a different invoice.
+  useEffect(() => {
+    setPreviewError(false);
+  }, [id]);
 
   const hasManualEdits = useMemo(
     () => (auditLogs ?? []).some((log) => log.action === "FIELD_UPDATED"),
@@ -525,25 +550,87 @@ export function ExtractionReview() {
             <CardTitle className="text-sm font-medium">Document Viewer</CardTitle>
           </CardHeader>
           <CardContent className="p-0 flex-1 relative bg-gray-100 dark:bg-gray-800">
-            {invoice.fileObjectPath ? (
-              invoice.originalFileName.toLowerCase().endsWith(".pdf") ? (
-                <iframe
-                  src={`/api/storage/objects${invoice.fileObjectPath.replace(/^\/objects/, "")}`}
-                  className="absolute inset-0 w-full h-full border-0"
-                  title="Invoice PDF"
-                  data-testid="viewer-pdf"
-                />
-              ) : (
-                <div className="absolute inset-0 flex items-center justify-center overflow-auto p-4">
-                  <img
-                    src={`/api/storage/objects${invoice.fileObjectPath.replace(/^\/objects/, "")}`}
-                    alt="Invoice"
-                    className="max-w-full max-h-full object-contain"
-                    data-testid="viewer-img"
-                  />
-                </div>
-              )
-            ) : (
+            {invoice.fileObjectPath ? (() => {
+              const fileUrl = buildStorageUrl(invoice.fileObjectPath, invoice.originalFileName);
+              const downloadUrl = buildStorageUrl(
+                invoice.fileObjectPath,
+                invoice.originalFileName,
+                true,
+              );
+              const isPdf = invoice.originalFileName.toLowerCase().endsWith(".pdf");
+              return (
+                <>
+                  {previewError ? (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center p-6">
+                      <FileWarning className="h-10 w-10 text-muted-foreground" />
+                      <p className="text-sm text-muted-foreground">
+                        Document preview blocked or unavailable.
+                      </p>
+                      <div className="flex flex-wrap justify-center gap-2">
+                        <Button asChild variant="outline" size="sm" data-testid="button-open-document">
+                          <a href={fileUrl} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink className="mr-2 h-4 w-4" />
+                            Open document in new tab
+                          </a>
+                        </Button>
+                        <Button asChild variant="outline" size="sm" data-testid="button-download-document">
+                          <a href={downloadUrl}>
+                            <Download className="mr-2 h-4 w-4" />
+                            Download original file
+                          </a>
+                        </Button>
+                      </div>
+                    </div>
+                  ) : isPdf ? (
+                    <iframe
+                      src={fileUrl}
+                      className="absolute inset-0 w-full h-full border-0"
+                      title="Invoice PDF"
+                      data-testid="viewer-pdf"
+                      onError={() => setPreviewError(true)}
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center overflow-auto p-4">
+                      <img
+                        src={fileUrl}
+                        alt="Invoice"
+                        className="max-w-full max-h-full object-contain"
+                        data-testid="viewer-img"
+                        onError={() => setPreviewError(true)}
+                      />
+                    </div>
+                  )}
+                  {!previewError && (
+                    <div className="absolute top-2 right-2 flex gap-2">
+                      <Button
+                        asChild
+                        variant="secondary"
+                        size="sm"
+                        className="h-7 px-2 text-xs shadow-sm"
+                        data-testid="button-open-document"
+                      >
+                        <a href={fileUrl} target="_blank" rel="noopener noreferrer">
+                          <ExternalLink className="mr-1 h-3.5 w-3.5" />
+                          Open
+                        </a>
+                      </Button>
+                      <Button
+                        asChild
+                        variant="secondary"
+                        size="sm"
+                        className="h-7 px-2 text-xs shadow-sm"
+                        data-testid="button-download-document"
+                      >
+                        <a href={downloadUrl}>
+                          <Download className="mr-1 h-3.5 w-3.5" />
+                          Download
+                        </a>
+                      </Button>
+                    </div>
+                  )}
+                </>
+              );
+            })() : (
               <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
                 No document available
               </div>
