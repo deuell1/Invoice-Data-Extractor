@@ -265,9 +265,9 @@ export function ExtractionReview() {
       <div className="flex justify-between items-center shrink-0">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Review Invoice</h1>
-          <p className="text-sm text-muted-foreground flex items-center gap-2 mt-1">
+          <div className="text-sm text-muted-foreground flex items-center gap-2 mt-1">
             {invoice.originalFileName} <StatusBadge status={invoice.status} />
-          </p>
+          </div>
         </div>
         <div className="flex gap-3">
           <Button variant="outline" onClick={() => setLocation("/invoices")} data-testid="button-back">

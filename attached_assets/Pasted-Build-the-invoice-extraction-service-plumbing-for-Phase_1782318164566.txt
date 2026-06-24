@@ -1,0 +1,51 @@
+Build the invoice extraction service plumbing for Phase 1.
+
+Important:
+OPENAI_API_KEY is not available yet. Do not block the app from running without it. The service should check whether OPENAI_API_KEY exists. If it exists later, use the live extraction provider. If it does not exist, use a clearly labeled development/mock extraction mode.
+
+Requirements:
+- Create a server-side extraction service that accepts an invoice ID or document ID.
+- Load the uploaded invoice file from existing object storage.
+- Do not assign VendorID from extraction. VendorID must continue to come only from the Vendor_ID/vendor matching process.
+- Extract or mock these fields:
+  - vendorRawName
+  - invoiceNumber
+  - invoiceDate
+  - dueDate
+  - paymentTerms
+  - poNumber
+  - subtotal
+  - taxAmount
+  - freightAmount
+  - totalAmount or invoiceTotal, using the app’s existing field name
+  - amountDue if supported by the schema
+  - currency
+  - confidenceScore
+  - lowConfidenceFields
+  - fieldConfidence if the schema supports it
+- Store the extraction result on the invoice record.
+- Store the raw extraction JSON if the schema supports it.
+- Set extraction status clearly:
+  - PENDING_EXTRACTION when uploaded
+  - EXTRACTION_RUNNING when extraction begins, if this status is supported
+  - PENDING_APPROVAL, EXCEPTION, or PENDING_REVIEW based on validation results after extraction
+  - EXTRACTION_FAILED or EXCEPTION with a clear reason if extraction fails
+- Run existing vendor matching after extraction when vendorRawName is populated.
+- Run existing validation after extraction and vendor matching.
+- If confidenceScore is below 0.85 or lowConfidenceFields is not empty, route the invoice to EXCEPTION or Needs Review using the app’s existing status model.
+- Add a Re-run Extraction action that calls this service again.
+- Add clear error handling if the file cannot be loaded, extraction fails, or the API key is missing.
+
+Mock mode requirements:
+- Make mock mode obvious in the UI and logs.
+- Mock mode should populate realistic test values so the workflow can be tested end-to-end.
+- Mock mode should not pretend that live OCR/AI extraction occurred.
+- Do not use mock mode when OPENAI_API_KEY exists.
+
+Acceptance criteria:
+- A newly uploaded invoice can trigger extraction without crashing even when OPENAI_API_KEY is missing.
+- The invoice review screen can display prefilled mock extraction values.
+- Vendor matching runs after extraction.
+- Validation runs after extraction.
+- The app clearly communicates whether extraction was live or mock/development mode.
+- Adding OPENAI_API_KEY later should not require redesigning this workflow.
