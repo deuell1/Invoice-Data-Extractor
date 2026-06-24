@@ -3,6 +3,7 @@ import { Layout } from "@/components/layout";
 import { InvoiceList } from "@/pages/invoice-list";
 import { InvoiceIntake } from "@/pages/invoice-intake";
 import { ExtractionReview } from "@/pages/extraction-review";
+import { SourceBatch } from "@/pages/source-batch";
 import { ExceptionQueue } from "@/pages/exception-queue";
 import { ApprovalQueue } from "@/pages/approval-queue";
 import { VendorAdmin } from "@/pages/vendor-admin";
@@ -16,6 +17,7 @@ export function AppRouter() {
         
         <Route path="/invoices" component={InvoiceList} />
         <Route path="/invoices/new" component={InvoiceIntake} />
+        <Route path="/sources/:id" component={SourceBatch} />
         <Route path="/invoices/:id" component={ExtractionReview} />
         
         <Route path="/exceptions" component={ExceptionQueue} />

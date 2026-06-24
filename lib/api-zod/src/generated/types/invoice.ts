@@ -119,6 +119,26 @@ export interface Invoice {
   extractionNotes?: string | null;
   /** @nullable */
   lastExtractedAt?: Date | null;
+  /**
+     * ID of the source document this invoice was detected/split from.
+     * @nullable
+     */
+  sourceDocumentId?: number | null;
+  /**
+     * 1-based position of this invoice within its source document.
+     * @nullable
+     */
+  invoiceSequence?: number | null;
+  /**
+     * 1-based first page of this invoice within the source document.
+     * @nullable
+     */
+  pageStart?: number | null;
+  /**
+     * 1-based last page (inclusive) of this invoice within the source document.
+     * @nullable
+     */
+  pageEnd?: number | null;
   role?: InvoiceRole;
   createdAt: Date;
   updatedAt: Date;

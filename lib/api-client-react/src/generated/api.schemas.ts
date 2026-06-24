@@ -148,6 +148,26 @@ export interface Invoice {
   extractionNotes?: string | null;
   /** @nullable */
   lastExtractedAt?: string | null;
+  /**
+     * ID of the source document this invoice was detected/split from.
+     * @nullable
+     */
+  sourceDocumentId?: number | null;
+  /**
+     * 1-based position of this invoice within its source document.
+     * @nullable
+     */
+  invoiceSequence?: number | null;
+  /**
+     * 1-based first page of this invoice within the source document.
+     * @nullable
+     */
+  pageStart?: number | null;
+  /**
+     * 1-based last page (inclusive) of this invoice within the source document.
+     * @nullable
+     */
+  pageEnd?: number | null;
   role?: InvoiceRole;
   createdAt: string;
   updatedAt: string;
@@ -289,6 +309,57 @@ export interface InvoiceStats {
   posted: number;
   needsReview: number;
   totalApprovedAmount: number;
+}
+
+export type SourceDocumentProcessingStatus = typeof SourceDocumentProcessingStatus[keyof typeof SourceDocumentProcessingStatus];
+
+
+export const SourceDocumentProcessingStatus = {
+  PENDING: 'PENDING',
+  DETECTING: 'DETECTING',
+  COMPLETED: 'COMPLETED',
+  EXCEPTION: 'EXCEPTION',
+} as const;
+
+export interface SourceDocument {
+  id: number;
+  originalFileName: string;
+  fileObjectPath: string;
+  /** @nullable */
+  fileHash?: string | null;
+  sourceChannel: string;
+  /** @nullable */
+  uploadedBy?: string | null;
+  uploadedAt: string;
+  /** @nullable */
+  pageCount?: number | null;
+  /** @nullable */
+  detectedInvoiceCount?: number | null;
+  processingStatus: SourceDocumentProcessingStatus;
+  /** @nullable */
+  processingError?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SourceDocumentInput {
+  /** @minLength 1 */
+  fileObjectPath: string;
+  /** @minLength 1 */
+  originalFileName: string;
+  /** @nullable */
+  contentType?: string | null;
+  /** @nullable */
+  fileHash?: string | null;
+}
+
+export interface SourceDocumentWithInvoices {
+  source: SourceDocument;
+  invoices: Invoice[];
+  invoiceCount: number;
+  extractedCount: number;
+  exceptionCount: number;
+  pendingCount: number;
 }
 
 export interface Vendor {

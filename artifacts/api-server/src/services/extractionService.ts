@@ -4,6 +4,7 @@ import { applyVendorMatch } from "./vendorMatcher";
 import { validateInvoice } from "./validationService";
 import { logger } from "../lib/logger";
 import { ObjectStorageService } from "../lib/objectStorage";
+import { extractPdfPageRange } from "../lib/pdfUtils";
 
 /**
  * Extraction service.
@@ -492,6 +493,7 @@ function mapModelOutput(parsed: RawModelOutput, rawExtraction: string): Extracte
 async function openAiExtract(
   fileObjectPath: string,
   fileName: string,
+  pageRange?: { pageStart: number; pageEnd: number } | null,
 ): Promise<ExtractedFields> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -504,9 +506,29 @@ async function openAiExtract(
   const storage = new ObjectStorageService();
   const file = await storage.getObjectEntityFile(fileObjectPath);
   const [metadata] = await file.getMetadata();
-  const [buffer] = await file.download();
+  let [buffer] = await file.download();
   const contentType =
     (typeof metadata.contentType === "string" && metadata.contentType) || inferContentType(fileName);
+
+  // Multi-invoice source documents: extract this invoice from only its own
+  // pages. Splitting happens in-memory; the original stored file is untouched.
+  if (contentType === "application/pdf" && pageRange) {
+    try {
+      buffer = await extractPdfPageRange(buffer, pageRange.pageStart, pageRange.pageEnd);
+    } catch (err) {
+      // Do NOT fall back to the full document: extracting the whole packet would
+      // pull fields from the wrong invoice and silently corrupt this capture.
+      // Route to exception so the page boundaries can be reviewed manually.
+      logger.error(
+        { fileObjectPath, pageRange, err: (err as Error)?.message },
+        "openAiExtract: failed to split PDF page range",
+      );
+      throw new ExtractionError(
+        "UNSUPPORTED_FILE",
+        `Could not isolate pages ${pageRange.pageStart}-${pageRange.pageEnd} from the source file. Review the page split or enter the fields manually.`,
+      );
+    }
+  }
 
   // Validate file size and type BEFORE building/sending the OpenAI request.
   if (buffer.length > MAX_EXTRACTION_FILE_BYTES) {
@@ -621,6 +643,8 @@ export async function runExtraction(invoiceId: number): Promise<void> {
       fileObjectPath: invoiceCaptureTable.fileObjectPath,
       originalFileName: invoiceCaptureTable.originalFileName,
       extractionAttempts: invoiceCaptureTable.extractionAttempts,
+      pageStart: invoiceCaptureTable.pageStart,
+      pageEnd: invoiceCaptureTable.pageEnd,
     })
     .from(invoiceCaptureTable)
     .where(eq(invoiceCaptureTable.id, invoiceId))
@@ -640,9 +664,13 @@ export async function runExtraction(invoiceId: number): Promise<void> {
 
   try {
     const usingMock = !isExtractionConfigured();
+    const pageRange =
+      invoice.pageStart != null && invoice.pageEnd != null
+        ? { pageStart: invoice.pageStart, pageEnd: invoice.pageEnd }
+        : null;
     const fields = usingMock
       ? mockExtract(invoice.id, invoice.originalFileName)
-      : await openAiExtract(invoice.fileObjectPath, invoice.originalFileName);
+      : await openAiExtract(invoice.fileObjectPath, invoice.originalFileName, pageRange);
 
     await db
       .update(invoiceCaptureTable)

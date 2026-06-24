@@ -1,0 +1,187 @@
+Add support for uploaded files that contain more than one invoice.
+
+This is a critical Phase 1 blocker. The app currently assumes one uploaded file equals one invoice. That is incorrect. One uploaded PDF or scanned packet may contain multiple invoices.
+
+Do not rebuild the app from scratch. Preserve the existing upload, object storage, extraction, vendor matching, validation, review, audit log, exception queue, approval, CSV export, and VoucherID workflows.
+
+New business requirement:
+A single uploaded file may contain one invoice or multiple invoices. The system must detect and process each invoice as a separate invoice record while preserving the original uploaded file for audit support.
+
+Required workflow:
+1. User uploads one PDF/image file.
+2. System stores the original uploaded file unchanged.
+3. System creates a Source Document or Upload Batch record for the original file.
+4. System detects whether the file contains one invoice or multiple invoices.
+5. If one invoice is detected:
+   - Create one invoice_capture record.
+   - Link it to the source document.
+6. If multiple invoices are detected:
+   - Create one invoice_capture record per detected invoice.
+   - Each invoice record must link back to the same source document/original file.
+   - Each invoice record should store its invoice sequence number and page range.
+7. Each invoice record then goes through the existing workflow:
+   - extraction
+   - Vendor_ID matching
+   - validation
+   - AP review
+   - exception queue if needed
+   - approval
+   - CSV export
+   - VoucherID capture
+   - posted status
+
+Data model requirements:
+Add a new table if needed, such as source_documents or upload_batches, with fields like:
+- id
+- sourceDocumentId
+- originalFileName
+- fileObjectPath
+- fileHash
+- sourceChannel
+- uploadedBy
+- uploadedAt
+- pageCount
+- detectedInvoiceCount
+- processingStatus
+- processingError
+
+Update invoice_capture to include:
+- sourceDocumentId or uploadBatchId
+- invoiceSequence
+- pageStart
+- pageEnd
+- sourceFileObjectPath if needed
+- originalFileName if not already available
+- documentId as the business-facing invoice identifier after extraction:
+  VendorID - InvoiceNumber - InvoiceAmount
+
+Important:
+Keep the original internal invoice ID stable for audit logs and relationships.
+Do not replace the primary key with the business-facing DocumentID.
+The formatted DocumentID should remain the business-facing display ID.
+
+Invoice detection/splitting requirements:
+For PDFs:
+- Determine page count.
+- Ask OpenAI or the extraction service to identify how many separate invoices are present and their page ranges.
+- Return structured JSON like:
+{
+  "invoiceCount": 2,
+  "invoices": [
+    {
+      "invoiceSequence": 1,
+      "pageStart": 1,
+      "pageEnd": 2,
+      "reason": "Invoice number INV-1001 appears on pages 1-2"
+    },
+    {
+      "invoiceSequence": 2,
+      "pageStart": 3,
+      "pageEnd": 5,
+      "reason": "Invoice number INV-1002 appears on pages 3-5"
+    }
+  ]
+}
+- If page ranges are uncertain, create an exception requiring AP review.
+
+For image files:
+- Treat the image as one invoice unless the model clearly detects multiple invoice images on the same page.
+- If multiple invoices are visually detected in one image, route to exception with reason “Multiple Invoices In Single Image - Manual Split Required” unless reliable split/crop support exists.
+
+Extraction requirements:
+- For multi-invoice PDFs, extract each invoice using only its detected page range.
+- If page-range-specific extraction is difficult, still create separate invoice records and include page range metadata for review.
+- Do not combine multiple invoice totals into one invoice record.
+- Do not assign VendorID from OpenAI output.
+- VendorID must still come only from the controlled vendor table.
+
+Validation requirements:
+Each detected invoice must be validated independently:
+- vendor name extracted
+- Vendor_ID matched
+- invoice number present
+- invoice date present
+- due date or payment terms present
+- invoice total present
+- confidence score
+- duplicate check
+- vendor active/on-hold check
+
+Duplicate detection:
+Duplicate checks must run per detected invoice using:
+- VendorID + InvoiceNumber
+and optionally:
+- VendorID + InvoiceNumber + InvoiceTotal
+
+Review screen requirements:
+- Add source document context:
+  - Original uploaded file name
+  - Invoice sequence number
+  - Page range
+  - Detected invoice count
+- The document viewer should open the original file and, where possible, focus or show the relevant page range.
+- Each invoice record should be reviewable separately next to the extracted data.
+- Add a way to navigate between invoices detected from the same source file:
+  - Previous invoice
+  - Next invoice
+  - Back to source upload batch
+
+Intake screen requirements:
+After upload, show:
+- Source document uploaded
+- Number of invoices detected
+- Number successfully extracted
+- Number routed to exception
+- Links to each created invoice review record
+
+Exception handling:
+Add or support these exception reasons:
+- Multiple Invoice Detection Failed
+- Invoice Page Range Unclear
+- Multiple Invoices In Single Image - Manual Split Required
+- Invoice Split Required
+- Invoice Extraction Failed
+- Vendor Name Not Extracted
+- Vendor Not Found
+
+CSV export requirements:
+Export one row per invoice_capture record, not one row per uploaded source file.
+Include:
+- SourceDocumentID
+- OriginalFileName
+- InvoiceSequence
+- PageStart
+- PageEnd
+- DocumentID
+- VendorID
+- InvoiceNumber
+- InvoiceTotal
+- VoucherID
+
+Controls:
+- Preserve the original uploaded file unchanged.
+- Maintain audit trail per invoice record.
+- Maintain link from every invoice record back to the original source document.
+- Do not auto-post invoices.
+- Do not combine multiple invoices into one payable record.
+- Do not make files public.
+
+Acceptance criteria:
+1. User uploads a single PDF containing one invoice.
+   - System creates one invoice record.
+   - Invoice processes normally.
+
+2. User uploads a single PDF containing three invoices.
+   - System creates one source document record.
+   - System creates three invoice_capture records.
+   - Each invoice has its own extraction result, vendor match, validation status, review status, and VoucherID field.
+   - Each invoice links back to the same original uploaded file.
+   - Intake screen shows three detected invoices with links to each review record.
+
+3. If invoice page ranges cannot be determined:
+   - System routes the source document or invoice records to exception.
+   - User sees a clear message requiring manual split/review.
+
+4. CSV export returns one row per invoice, not one row per uploaded file.
+
+5. Original uploaded file remains available for audit support.

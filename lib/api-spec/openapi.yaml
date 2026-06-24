@@ -606,6 +606,57 @@ paths:
                 items:
                   $ref: "#/components/schemas/AuditLogEntry"
 
+  # ─── Source Documents ────────────────────────────────────────────────────────
+  /source-documents:
+    post:
+      tags: [sourceDocuments]
+      operationId: createSourceDocument
+      summary: Create a source document from an uploaded file and start detection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SourceDocumentInput"
+      responses:
+        "201":
+          description: Source document created; detection started
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourceDocumentWithInvoices"
+        "400":
+          description: Missing or invalid required fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /source-documents/{id}:
+    get:
+      tags: [sourceDocuments]
+      operationId: getSourceDocument
+      summary: Get a source document with its detected invoices
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Source document with invoices
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourceDocumentWithInvoices"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
   # ─── Storage ─────────────────────────────────────────────────────────────────
   /storage/uploads/request-url:
     post:
@@ -809,6 +860,18 @@ components:
         lastExtractedAt:
           type: ["string", "null"]
           format: date-time
+        sourceDocumentId:
+          type: ["integer", "null"]
+          description: ID of the source document this invoice was detected/split from.
+        invoiceSequence:
+          type: ["integer", "null"]
+          description: 1-based position of this invoice within its source document.
+        pageStart:
+          type: ["integer", "null"]
+          description: 1-based first page of this invoice within the source document.
+        pageEnd:
+          type: ["integer", "null"]
+          description: 1-based last page (inclusive) of this invoice within the source document.
         role:
           type: string
           enum: [AP_PROCESSOR, AP_APPROVER]
@@ -1018,6 +1081,92 @@ components:
           type: integer
         totalApprovedAmount:
           type: number
+
+    # ─── Source Document ─────────────────────────────────────────────────────────
+    SourceDocument:
+      type: object
+      required:
+        - id
+        - originalFileName
+        - fileObjectPath
+        - sourceChannel
+        - processingStatus
+        - uploadedAt
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+        originalFileName:
+          type: string
+        fileObjectPath:
+          type: string
+        fileHash:
+          type: ["string", "null"]
+        sourceChannel:
+          type: string
+        uploadedBy:
+          type: ["string", "null"]
+        uploadedAt:
+          type: string
+          format: date-time
+        pageCount:
+          type: ["integer", "null"]
+        detectedInvoiceCount:
+          type: ["integer", "null"]
+        processingStatus:
+          type: string
+          enum: [PENDING, DETECTING, COMPLETED, EXCEPTION]
+        processingError:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    SourceDocumentInput:
+      type: object
+      required:
+        - fileObjectPath
+        - originalFileName
+      properties:
+        fileObjectPath:
+          type: string
+          minLength: 1
+        originalFileName:
+          type: string
+          minLength: 1
+        contentType:
+          type: ["string", "null"]
+        fileHash:
+          type: ["string", "null"]
+
+    SourceDocumentWithInvoices:
+      type: object
+      required:
+        - source
+        - invoices
+        - invoiceCount
+        - extractedCount
+        - exceptionCount
+        - pendingCount
+      properties:
+        source:
+          $ref: "#/components/schemas/SourceDocument"
+        invoices:
+          type: array
+          items:
+            $ref: "#/components/schemas/Invoice"
+        invoiceCount:
+          type: integer
+        extractedCount:
+          type: integer
+        exceptionCount:
+          type: integer
+        pendingCount:
+          type: integer
 
     # ─── Vendor ─────────────────────────────────────────────────────────────────
     Vendor:

@@ -37,6 +37,8 @@ import type {
   ListInvoicesParams,
   ListVendorsParams,
   RejectInput,
+  SourceDocumentInput,
+  SourceDocumentWithInvoices,
   UploadUrlRequest,
   UploadUrlResponse,
   Vendor,
@@ -1684,6 +1686,154 @@ export function useGetInvoiceAuditLog<TData = Awaited<ReturnType<typeof getInvoi
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetInvoiceAuditLogQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getCreateSourceDocumentUrl = () => {
+
+
+
+
+  return `/api/source-documents`
+}
+
+/**
+ * @summary Create a source document from an uploaded file and start detection
+ */
+export const createSourceDocument = async (sourceDocumentInput: SourceDocumentInput, options?: RequestInit): Promise<SourceDocumentWithInvoices> => {
+
+  return customFetch<SourceDocumentWithInvoices>(getCreateSourceDocumentUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      sourceDocumentInput,)
+  }
+);}
+
+
+
+
+export const getCreateSourceDocumentMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSourceDocument>>, TError,{data: BodyType<SourceDocumentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSourceDocument>>, TError,{data: BodyType<SourceDocumentInput>}, TContext> => {
+
+const mutationKey = ['createSourceDocument'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSourceDocument>>, {data: BodyType<SourceDocumentInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createSourceDocument(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSourceDocumentMutationResult = NonNullable<Awaited<ReturnType<typeof createSourceDocument>>>
+    export type CreateSourceDocumentMutationBody = BodyType<SourceDocumentInput>
+    export type CreateSourceDocumentMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Create a source document from an uploaded file and start detection
+ */
+export const useCreateSourceDocument = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSourceDocument>>, TError,{data: BodyType<SourceDocumentInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createSourceDocument>>,
+        TError,
+        {data: BodyType<SourceDocumentInput>},
+        TContext
+      > => {
+      return useMutation(getCreateSourceDocumentMutationOptions(options));
+    }
+
+export const getGetSourceDocumentUrl = (id: number,) => {
+
+
+
+
+  return `/api/source-documents/${id}`
+}
+
+/**
+ * @summary Get a source document with its detected invoices
+ */
+export const getSourceDocument = async (id: number, options?: RequestInit): Promise<SourceDocumentWithInvoices> => {
+
+  return customFetch<SourceDocumentWithInvoices>(getGetSourceDocumentUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSourceDocumentQueryKey = (id: number,) => {
+    return [
+    `/api/source-documents/${id}`
+    ] as const;
+    }
+
+
+export const getGetSourceDocumentQueryOptions = <TData = Awaited<ReturnType<typeof getSourceDocument>>, TError = ErrorType<ErrorEnvelope>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSourceDocument>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSourceDocumentQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSourceDocument>>> = ({ signal }) => getSourceDocument(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSourceDocument>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSourceDocumentQueryResult = NonNullable<Awaited<ReturnType<typeof getSourceDocument>>>
+export type GetSourceDocumentQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Get a source document with its detected invoices
+ */
+
+export function useGetSourceDocument<TData = Awaited<ReturnType<typeof getSourceDocument>>, TError = ErrorType<ErrorEnvelope>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSourceDocument>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSourceDocumentQueryOptions(id,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

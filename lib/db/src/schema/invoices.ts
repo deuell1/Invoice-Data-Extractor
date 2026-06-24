@@ -10,6 +10,7 @@ import {
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { vendorIdTable } from "./vendors";
+import { sourceDocumentsTable } from "./source_documents";
 
 export const invoiceStatusEnum = pgEnum("invoice_status", [
   "PENDING_EXTRACTION",
@@ -37,6 +38,12 @@ export const invoiceCaptureTable = pgTable("invoice_capture", {
   currency: text("currency").notNull().default("USD"),
   fileObjectPath: text("file_object_path").notNull(),
   originalFileName: text("original_file_name").notNull(),
+  sourceDocumentId: integer("source_document_id").references(
+    () => sourceDocumentsTable.id,
+  ),
+  invoiceSequence: integer("invoice_sequence"),
+  pageStart: integer("page_start"),
+  pageEnd: integer("page_end"),
   documentId: text("document_id"),
   businessDocumentId: text("business_document_id"),
   vendorRawName: text("vendor_raw_name"),

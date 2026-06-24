@@ -82,6 +82,10 @@ export const ListInvoicesResponse = zod.object({
   "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
   "extractionNotes": zod.string().nullish(),
   "lastExtractedAt": zod.coerce.date().nullish(),
+  "sourceDocumentId": zod.number().nullish().describe('ID of the source document this invoice was detected\/split from.'),
+  "invoiceSequence": zod.number().nullish().describe('1-based position of this invoice within its source document.'),
+  "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
+  "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(listInvoicesResponseDataItemRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -192,6 +196,10 @@ export const GetInvoiceResponse = zod.object({
   "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
   "extractionNotes": zod.string().nullish(),
   "lastExtractedAt": zod.coerce.date().nullish(),
+  "sourceDocumentId": zod.number().nullish().describe('ID of the source document this invoice was detected\/split from.'),
+  "invoiceSequence": zod.number().nullish().describe('1-based position of this invoice within its source document.'),
+  "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
+  "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(getInvoiceResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -271,6 +279,10 @@ export const UpdateInvoiceResponse = zod.object({
   "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
   "extractionNotes": zod.string().nullish(),
   "lastExtractedAt": zod.coerce.date().nullish(),
+  "sourceDocumentId": zod.number().nullish().describe('ID of the source document this invoice was detected\/split from.'),
+  "invoiceSequence": zod.number().nullish().describe('1-based position of this invoice within its source document.'),
+  "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
+  "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(updateInvoiceResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -331,6 +343,10 @@ export const MatchInvoiceVendorResponse = zod.object({
   "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
   "extractionNotes": zod.string().nullish(),
   "lastExtractedAt": zod.coerce.date().nullish(),
+  "sourceDocumentId": zod.number().nullish().describe('ID of the source document this invoice was detected\/split from.'),
+  "invoiceSequence": zod.number().nullish().describe('1-based position of this invoice within its source document.'),
+  "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
+  "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(matchInvoiceVendorResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -391,6 +407,10 @@ export const ExtractInvoiceResponse = zod.object({
   "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
   "extractionNotes": zod.string().nullish(),
   "lastExtractedAt": zod.coerce.date().nullish(),
+  "sourceDocumentId": zod.number().nullish().describe('ID of the source document this invoice was detected\/split from.'),
+  "invoiceSequence": zod.number().nullish().describe('1-based position of this invoice within its source document.'),
+  "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
+  "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(extractInvoiceResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -455,6 +475,10 @@ export const UpdateInvoiceStatusResponse = zod.object({
   "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
   "extractionNotes": zod.string().nullish(),
   "lastExtractedAt": zod.coerce.date().nullish(),
+  "sourceDocumentId": zod.number().nullish().describe('ID of the source document this invoice was detected\/split from.'),
+  "invoiceSequence": zod.number().nullish().describe('1-based position of this invoice within its source document.'),
+  "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
+  "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(updateInvoiceStatusResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -521,6 +545,10 @@ export const SetVoucherIdResponse = zod.object({
   "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
   "extractionNotes": zod.string().nullish(),
   "lastExtractedAt": zod.coerce.date().nullish(),
+  "sourceDocumentId": zod.number().nullish().describe('ID of the source document this invoice was detected\/split from.'),
+  "invoiceSequence": zod.number().nullish().describe('1-based position of this invoice within its source document.'),
+  "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
+  "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(setVoucherIdResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -584,6 +612,10 @@ export const ApproveInvoiceResponse = zod.object({
   "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
   "extractionNotes": zod.string().nullish(),
   "lastExtractedAt": zod.coerce.date().nullish(),
+  "sourceDocumentId": zod.number().nullish().describe('ID of the source document this invoice was detected\/split from.'),
+  "invoiceSequence": zod.number().nullish().describe('1-based position of this invoice within its source document.'),
+  "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
+  "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(approveInvoiceResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -650,6 +682,10 @@ export const RejectInvoiceResponse = zod.object({
   "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
   "extractionNotes": zod.string().nullish(),
   "lastExtractedAt": zod.coerce.date().nullish(),
+  "sourceDocumentId": zod.number().nullish().describe('ID of the source document this invoice was detected\/split from.'),
+  "invoiceSequence": zod.number().nullish().describe('1-based position of this invoice within its source document.'),
+  "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
+  "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(rejectInvoiceResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -709,6 +745,10 @@ export const SubmitInvoiceResponse = zod.object({
   "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
   "extractionNotes": zod.string().nullish(),
   "lastExtractedAt": zod.coerce.date().nullish(),
+  "sourceDocumentId": zod.number().nullish().describe('ID of the source document this invoice was detected\/split from.'),
+  "invoiceSequence": zod.number().nullish().describe('1-based position of this invoice within its source document.'),
+  "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
+  "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(submitInvoiceResponseRoleDefault),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
@@ -920,6 +960,105 @@ export const GetInvoiceAuditLogResponseItem = zod.object({
   "createdAt": zod.coerce.date()
 })
 export const GetInvoiceAuditLogResponse = zod.array(GetInvoiceAuditLogResponseItem)
+
+
+/**
+ * @summary Create a source document from an uploaded file and start detection
+ */
+
+
+
+
+export const CreateSourceDocumentBody = zod.object({
+  "fileObjectPath": zod.string().min(1),
+  "originalFileName": zod.string().min(1),
+  "contentType": zod.string().nullish(),
+  "fileHash": zod.string().nullish()
+})
+
+
+/**
+ * @summary Get a source document with its detected invoices
+ */
+export const GetSourceDocumentParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const getSourceDocumentResponseInvoicesItemCurrencyDefault = `USD`;
+export const getSourceDocumentResponseInvoicesItemExtractionStatusDefault = `PENDING`;
+export const getSourceDocumentResponseInvoicesItemExtractionAttemptsDefault = 0;
+export const getSourceDocumentResponseInvoicesItemRoleDefault = `AP_PROCESSOR`;
+
+export const GetSourceDocumentResponse = zod.object({
+  "source": zod.object({
+  "id": zod.number(),
+  "originalFileName": zod.string(),
+  "fileObjectPath": zod.string(),
+  "fileHash": zod.string().nullish(),
+  "sourceChannel": zod.string(),
+  "uploadedBy": zod.string().nullish(),
+  "uploadedAt": zod.coerce.date(),
+  "pageCount": zod.number().nullish(),
+  "detectedInvoiceCount": zod.number().nullish(),
+  "processingStatus": zod.enum(['PENDING', 'DETECTING', 'COMPLETED', 'EXCEPTION']),
+  "processingError": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}),
+  "invoices": zod.array(zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED']),
+  "vendorId": zod.number().nullish(),
+  "vendorName": zod.string().nullish(),
+  "invoiceNumber": zod.string().nullish(),
+  "invoiceDate": zod.string().nullish(),
+  "totalAmount": zod.number().nullish(),
+  "taxAmount": zod.number().nullish(),
+  "poNumber": zod.string().nullish(),
+  "currency": zod.string().default(getSourceDocumentResponseInvoicesItemCurrencyDefault),
+  "fileObjectPath": zod.string(),
+  "originalFileName": zod.string(),
+  "documentId": zod.string().nullish(),
+  "businessDocumentId": zod.string().nullish().describe('Business-facing display ID formatted as \"VendorID - InvoiceNumber - Amount\" (e.g. \"V-00123 - INV-12345 - 1309.00\"). Null until vendor is matched and invoice number\/total are available.'),
+  "vendorRawName": zod.string().nullish(),
+  "dueDate": zod.string().nullish(),
+  "voucherId": zod.string().nullish(),
+  "exceptionReason": zod.string().nullish(),
+  "lowConfidenceFields": zod.string().nullish(),
+  "confidenceScore": zod.number().nullish(),
+  "subtotal": zod.number().nullish(),
+  "freightAmount": zod.number().nullish(),
+  "paymentTerms": zod.string().nullish(),
+  "vendorMatchScore": zod.number().nullish(),
+  "validationStatus": zod.string().nullish().describe('Outcome of the authoritative validation engine (e.g. PASS, NEEDS_REVIEW, FAIL).'),
+  "reviewStatus": zod.string().nullish().describe('Review flag set when an invoice needs human review (e.g. NEEDS_REVIEW).'),
+  "overallReviewStatus": zod.string().nullish().describe('Aggregate human review state (e.g. PENDING, APPROVED).'),
+  "duplicateCheck": zod.string().nullish().describe('Result of the duplicate (vendor + invoice number) check.'),
+  "vendorCheck": zod.string().nullish().describe('Result of the vendor validation check (required\/active\/not on hold\/matched).'),
+  "poCheck": zod.string().nullish().describe('Result of the purchase order capture check.'),
+  "amountCheck": zod.string().nullish().describe('Result of the amount validation check (total > 0, currency).'),
+  "totalTieOut": zod.string().nullish().describe('Result of the header tie-out check (subtotal + tax + freight = total).'),
+  "validationDetails": zod.string().nullish().describe('JSON detail of all validation checks, blocking issues, and warnings.'),
+  "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(getSourceDocumentResponseInvoicesItemExtractionStatusDefault),
+  "extractionError": zod.string().nullish(),
+  "extractionAttempts": zod.number().default(getSourceDocumentResponseInvoicesItemExtractionAttemptsDefault),
+  "extractionErrorDetail": zod.string().nullish().describe('Safe JSON troubleshooting detail for a failed extraction (no sensitive data).'),
+  "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
+  "extractionNotes": zod.string().nullish(),
+  "lastExtractedAt": zod.coerce.date().nullish(),
+  "sourceDocumentId": zod.number().nullish().describe('ID of the source document this invoice was detected\/split from.'),
+  "invoiceSequence": zod.number().nullish().describe('1-based position of this invoice within its source document.'),
+  "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
+  "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
+  "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(getSourceDocumentResponseInvoicesItemRoleDefault),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})),
+  "invoiceCount": zod.number(),
+  "extractedCount": zod.number(),
+  "exceptionCount": zod.number(),
+  "pendingCount": zod.number()
+})
 
 
 /**

@@ -12,6 +12,8 @@ import {
   useCheckDuplicate,
   useMatchInvoiceVendor,
   useExtractInvoice,
+  useGetSourceDocument,
+  getGetSourceDocumentQueryKey,
   getGetInvoiceAuditLogQueryKey,
 } from "@workspace/api-client-react";
 import type { DuplicateCheckResult } from "@workspace/api-client-react";
@@ -24,7 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge } from "@/components/status-badge";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, AlertCircle, CheckCircle2, AlertTriangle, RefreshCw, Clock, FileText, Info, ExternalLink, Download, FileWarning } from "lucide-react";
+import { Loader2, AlertCircle, CheckCircle2, AlertTriangle, RefreshCw, Clock, FileText, Info, ExternalLink, Download, FileWarning, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
@@ -114,6 +116,23 @@ export function ExtractionReview() {
   const { data: auditLogs } = useGetInvoiceAuditLog(id, {
     query: { enabled: !!id, queryKey: getGetInvoiceAuditLogQueryKey(id) },
   });
+
+  // Source-document context: when this invoice was split from a multi-invoice
+  // file, load its siblings so we can show batch context + Prev/Next nav.
+  const sourceDocumentId = invoice?.sourceDocumentId ?? null;
+  const { data: sourceData } = useGetSourceDocument(sourceDocumentId ?? 0, {
+    query: {
+      enabled: sourceDocumentId !== null,
+      queryKey: getGetSourceDocumentQueryKey(sourceDocumentId ?? 0),
+    },
+  });
+
+  const siblings = sourceData?.invoices ?? [];
+  const currentIndex = siblings.findIndex((s) => s.id === id);
+  const prevSibling = currentIndex > 0 ? siblings[currentIndex - 1] : null;
+  const nextSibling =
+    currentIndex >= 0 && currentIndex < siblings.length - 1 ? siblings[currentIndex + 1] : null;
+  const hasBatch = siblings.length > 1;
 
   const updateInvoice = useUpdateInvoice();
   const submitInvoice = useSubmitInvoice();
@@ -508,6 +527,62 @@ export function ExtractionReview() {
         </div>
       )}
 
+      {hasBatch && (
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 rounded-md border bg-muted/30 px-4 py-3 text-sm shrink-0"
+          data-testid="source-batch-context"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <span className="min-w-0">
+              Invoice{" "}
+              <span className="font-medium" data-testid="text-batch-position">
+                {currentIndex + 1} of {siblings.length}
+              </span>{" "}
+              from{" "}
+              <button
+                type="button"
+                className="font-medium underline underline-offset-2 hover:text-foreground"
+                onClick={() => setLocation(`/sources/${sourceDocumentId}`)}
+                data-testid="link-source-batch"
+              >
+                {invoice.originalFileName}
+              </button>
+              {invoice.pageStart != null && invoice.pageEnd != null && (
+                <span className="text-muted-foreground">
+                  {" "}·{" "}
+                  {invoice.pageStart === invoice.pageEnd
+                    ? `Page ${invoice.pageStart}`
+                    : `Pages ${invoice.pageStart}–${invoice.pageEnd}`}
+                </span>
+              )}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!prevSibling}
+              onClick={() => prevSibling && setLocation(`/invoices/${prevSibling.id}`)}
+              data-testid="button-prev-invoice"
+            >
+              <ChevronLeft className="mr-1 h-4 w-4" />
+              Prev
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!nextSibling}
+              onClick={() => nextSibling && setLocation(`/invoices/${nextSibling.id}`)}
+              data-testid="button-next-invoice"
+            >
+              Next
+              <ChevronRight className="ml-1 h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="flex justify-between items-center shrink-0">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Review Invoice</h1>
@@ -516,8 +591,12 @@ export function ExtractionReview() {
           </div>
         </div>
         <div className="flex gap-3">
-          <Button variant="outline" onClick={() => setLocation("/invoices")} data-testid="button-back">
-            Back
+          <Button
+            variant="outline"
+            onClick={() => setLocation(hasBatch ? `/sources/${sourceDocumentId}` : "/invoices")}
+            data-testid="button-back"
+          >
+            {hasBatch ? "Back to File" : "Back"}
           </Button>
           <Button
             variant="destructive"
@@ -558,6 +637,12 @@ export function ExtractionReview() {
                 true,
               );
               const isPdf = invoice.originalFileName.toLowerCase().endsWith(".pdf");
+              // When this invoice was split from a multi-invoice file, jump the
+              // PDF viewer to its first page.
+              const pdfViewerUrl =
+                isPdf && invoice.pageStart && invoice.pageStart > 1
+                  ? `${fileUrl}#page=${invoice.pageStart}`
+                  : fileUrl;
               return (
                 <>
                   {previewError ? (
@@ -583,7 +668,8 @@ export function ExtractionReview() {
                     </div>
                   ) : isPdf ? (
                     <iframe
-                      src={fileUrl}
+                      key={pdfViewerUrl}
+                      src={pdfViewerUrl}
                       className="absolute inset-0 w-full h-full border-0"
                       title="Invoice PDF"
                       data-testid="viewer-pdf"
