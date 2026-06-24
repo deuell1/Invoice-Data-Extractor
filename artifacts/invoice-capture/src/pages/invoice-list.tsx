@@ -13,7 +13,7 @@ import { StatusBadge } from "@/components/status-badge";
 import {
   FileText, AlertCircle, CheckSquare, CheckCircle, FilePlus, Loader2,
   Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown,
-  Send, DollarSign,
+  Send, DollarSign, Inbox, Eye, Percent,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -108,7 +108,7 @@ export function InvoiceList() {
         </Link>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 shrink-0">
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 shrink-0">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Invoices</CardTitle>
@@ -117,6 +117,17 @@ export function InvoiceList() {
           <CardContent>
             <div className="text-2xl font-bold" data-testid="stat-total">
               {statsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : stats?.total || 0}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Pending Extraction</CardTitle>
+            <Inbox className="h-4 w-4 text-slate-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-slate-500" data-testid="stat-pending-extraction">
+              {statsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : stats?.pendingExtraction || 0}
             </div>
           </CardContent>
         </Card>
@@ -139,6 +150,17 @@ export function InvoiceList() {
           <CardContent>
             <div className="text-2xl font-bold text-amber-500" data-testid="stat-pending">
               {statsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : stats?.pendingApproval || 0}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Needs Review</CardTitle>
+            <Eye className="h-4 w-4 text-orange-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-orange-500" data-testid="stat-needs-review">
+              {statsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : stats?.needsReview || 0}
             </div>
           </CardContent>
         </Card>
@@ -180,6 +202,21 @@ export function InvoiceList() {
                   notation: (stats?.totalApprovedAmount ?? 0) >= 100000 ? "compact" : "standard",
                   maximumFractionDigits: (stats?.totalApprovedAmount ?? 0) >= 100000 ? 1 : 0,
                 }).format(stats?.totalApprovedAmount ?? 0)
+              )}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Exception Rate</CardTitle>
+            <Percent className="h-4 w-4 text-rose-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold text-rose-500" data-testid="stat-exception-rate">
+              {statsLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                `${(stats?.total ? ((stats.exception / stats.total) * 100) : 0).toFixed(1)}%`
               )}
             </div>
           </CardContent>

@@ -346,7 +346,7 @@ router.post("/invoices/:id/extract", async (req, res): Promise<void> => {
 
 // ─── GET /invoices/stats ─────────────────────────────────────────────────────
 router.get("/invoices/stats", async (_req, res): Promise<void> => {
-  const [countRows, amountRow] = await Promise.all([
+  const [countRows, amountRow, needsReviewRow] = await Promise.all([
     db
       .select({
         status: invoiceCaptureTable.status,
@@ -358,6 +358,10 @@ router.get("/invoices/stats", async (_req, res): Promise<void> => {
       .select({ total: sql<number>`coalesce(sum(total_amount::numeric), 0)::float` })
       .from(invoiceCaptureTable)
       .where(inArray(invoiceCaptureTable.status, ["APPROVED", "POSTED"])),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(invoiceCaptureTable)
+      .where(eq(invoiceCaptureTable.reviewStatus, "NEEDS_REVIEW")),
   ]);
 
   const byStatus: Record<string, number> = {};
@@ -375,6 +379,7 @@ router.get("/invoices/stats", async (_req, res): Promise<void> => {
       pendingApproval: byStatus["PENDING_APPROVAL"] ?? 0,
       approved: byStatus["APPROVED"] ?? 0,
       posted: byStatus["POSTED"] ?? 0,
+      needsReview: needsReviewRow[0]?.count ?? 0,
       totalApprovedAmount: amountRow[0]?.total ?? 0,
     })
   );

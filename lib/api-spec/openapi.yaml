@@ -990,6 +990,7 @@ components:
         - pendingApproval
         - approved
         - posted
+        - needsReview
         - totalApprovedAmount
       properties:
         total:
@@ -1003,6 +1004,8 @@ components:
         approved:
           type: integer
         posted:
+          type: integer
+        needsReview:
           type: integer
         totalApprovedAmount:
           type: number

@@ -276,6 +276,7 @@ export interface InvoiceStats {
   pendingApproval: number;
   approved: number;
   posted: number;
+  needsReview: number;
   totalApprovedAmount: number;
 }
 

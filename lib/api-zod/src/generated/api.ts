@@ -120,6 +120,7 @@ export const GetInvoiceStatsResponse = zod.object({
   "pendingApproval": zod.number(),
   "approved": zod.number(),
   "posted": zod.number(),
+  "needsReview": zod.number(),
   "totalApprovedAmount": zod.number()
 })
 
