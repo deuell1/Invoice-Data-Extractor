@@ -390,21 +390,27 @@ router.get("/invoices/export", async (req, res): Promise<void> => {
       id: invoiceCaptureTable.id,
       documentId: invoiceCaptureTable.documentId,
       status: invoiceCaptureTable.status,
+      vendorId: invoiceCaptureTable.vendorId,
       vendorName: vendorIdTable.vendorName,
       vendorRawName: invoiceCaptureTable.vendorRawName,
       invoiceNumber: invoiceCaptureTable.invoiceNumber,
       invoiceDate: invoiceCaptureTable.invoiceDate,
       dueDate: invoiceCaptureTable.dueDate,
+      paymentTerms: invoiceCaptureTable.paymentTerms,
+      poNumber: invoiceCaptureTable.poNumber,
       subtotal: invoiceCaptureTable.subtotal,
+      taxAmount: invoiceCaptureTable.taxAmount,
       freightAmount: invoiceCaptureTable.freightAmount,
       totalAmount: invoiceCaptureTable.totalAmount,
-      taxAmount: invoiceCaptureTable.taxAmount,
-      poNumber: invoiceCaptureTable.poNumber,
-      paymentTerms: invoiceCaptureTable.paymentTerms,
       currency: invoiceCaptureTable.currency,
-      voucherId: invoiceCaptureTable.voucherId,
       confidenceScore: invoiceCaptureTable.confidenceScore,
       vendorMatchScore: invoiceCaptureTable.vendorMatchScore,
+      validationStatus: invoiceCaptureTable.validationStatus,
+      exceptionReason: invoiceCaptureTable.exceptionReason,
+      reviewStatus: invoiceCaptureTable.reviewStatus,
+      originalFileName: invoiceCaptureTable.originalFileName,
+      fileObjectPath: invoiceCaptureTable.fileObjectPath,
+      voucherId: invoiceCaptureTable.voucherId,
       createdAt: invoiceCaptureTable.createdAt,
     })
     .from(invoiceCaptureTable)
@@ -412,36 +418,110 @@ router.get("/invoices/export", async (req, res): Promise<void> => {
     .where(eq(invoiceCaptureTable.status, status as "APPROVED" | "POSTED"))
     .orderBy(invoiceCaptureTable.createdAt);
 
-  const header = "documentId,id,status,vendorName,vendorRawName,invoiceNumber,invoiceDate,dueDate,subtotal,freightAmount,totalAmount,taxAmount,currency,paymentTerms,poNumber,voucherId,confidenceScore,vendorMatchScore,createdAt";
+  // ── CSV formatting helpers ──────────────────────────────────────────────────
+  const pad = (n: number) => String(n).padStart(2, "0");
+  // Format any date-ish value to mm/dd/yyyy; leave unparseable text as-is.
+  const fmtDate = (value: string | Date | null | undefined): string => {
+    if (value == null || value === "") return "";
+    if (typeof value === "string") {
+      const m = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (m) return `${m[2]}/${m[3]}/${m[1]}`;
+      const d = new Date(value);
+      if (!isNaN(d.getTime())) return `${pad(d.getUTCMonth() + 1)}/${pad(d.getUTCDate())}/${d.getUTCFullYear()}`;
+      return value;
+    }
+    return `${pad(value.getUTCMonth() + 1)}/${pad(value.getUTCDate())}/${value.getUTCFullYear()}`;
+  };
+  // Pass numeric values through as plain numbers (no $ or thousands separators).
+  const fmtAmount = (value: string | null | undefined): string =>
+    value == null || value === "" ? "" : String(value);
+  // Confidence/score columns are stored 0–1; export on a 0–100 scale.
+  const fmtPct = (value: string | null | undefined): string => {
+    if (value == null || value === "") return "";
+    const n = Number(value);
+    if (!Number.isFinite(n)) return "";
+    return String(Math.round(n * 100 * 10) / 10);
+  };
+  // Quote only when needed so numeric columns stay summable in Excel.
+  // Text cells beginning with a spreadsheet formula trigger (= + - @, tab, CR)
+  // are prefixed with a single quote to prevent CSV/formula injection.
+  const cell = (value: string | number | null | undefined): string => {
+    let s = value == null ? "" : String(value);
+    // Guard against formula triggers, but keep real numbers (incl. negatives) numeric.
+    if (typeof value !== "number" && /^[=+\-@\t\r]/.test(s) && !Number.isFinite(Number(s))) {
+      s = `'${s}`;
+    }
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  const exportedAt = fmtDate(new Date());
+
+  const header = [
+    "DocumentID",
+    "RecordID",
+    "VendorID",
+    "VendorNameMatched",
+    "VendorRawName",
+    "InvoiceNumber",
+    "InvoiceDate",
+    "DueDate",
+    "PaymentTerms",
+    "PONumberRaw",
+    "Subtotal",
+    "TaxAmount",
+    "FreightAmount",
+    "TotalAmount",
+    "Currency",
+    "ExtractionConfidence",
+    "VendorMatchScore",
+    "ValidationStatus",
+    "ExceptionReason",
+    "ReviewStatus",
+    "Status",
+    "FileName",
+    "FileObjectPath",
+    "VoucherID",
+    "CreatedAt",
+    "ExportedAt",
+  ].join(",");
+
   const csvRows = rows.map((r) =>
     [
-      r.documentId ?? "",
+      r.documentId,
       r.id,
-      r.status,
-      r.vendorName ?? "",
-      r.vendorRawName ?? "",
-      r.invoiceNumber ?? "",
-      r.invoiceDate ?? "",
-      r.dueDate ?? "",
-      r.subtotal ?? "",
-      r.freightAmount ?? "",
-      r.totalAmount ?? "",
-      r.taxAmount ?? "",
+      r.vendorId,
+      r.vendorName,
+      r.vendorRawName,
+      r.invoiceNumber,
+      fmtDate(r.invoiceDate),
+      fmtDate(r.dueDate),
+      r.paymentTerms,
+      r.poNumber,
+      fmtAmount(r.subtotal),
+      fmtAmount(r.taxAmount),
+      fmtAmount(r.freightAmount),
+      fmtAmount(r.totalAmount),
       r.currency,
-      r.paymentTerms ?? "",
-      r.poNumber ?? "",
-      r.voucherId ?? "",
-      r.confidenceScore ?? "",
-      r.vendorMatchScore ?? "",
-      r.createdAt.toISOString(),
+      fmtPct(r.confidenceScore),
+      fmtPct(r.vendorMatchScore),
+      r.validationStatus,
+      r.exceptionReason,
+      r.reviewStatus,
+      r.status,
+      r.originalFileName,
+      r.fileObjectPath,
+      r.voucherId,
+      fmtDate(r.createdAt),
+      exportedAt,
     ]
-      .map((v) => `"${String(v).replace(/"/g, '""')}"`)
+      .map(cell)
       .join(",")
   );
 
   res.setHeader("Content-Type", "text/csv");
   res.setHeader("Content-Disposition", `attachment; filename="invoices-${status.toLowerCase()}.csv"`);
-  res.send([header, ...csvRows].join("\n"));
+  // Prepend a UTF-8 BOM so Excel opens the file with correct encoding.
+  res.send("\uFEFF" + [header, ...csvRows].join("\r\n"));
 });
 
 // ─── POST /invoices/:id/match-vendor ─────────────────────────────────────────
