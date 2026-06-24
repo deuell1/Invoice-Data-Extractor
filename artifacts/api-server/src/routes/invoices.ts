@@ -675,6 +675,18 @@ router.patch("/invoices/:id/status", async (req, res): Promise<void> => {
     return;
   }
 
+  // Approval and posting carry workflow controls (documented reason, re-validation,
+  // voucher assignment) that live on the dedicated approve/voucher endpoints. The
+  // general-purpose status endpoint must not be used to reach those states,
+  // otherwise it would bypass those guards.
+  if (parsed.data.status === "APPROVED" || parsed.data.status === "POSTED") {
+    res.status(422).json({
+      error:
+        "Use the approve or voucher actions to approve or post an invoice; status cannot be set directly.",
+    });
+    return;
+  }
+
   await db
     .update(invoiceCaptureTable)
     .set({
