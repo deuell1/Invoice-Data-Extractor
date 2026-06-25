@@ -24,6 +24,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { VendorCombobox } from "@/components/vendor-combobox";
 import { StatusBadge } from "@/components/status-badge";
 import { InvoiceCleanupActions } from "@/components/cleanup-actions";
 import { useToast } from "@/hooks/use-toast";
@@ -113,7 +114,7 @@ export function ExtractionReview() {
     },
   });
 
-  const { data: vendorsData } = useListVendors({ limit: 100 });
+  const { data: vendorsData } = useListVendors({ limit: 500 });
   const { data: auditLogs } = useGetInvoiceAuditLog(id, {
     query: { enabled: !!id, queryKey: getGetInvoiceAuditLogQueryKey(id) },
   });
@@ -811,24 +812,16 @@ export function ExtractionReview() {
                   Vendor
                   {renderConfidence("vendorId")}
                 </Label>
-                <Select
+                <VendorCombobox
                   value={formData.vendorId}
-                  onValueChange={(val) => {
+                  onSelect={(val) => {
                     handleInputChange("vendorId", val);
                     handleSaveField("vendorId", val);
                   }}
-                >
-                  <SelectTrigger className={`w-full ${lowConfidenceClass("vendorId")}`} data-testid="select-vendor">
-                    <SelectValue placeholder="Select Vendor" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {vendorsData?.data?.map((v) => (
-                      <SelectItem key={v.id} value={v.id.toString()}>
-                        {v.vendorName}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  vendors={vendorsData?.data ?? []}
+                  vendorRawName={formData.vendorRawName}
+                  triggerClassName={`${lowConfidenceClass("vendorId")}`}
+                />
               </div>
 
               <div className="space-y-2">
