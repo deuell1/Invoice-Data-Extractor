@@ -14,9 +14,16 @@ import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/status-badge";
 import { InvoiceCleanupActions } from "@/components/cleanup-actions";
 import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
+import { useToast } from "@/hooks/use-toast";
+import {
   FileText, AlertCircle, CheckSquare, CheckCircle, FilePlus, Loader2,
   Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown,
-  Send, DollarSign, Inbox, Eye, Percent,
+  Send, DollarSign, Inbox, Eye, Percent, Download,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -50,6 +57,8 @@ export function InvoiceList() {
   const [sortBy, setSortBy] = useState<SortBy>("createdAt");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [showRemoved, setShowRemoved] = useState(false);
+  const [exporting, setExporting] = useState<null | "APPROVED" | "POSTED">(null);
+  const { toast } = useToast();
 
   const { data: stats, isLoading: statsLoading } = useGetInvoiceStats();
 
@@ -70,6 +79,40 @@ export function InvoiceList() {
   });
 
   const totalPages = Math.max(1, Math.ceil((invoicesRes?.total ?? 0) / PAGE_SIZE));
+
+  // Export the approved/exportable invoices to CSV. Voided/removed records are
+  // excluded by the backend export endpoint. The file is fetched as a blob so we
+  // can show loading/error states instead of a bare link.
+  const handleExport = async (status: "APPROVED" | "POSTED") => {
+    setExporting(status);
+    try {
+      const res = await fetch(`/api/invoices/export?status=${status}`, {
+        headers: { Accept: "text/csv" },
+      });
+      if (!res.ok) throw new Error(`Export failed (HTTP ${res.status})`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `invoices-${status.toLowerCase()}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast({
+        title: "Export ready",
+        description: `Downloaded ${status.toLowerCase()} invoices as CSV.`,
+      });
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Export failed",
+        description: err instanceof Error ? err.message : "Could not export invoices to CSV.",
+      });
+    } finally {
+      setExporting(null);
+    }
+  };
 
   const handleStatusChange = (status: StatusFilter) => {
     setStatusFilter(status);
@@ -237,6 +280,37 @@ export function InvoiceList() {
             <div className="flex items-center justify-between gap-4">
               <CardTitle>Invoices</CardTitle>
               <div className="flex items-center gap-4">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={exporting !== null}
+                      data-testid="button-export-csv"
+                    >
+                      {exporting !== null ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Download className="mr-2 h-4 w-4" />
+                      )}
+                      {exporting !== null ? "Exporting…" : "Export CSV"}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={() => handleExport("APPROVED")}
+                      data-testid="menu-export-approved"
+                    >
+                      Approved invoices
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      onClick={() => handleExport("POSTED")}
+                      data-testid="menu-export-posted"
+                    >
+                      Posted invoices
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <div className="flex items-center gap-2">
                   <Switch
                     id="show-removed"

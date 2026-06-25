@@ -56,6 +56,10 @@ function levenshtein(a: string, b: string): number {
  * Returns a value 0-1, combining Jaccard (token overlap) and Levenshtein
  * (character edit distance) on normalized strings.
  */
+export function scoreVendorSimilarity(a: string, b: string): number {
+  return scoreMatch(a, b);
+}
+
 function scoreMatch(raw: string, candidate: string): number {
   const normRaw = normalize(raw);
   const normCand = normalize(candidate);

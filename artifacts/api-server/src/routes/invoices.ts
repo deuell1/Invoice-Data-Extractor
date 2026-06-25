@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { applyVendorMatch } from "../services/vendorMatcher";
+import { applyVendorMatch, findBestVendorMatch } from "../services/vendorMatcher";
 import { triggerExtraction } from "../services/extractionService";
 import { validateInvoice, VENDOR_HARD_BLOCK_REASONS } from "../services/validationService";
 import { eq, ne, sql, and, inArray, ilike, or, asc, desc, isNull } from "drizzle-orm";
@@ -167,6 +167,8 @@ async function isDuplicate(vendorId: number | null | undefined, invoiceNumber: s
   const conditions = [
     eq(invoiceCaptureTable.vendorId, vendorId),
     eq(invoiceCaptureTable.invoiceNumber, invoiceNumber),
+    // Ignore voided/removed invoices — they are not active duplicates.
+    ne(invoiceCaptureTable.status, "VOIDED"),
   ];
   if (excludeId != null) {
     const rows = await db
@@ -183,6 +185,32 @@ async function isDuplicate(vendorId: number | null | undefined, invoiceNumber: s
     .limit(1);
   return rows.length > 0;
 }
+
+// ─── Helper: resolve the controlled vendorId to use for duplicate detection ──
+// When an explicit vendorId is present we use it. Otherwise we resolve the
+// vendorRawName against the controlled Vendor_ID table and, ONLY if the match is
+// at or above the vendor match threshold, return that controlled vendorId for
+// the duplicate check. The resolved id is used for detection only — it is NEVER
+// persisted to the invoice (vendor assignment stays in applyVendorMatch).
+async function resolveVendorIdForDuplicate(
+  vendorId: number | null | undefined,
+  vendorRawName: string | null | undefined,
+): Promise<number | null> {
+  if (vendorId != null) return vendorId;
+  if (!vendorRawName?.trim()) return null;
+  const outcome = await findBestVendorMatch(vendorRawName);
+  // matched | inactive | on_hold all mean score >= threshold (a confident match).
+  if (
+    outcome.status === "matched" ||
+    outcome.status === "inactive" ||
+    outcome.status === "on_hold"
+  ) {
+    return outcome.match.vendorId;
+  }
+  return null;
+}
+
+const DUPLICATE_MESSAGE = "Duplicate invoice detected for this vendor and invoice number.";
 
 // ─── Serialize invoice row to API shape ─────────────────────────────────────
 function serializeInvoice(row: Awaited<ReturnType<typeof getInvoiceById>>) {
@@ -333,8 +361,15 @@ router.post("/invoices", async (req, res): Promise<void> => {
     return;
   }
 
-  if (await isDuplicate(parsed.data.vendorId, parsed.data.invoiceNumber)) {
-    res.status(409).json({ error: "Duplicate invoice (same vendor + invoice number)" });
+  // Resolve a controlled vendorId from vendorRawName when no explicit vendorId
+  // was supplied, so intake duplicate detection fires even before the vendor is
+  // assigned. The resolved id is used for the check only — never persisted.
+  const createDupVendorId = await resolveVendorIdForDuplicate(
+    parsed.data.vendorId,
+    parsed.data.vendorRawName,
+  );
+  if (await isDuplicate(createDupVendorId, parsed.data.invoiceNumber)) {
+    res.status(409).json({ error: DUPLICATE_MESSAGE });
     return;
   }
 
@@ -683,9 +718,14 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
 
   const newVendorId = parsed.data.vendorId !== undefined ? parsed.data.vendorId : existing.vendorId;
   const newInvoiceNumber = parsed.data.invoiceNumber !== undefined ? parsed.data.invoiceNumber : existing.invoiceNumber;
+  const newVendorRawName =
+    parsed.data.vendorRawName !== undefined ? parsed.data.vendorRawName : existing.vendorRawName;
 
-  if (await isDuplicate(newVendorId, newInvoiceNumber, params.data.id)) {
-    res.status(409).json({ error: "Duplicate invoice (same vendor + invoice number)" });
+  // When the vendor isn't explicitly set, resolve it from vendorRawName so that
+  // manual edits to the raw name or invoice number still trip duplicate detection.
+  const patchDupVendorId = await resolveVendorIdForDuplicate(newVendorId, newVendorRawName);
+  if (await isDuplicate(patchDupVendorId, newInvoiceNumber, params.data.id)) {
+    res.status(409).json({ error: DUPLICATE_MESSAGE });
     return;
   }
 
@@ -931,6 +971,18 @@ router.patch("/invoices/:id/voucher", async (req, res): Promise<void> => {
     return;
   }
 
+  // Posting is blocked on a duplicate — a later-created invoice could have made
+  // this one a duplicate after approval. Resolve the controlled vendor (never
+  // persisted) and check against active (non-VOIDED) invoices.
+  const voucherDupVendorId = await resolveVendorIdForDuplicate(
+    existing.vendorId,
+    existing.vendorRawName,
+  );
+  if (await isDuplicate(voucherDupVendorId, existing.invoiceNumber, params.data.id)) {
+    res.status(409).json({ error: DUPLICATE_MESSAGE });
+    return;
+  }
+
   await db
     .update(invoiceCaptureTable)
     .set({ voucherId: parsed.data.voucherId, status: "POSTED" })
@@ -991,6 +1043,14 @@ router.post("/invoices/:id/approve", async (req, res): Promise<void> => {
     res.status(422).json({
       error: `Cannot approve — vendor must be matched to the controlled vendor list: ${vendorHardBlock.join("; ")}`,
     });
+    return;
+  }
+
+  // A duplicate is a HARD block on approval — it can never be exception-overridden.
+  // This guarantees a duplicate invoice cannot reach APPROVED (and therefore cannot
+  // be posted or exported).
+  if (outcome.checks.duplicateCheck === "FAIL") {
+    res.status(409).json({ error: DUPLICATE_MESSAGE });
     return;
   }
 
@@ -1094,7 +1154,7 @@ router.post("/invoices/:id/submit", async (req, res): Promise<void> => {
   // Surface duplicates with an explicit 409 for the client. Validation has
   // already run and persisted, so the validator is never bypassed.
   if (outcome.checks.duplicateCheck === "FAIL") {
-    res.status(409).json({ error: "Duplicate invoice (same vendor + invoice number)" });
+    res.status(409).json({ error: DUPLICATE_MESSAGE });
     return;
   }
 
@@ -1184,18 +1244,24 @@ router.post("/invoices/:id/check-duplicate", async (req, res): Promise<void> => 
     return;
   }
 
-  const { vendorId, invoiceNumber, totalAmount, invoiceDate } = invoice;
+  const { vendorId, invoiceNumber, totalAmount, invoiceDate, vendorRawName } = invoice;
 
-  // ── Step 1: Exact match — same vendor + invoice number, APPROVED or POSTED ──
-  if (vendorId && invoiceNumber) {
+  // Resolve a controlled vendorId from vendorRawName when the invoice has no
+  // assigned vendor yet, so duplicate detection still works during intake. The
+  // resolved id is used for the check only and is never persisted here.
+  const effectiveVendorId = await resolveVendorIdForDuplicate(vendorId, vendorRawName);
+
+  // ── Step 1: Exact match — same vendor + invoice number, any active status ──
+  // (Excludes only VOIDED, consistent with create/patch/validation duplicate checks.)
+  if (effectiveVendorId && invoiceNumber) {
     const exactMatches = await db
       .select({ id: invoiceCaptureTable.id })
       .from(invoiceCaptureTable)
       .where(
         and(
-          eq(invoiceCaptureTable.vendorId, vendorId),
+          eq(invoiceCaptureTable.vendorId, effectiveVendorId),
           eq(invoiceCaptureTable.invoiceNumber, invoiceNumber),
-          inArray(invoiceCaptureTable.status, ["APPROVED", "POSTED"]),
+          ne(invoiceCaptureTable.status, "VOIDED"),
           sql`${invoiceCaptureTable.id} <> ${params.data.id}`,
         )
       );
@@ -1214,7 +1280,7 @@ router.post("/invoices/:id/check-duplicate", async (req, res): Promise<void> => 
   }
 
   // ── Step 2: Fuzzy match — same vendor, amount ±1%, date ±3 days ─────────────
-  if (vendorId && totalAmount != null && invoiceDate) {
+  if (effectiveVendorId && totalAmount != null && invoiceDate) {
     const amount = Number(totalAmount);
     const minAmount = amount * 0.99;
     const maxAmount = amount * 1.01;
@@ -1224,8 +1290,8 @@ router.post("/invoices/:id/check-duplicate", async (req, res): Promise<void> => 
       .from(invoiceCaptureTable)
       .where(
         and(
-          eq(invoiceCaptureTable.vendorId, vendorId),
-          inArray(invoiceCaptureTable.status, ["APPROVED", "POSTED"]),
+          eq(invoiceCaptureTable.vendorId, effectiveVendorId),
+          ne(invoiceCaptureTable.status, "VOIDED"),
           sql`${invoiceCaptureTable.id} <> ${params.data.id}`,
           sql`${invoiceCaptureTable.totalAmount}::numeric BETWEEN ${minAmount}::numeric AND ${maxAmount}::numeric`,
           sql`${invoiceCaptureTable.invoiceDate}::date BETWEEN (${invoiceDate}::date - INTERVAL '3 days') AND (${invoiceDate}::date + INTERVAL '3 days')`,

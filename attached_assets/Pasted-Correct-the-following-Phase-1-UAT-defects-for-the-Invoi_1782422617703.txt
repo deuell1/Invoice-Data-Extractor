@@ -1,0 +1,141 @@
+Correct the following Phase 1 UAT defects for the Invoice Data Extractor app:
+
+Defects to correct:
+
+* D2: Intake duplicate guard gap — duplicate detection during intake does not fully evaluate vendors resolved from VendorRawName.
+* D4: Missing list-level Export CSV button — AP users need a convenient export action from the invoice list.
+* Edge verification: Inline document rendering must be verified specifically in Microsoft Edge.
+
+Do not rebuild the app. Do not add Phase 2 features. Preserve the existing upload, source document, multi-invoice, extraction, vendor matching, validation, review, exception, cleanup, approval, export, VoucherID, and KPI workflows.
+
+D2 — Close intake duplicate-guard gap
+
+Current issue:
+The duplicate guard returns 409 only when VendorID is already present. During intake/extraction, VendorID may not be assigned yet, but VendorRawName may already be extracted. The system needs to evaluate duplicate risk after resolving VendorRawName to a controlled vendor match.
+
+Required behavior:
+When an invoice is created, extracted, manually corrected, or vendor-matched, duplicate detection must evaluate the controlled vendor that can be resolved from VendorRawName, not only a pre-existing vendorId field.
+
+Requirements:
+
+1. If vendorId is present, continue using VendorID + InvoiceNumber as the primary duplicate check.
+2. If vendorId is missing but VendorRawName is present:
+
+   * Run or reuse the controlled vendor matching logic against VendorRawName.
+   * If VendorRawName resolves to a controlled vendor at or above the vendor match threshold, use that resolved VendorID for duplicate detection.
+   * If an existing invoice has the same resolved VendorID + InvoiceNumber, return or route as duplicate.
+3. Do not assign VendorID directly from OCR or OpenAI output.
+4. VendorID must still come only from the controlled Vendor_ID table.
+5. If the resolved vendor match is below threshold, do not treat it as a confirmed duplicate match, but surface a possible duplicate warning if invoice number and vendor name are similar.
+6. Duplicate detection should ignore VOIDED/removed invoices by default.
+7. Duplicate detection should check active invoices across PENDING_EXTRACTION, EXCEPTION, PENDING_APPROVAL, APPROVED, and POSTED unless business rules intentionally exclude a status.
+8. Multi-invoice uploads must run duplicate detection independently for each invoice_capture record.
+9. Duplicate detection must run after:
+
+   * extraction completes
+   * vendor matching completes
+   * VendorRawName is manually edited
+   * VendorID is manually selected through vendor autocomplete
+   * invoice number is manually edited
+   * submit for approval
+10. If a duplicate is found, block approval/export/posting and show a clear message:
+    “Duplicate invoice detected for this vendor and invoice number.”
+11. Audit duplicate-routing or duplicate-blocking events when the invoice status or validation result changes.
+
+Acceptance criteria for D2:
+
+* Uploading an invoice where VendorRawName resolves to an existing vendor and InvoiceNumber already exists triggers duplicate detection even if vendorId was initially blank.
+* Duplicate detection still works when vendorId is selected manually through vendor autocomplete.
+* Duplicate detection ignores VOIDED/removed invoices by default.
+* Duplicate checks run independently for each invoice in a multi-invoice PDF.
+* Duplicate invoices cannot be approved or posted without being flagged/blocked according to Phase 1 rules.
+
+D4 — Add list-level Export CSV button
+
+Current issue:
+CSV export exists, but AP users need a clear export button from the invoice list for convenience.
+
+Required behavior:
+Add a visible Export CSV button to the invoice list page.
+
+Requirements:
+
+1. Add an “Export CSV” button at the invoice list level.
+2. Place it in a convenient AP workflow location, such as the invoice list toolbar near search/filter controls.
+3. The export should respect the intended Phase 1 export behavior:
+
+   * Export one row per invoice_capture record.
+   * Include approved/exportable invoices according to existing export rules.
+   * Exclude VOIDED/removed invoices by default.
+   * Include multi-invoice fields such as SourceDocumentID, InvoiceSequence, PageStart, and PageEnd.
+4. If the existing backend export endpoint supports status-based export, connect the button to the correct approved/exportable status export.
+5. If multiple statuses are supported, provide a simple status selector or default to approved invoices, whichever best matches the current app design.
+6. Do not export bad/voided/removed invoices unless the user explicitly chooses a removed-record export mode later.
+7. Show a clear loading state while export is generating.
+8. If export fails, show a clear error message.
+9. Preserve existing CSV formula-injection protection and formatting.
+
+Acceptance criteria for D4:
+
+* AP user can export CSV directly from the invoice list page.
+* Export button is visible without opening an individual invoice.
+* CSV downloads successfully.
+* Export excludes VOIDED/removed records by default.
+* Multi-invoice source documents export as multiple rows, one row per invoice_capture record.
+* Exported file includes the fields already defined by the Phase 1 export endpoint.
+
+Microsoft Edge inline document rendering verification
+
+Current issue:
+Inline document preview has had browser-specific problems. It must be verified specifically in Microsoft Edge.
+
+Required behavior:
+Confirm that invoice PDFs/images render inline in the document viewer in Microsoft Edge without requiring the user to open a separate window.
+
+Requirements:
+
+1. Verify inline rendering in Microsoft Edge for:
+
+   * PDF invoice
+   * JPG invoice
+   * PNG invoice
+   * multi-invoice PDF page-range navigation
+2. Confirm the document preview remains visible next to extracted data.
+3. Confirm Next/Previous invoice navigation keeps the document viewer and extracted data synchronized.
+4. Confirm the storage proxy returns browser-safe headers:
+
+   * correct Content-Type
+   * inline Content-Disposition
+   * no X-Frame-Options header that blocks the app’s own iframe
+   * CSP allows same-origin inline PDF/image preview
+5. Confirm Open and Download remain secondary fallback controls only.
+6. If Edge still blocks inline preview, fix the preview handling without making files public and without exposing signed URLs in the UI.
+7. Preserve private storage access through the existing server proxy.
+
+Acceptance criteria for Edge verification:
+
+* PDF renders inline in Microsoft Edge.
+* JPG/PNG render inline in Microsoft Edge.
+* Multi-invoice PDF review can jump or display the relevant page range.
+* Document viewer remains next to extracted data.
+* User does not need to open a separate window for normal review.
+* Open/download fallback controls remain available but are not the primary workflow.
+
+Testing and reporting requirements:
+After implementing corrections, run or document UAT checks for D2, D4, and Edge rendering.
+
+Provide a concise completion report with:
+
+1. What changed
+2. Files/areas updated
+3. How D2 was fixed
+4. How D4 was implemented
+5. Edge rendering verification result
+6. Any remaining risks
+7. Whether Phase 1 UAT can proceed
+
+Do not mark this complete unless:
+
+* D2 duplicate detection works when vendor is resolved from VendorRawName.
+* D4 Export CSV button is visible and functional from the invoice list.
+* Microsoft Edge inline document rendering is verified or fixed.

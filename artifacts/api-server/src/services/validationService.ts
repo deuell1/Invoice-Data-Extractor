@@ -1,5 +1,6 @@
 import { db, invoiceCaptureTable, invoiceAuditLogTable, vendorIdTable } from "@workspace/db";
 import { eq, and, ne } from "drizzle-orm";
+import { findBestVendorMatch, scoreVendorSimilarity } from "./vendorMatcher";
 
 // ─── Thresholds ──────────────────────────────────────────────────────────────
 const CONFIDENCE_THRESHOLD = 0.85; // overall confidenceScore is stored 0–1
@@ -83,7 +84,14 @@ function addDays(date: Date, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-/** True if another invoice already has this vendor + invoice number. */
+// Soft similarity floor for surfacing a *possible* (non-blocking) duplicate when
+// the vendor cannot be resolved to a controlled match at/above threshold.
+const POSSIBLE_DUPLICATE_SIMILARITY = 0.6;
+
+/**
+ * True if another active invoice already has this vendor + invoice number.
+ * Voided/removed invoices are ignored so they never count as duplicates.
+ */
 async function hasDuplicate(
   invoiceId: number,
   vendorId: number | null,
@@ -98,10 +106,62 @@ async function hasDuplicate(
         eq(invoiceCaptureTable.vendorId, vendorId),
         eq(invoiceCaptureTable.invoiceNumber, invoiceNumber),
         ne(invoiceCaptureTable.id, invoiceId),
+        ne(invoiceCaptureTable.status, "VOIDED"),
       ),
     )
     .limit(1);
   return rows.length > 0;
+}
+
+/**
+ * Resolve the controlled vendorId to use for duplicate detection. Uses an
+ * explicit vendorId when present; otherwise resolves vendorRawName against the
+ * controlled Vendor_ID table and returns the id only when the match is at or
+ * above the vendor match threshold. Never persisted — detection only.
+ */
+async function resolveDuplicateVendorId(
+  vendorId: number | null,
+  vendorRawName: string | null,
+): Promise<number | null> {
+  if (vendorId != null) return vendorId;
+  if (!vendorRawName?.trim()) return null;
+  const outcome = await findBestVendorMatch(vendorRawName);
+  if (
+    outcome.status === "matched" ||
+    outcome.status === "inactive" ||
+    outcome.status === "on_hold"
+  ) {
+    return outcome.match.vendorId;
+  }
+  return null;
+}
+
+/**
+ * True if another active invoice shares this invoice number and a *similar*
+ * vendor raw name. Used to surface a non-blocking "possible duplicate" warning
+ * when the vendor cannot be confidently resolved to a controlled match.
+ */
+async function hasPossibleDuplicate(
+  invoiceId: number,
+  vendorRawName: string | null,
+  invoiceNumber: string | null,
+): Promise<boolean> {
+  if (!vendorRawName?.trim() || !invoiceNumber) return false;
+  const rows = await db
+    .select({ vendorRawName: invoiceCaptureTable.vendorRawName })
+    .from(invoiceCaptureTable)
+    .where(
+      and(
+        eq(invoiceCaptureTable.invoiceNumber, invoiceNumber),
+        ne(invoiceCaptureTable.id, invoiceId),
+        ne(invoiceCaptureTable.status, "VOIDED"),
+      ),
+    );
+  return rows.some(
+    (r) =>
+      r.vendorRawName != null &&
+      scoreVendorSimilarity(vendorRawName, r.vendorRawName) >= POSSIBLE_DUPLICATE_SIMILARITY,
+  );
 }
 
 function parseFieldConfidence(raw: string | null): Record<string, number> {
@@ -269,12 +329,25 @@ export async function validateInvoice(invoiceId: number): Promise<ValidationOutc
   }
 
   // ── Duplicate check ────────────────────────────────────────────────────────
+  // Resolve the controlled vendor from vendorRawName when no vendorId is set, so
+  // duplicates are detected even before the vendor is assigned. The resolved id
+  // is used for detection only and is never written to the invoice.
   let duplicateCheck: CheckResult = "PASS";
-  if (row.vendorId == null || !row.invoiceNumber) {
+  const dupVendorId = await resolveDuplicateVendorId(row.vendorId, row.vendorRawName);
+  if (!row.invoiceNumber) {
     duplicateCheck = "SKIPPED";
-  } else if (await hasDuplicate(invoiceId, row.vendorId, row.invoiceNumber)) {
-    duplicateCheck = "FAIL";
-    blocking.push("Duplicate invoice (same vendor + invoice number)");
+  } else if (dupVendorId != null) {
+    if (await hasDuplicate(invoiceId, dupVendorId, row.invoiceNumber)) {
+      duplicateCheck = "FAIL";
+      blocking.push("Duplicate invoice detected for this vendor and invoice number.");
+    }
+  } else if (await hasPossibleDuplicate(invoiceId, row.vendorRawName, row.invoiceNumber)) {
+    // Vendor not confidently resolved, but another active invoice shares this
+    // invoice number with a similar vendor name — surface a non-blocking warning.
+    duplicateCheck = "WARNING";
+    warnings.push("Possible duplicate invoice (similar vendor name and same invoice number).");
+  } else {
+    duplicateCheck = "SKIPPED";
   }
 
   // ── PO check (PO source validation skipped — no PO source configured) ───────
