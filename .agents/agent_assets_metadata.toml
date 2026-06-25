@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "rpNsNqR6LMpWjjhjt8_b6"
+uri = "file://Phase1_UAT_Exit_Report.md"
+type = "text"
+title = "Phase 1 UAT Exit Report — Invoice Capture MVP"
