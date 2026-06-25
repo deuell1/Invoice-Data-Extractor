@@ -145,8 +145,11 @@ export function ExtractionReview() {
   const [duplicateResult, setDuplicateResult] = useState<DuplicateCheckResult | null>(null);
   const [previewError, setPreviewError] = useState(false);
   const [confirmRerunOpen, setConfirmRerunOpen] = useState(false);
-  const initialized = useRef(false);
-  const duplicateChecked = useRef(false);
+  // Track which invoice (and extraction state) the local form was last seeded
+  // from, so navigating to a sibling invoice — or extraction completing —
+  // reloads the form instead of leaving the previous invoice's values in place.
+  const initializedKey = useRef<string | null>(null);
+  const duplicateCheckedFor = useRef<number | null>(null);
 
   // Reset the preview error state whenever we navigate to a different invoice.
   useEffect(() => {
@@ -178,7 +181,15 @@ export function ExtractionReview() {
   );
 
   useEffect(() => {
-    if (invoice && !initialized.current) {
+    if (!invoice) return;
+
+    // Seed (or re-seed) the form whenever the selected invoice changes, or when
+    // its extraction transitions to a new state (e.g. PROCESSING -> COMPLETED
+    // populates the freshly extracted fields). Keying on id + extractionStatus
+    // means in-flight user edits are preserved across polling/save refetches
+    // (same key) but a sibling invoice always loads its own data.
+    const seedKey = `${invoice.id}:${invoice.extractionStatus ?? ""}`;
+    if (initializedKey.current !== seedKey) {
       setFormData({
         vendorId: invoice.vendorId?.toString() || "",
         invoiceNumber: invoice.invoiceNumber || "",
@@ -190,12 +201,18 @@ export function ExtractionReview() {
         currency: invoice.currency || "USD",
         vendorRawName: invoice.vendorRawName || "",
       });
-      initialized.current = true;
+      initializedKey.current = seedKey;
     }
-    if (invoice && !duplicateChecked.current) {
-      duplicateChecked.current = true;
-      checkDuplicate.mutateAsync({ id }).then((result) => {
-        setDuplicateResult(result);
+
+    // Run the duplicate check once per invoice. Clear the previous invoice's
+    // result first so its banner never lingers over a different invoice.
+    if (duplicateCheckedFor.current !== invoice.id) {
+      duplicateCheckedFor.current = invoice.id;
+      setDuplicateResult(null);
+      const checkId = invoice.id;
+      checkDuplicate.mutateAsync({ id: checkId }).then((result) => {
+        // Ignore a late response if the user has already moved to another invoice.
+        if (duplicateCheckedFor.current === checkId) setDuplicateResult(result);
       }).catch(() => {});
     }
   }, [invoice]);
@@ -263,7 +280,8 @@ export function ExtractionReview() {
     try {
       await extractInvoice.mutateAsync({ id });
       toast({ title: "Extraction restarted", description: "Re-running data extraction…" });
-      initialized.current = false;
+      // Force the form to re-seed once new extracted data arrives.
+      initializedKey.current = null;
       queryClient.invalidateQueries({ queryKey: getGetInvoiceQueryKey(id) });
       queryClient.invalidateQueries({ queryKey: getGetInvoiceAuditLogQueryKey(id) });
     } catch {
@@ -313,7 +331,7 @@ export function ExtractionReview() {
   };
 
   if (isLoading) return <div className="flex justify-center p-12"><Loader2 className="h-8 w-8 animate-spin" /></div>;
-  if (error || !invoice) return <div className="p-8 text-center text-destructive">Failed to load invoice</div>;
+  if (error || !invoice) return <div className="p-8 text-center text-destructive">Failed to load selected invoice.</div>;
 
   const confidenceFor = (field: string): number | null => {
     const v = fieldConfidence[field];

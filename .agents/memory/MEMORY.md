@@ -1,4 +1,5 @@
 - [Date serialization in Drizzle routes](date-serialization.md) — nullable timestamp columns return Date objects but Zod string schemas reject them; must serialize before parsing.
+- [Review-screen local state keying](review-screen-local-state-keying.md) — seed form/derived state via a ref keyed by record id+phase, not a one-time boolean, so navigation re-seeds without clobbering edits.
 - [AP approval vendor hard-block](ap-approval-hard-block.md) — missing-vendor reasons are non-overridable at approval; documented-reason override only covers other exceptions.
 - [Stored-object inline preview headers](storage-inline-preview.md) — storage proxy must derive Content-Type from ?name= and serve inline, or Edge blocks the preview.
 - [Extraction failure routing](extraction-failure-routing.md) — failed extraction must flip invoice status to EXCEPTION, not just extractionStatus, or it sits PENDING forever.

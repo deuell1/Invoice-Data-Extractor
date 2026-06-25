@@ -1,0 +1,82 @@
+Fix the Extraction Review screen so extracted data updates correctly when cycling through invoices.
+
+Current issue:
+When reviewing multiple invoices from the same uploaded source document, the user can cycle between invoices, but the extracted data panel does not update to match the selected invoice. The document preview changes, but the form fields still show the previous invoice’s extracted data.
+
+This is a Phase 1 blocker because AP reviewers may approve or edit the wrong extracted data against the wrong invoice image.
+
+Do not rebuild the app. Only fix invoice navigation, state refresh, form binding, and review screen data loading.
+
+Business requirement:
+When the user clicks Previous Invoice, Next Invoice, or selects another invoice from the same source document:
+- The document viewer must show the selected invoice/page range.
+- The extracted data panel must show that same selected invoice’s extracted data.
+- Validation messages must update.
+- Confidence scores must update.
+- Vendor match details must update.
+- Audit log must update.
+- Status and exception reason must update.
+- Save/Edit/Approve actions must apply only to the currently selected invoice.
+
+Likely technical issue:
+The form state is probably initialized once and not reset when the invoice ID changes. For example, useEffect may only initialize formData on first load using a flag/ref, so changing invoices does not reload the form fields.
+
+Required fixes:
+1. Treat selected invoice ID as the source of truth.
+   - When the route param or selected invoice ID changes, refetch the invoice record.
+   - Do not reuse stale formData from the prior invoice.
+
+2. Reset form state when invoice changes.
+   - When invoice.id changes, reload formData from the new invoice.
+   - Reset duplicate check state.
+   - Reset validation summary state if stored locally.
+   - Reset field confidence display if stored locally.
+   - Reset selected vendor display if stored locally.
+   - Reset manual edit warning state as needed.
+
+3. Update query keys.
+   - Ensure the invoice detail query key includes the current invoice ID.
+   - Ensure audit log query key includes the current invoice ID.
+   - Ensure duplicate check query/mutation uses the current invoice ID.
+   - Ensure vendor match/re-run extraction actions use the current invoice ID.
+
+4. Fix navigation between invoices from the same source document.
+   - Previous Invoice should navigate to or select the previous invoice_capture record.
+   - Next Invoice should navigate to or select the next invoice_capture record.
+   - The URL should update, or the selected invoice ID state should update consistently.
+   - The review screen should not show old extracted data while the new invoice is loading.
+
+5. Add loading/transition behavior.
+   - When switching invoices, show a short loading state or skeleton in the extracted data panel.
+   - Do not show stale extracted fields while the new invoice is being fetched.
+   - If fetch fails, show “Failed to load selected invoice.”
+
+6. Ensure document viewer and extracted data remain synchronized.
+   - The displayed document/page range and the form data must come from the same invoice record.
+   - If invoice sequence/page range changes, both preview and extracted fields must update together.
+
+7. Protect edits from applying to the wrong invoice.
+   - Save field action must use the current invoice ID at the time of save.
+   - Submit for Approval must use the current invoice ID.
+   - Flag Exception must use the current invoice ID.
+   - Re-run Extraction must use the current invoice ID.
+   - Re-run Vendor Match must use the current invoice ID.
+   - VoucherID or status updates must not affect the previously selected invoice.
+
+8. Add test coverage or manual QA notes for:
+   - Review invoice 1, then click Next Invoice.
+   - Confirm document preview changes.
+   - Confirm extracted data changes.
+   - Confirm validation messages change.
+   - Edit a field on invoice 2 and confirm invoice 1 is not changed.
+   - Click Previous Invoice and confirm invoice 1 data returns.
+   - Re-run extraction on invoice 2 and confirm invoice 1 is not affected.
+   - Submit invoice 2 for approval and confirm invoice 1 status does not change.
+
+Acceptance criteria:
+- Cycling to another invoice updates the extracted data panel immediately and correctly.
+- No stale data from the previous invoice remains visible after switching.
+- The audit log updates to the selected invoice.
+- Validation/confidence/vendor match details update to the selected invoice.
+- Save/Edit/Approve/Exception actions affect only the selected invoice.
+- Document viewer and extracted data always refer to the same invoice record.
