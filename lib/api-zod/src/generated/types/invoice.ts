@@ -140,6 +140,26 @@ export interface Invoice {
      */
   pageEnd?: number | null;
   role?: InvoiceRole;
+  /**
+     * Timestamp when the invoice was voided/removed. Null when active.
+     * @nullable
+     */
+  removedAt?: Date | null;
+  /**
+     * Actor who voided/removed the invoice.
+     * @nullable
+     */
+  removedBy?: string | null;
+  /**
+     * Required reason captured when the invoice was voided/removed.
+     * @nullable
+     */
+  removalReason?: string | null;
+  /**
+     * Optional free-text note captured at removal time.
+     * @nullable
+     */
+  removalNote?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

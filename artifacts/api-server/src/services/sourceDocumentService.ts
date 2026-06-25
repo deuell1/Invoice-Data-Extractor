@@ -227,3 +227,169 @@ export async function getSourceDocumentWithInvoices(
 
   return { source, invoices };
 }
+
+export interface RemovalInput {
+  reason: string;
+  note?: string | null;
+  actor?: string | null;
+}
+
+/**
+ * Soft-remove a source document and void every child invoice with a shared
+ * reason. Removed records are excluded from active lists/queues/KPIs by default.
+ * Returns the refreshed source document with invoices, or null when not found.
+ */
+export async function removeSourceDocument(
+  sourceDocumentId: number,
+  input: RemovalInput,
+): Promise<SourceDocumentWithInvoices | null> {
+  const [source] = await db
+    .select()
+    .from(sourceDocumentsTable)
+    .where(eq(sourceDocumentsTable.id, sourceDocumentId))
+    .limit(1);
+
+  if (!source) return null;
+
+  const now = new Date();
+  const actor = input.actor ?? null;
+  const note = input.note ?? null;
+
+  // Mark the source removed and void every active child invoice (with an audit
+  // entry each) atomically, so a failure cannot leave the source flagged while
+  // only some of its invoices were voided.
+  await db.transaction(async (tx) => {
+    await tx
+      .update(sourceDocumentsTable)
+      .set({
+        removedAt: now,
+        removedBy: actor,
+        removalReason: input.reason,
+        removalNote: note,
+      })
+      .where(eq(sourceDocumentsTable.id, sourceDocumentId));
+
+    const children = await tx
+      .select({ id: invoiceCaptureTable.id, status: invoiceCaptureTable.status })
+      .from(invoiceCaptureTable)
+      .where(eq(invoiceCaptureTable.sourceDocumentId, sourceDocumentId));
+
+    for (const child of children) {
+      if (child.status === "VOIDED") continue;
+      await tx
+        .update(invoiceCaptureTable)
+        .set({
+          status: "VOIDED",
+          removedAt: now,
+          removedBy: actor,
+          removalReason: input.reason,
+          removalNote: note,
+        })
+        .where(eq(invoiceCaptureTable.id, child.id));
+      await tx.insert(invoiceAuditLogTable).values({
+        invoiceId: child.id,
+        action: "VOIDED",
+        oldValue: child.status,
+        newValue: "VOIDED",
+        editorRole: actor,
+        note: note ? `${input.reason} — ${note}` : input.reason,
+      });
+    }
+  });
+
+  return getSourceDocumentWithInvoices(sourceDocumentId);
+}
+
+export interface DeleteSourceDocumentResult {
+  deleted: boolean;
+  deletedInvoiceIds: number[];
+  deletedSourceDocumentId: number | null;
+  fileDeleted: boolean;
+  blockedReason?: string;
+}
+
+/**
+ * Permanently hard-delete a source document together with every child invoice
+ * (and their audit records), then delete the stored file. Blocked when any child
+ * invoice is posted. Designed for test-data cleanup.
+ */
+export async function deleteSourceDocument(
+  sourceDocumentId: number,
+): Promise<DeleteSourceDocumentResult | null> {
+  const [source] = await db
+    .select()
+    .from(sourceDocumentsTable)
+    .where(eq(sourceDocumentsTable.id, sourceDocumentId))
+    .limit(1);
+
+  if (!source) return null;
+
+  const children = await db
+    .select({ id: invoiceCaptureTable.id, status: invoiceCaptureTable.status })
+    .from(invoiceCaptureTable)
+    .where(eq(invoiceCaptureTable.sourceDocumentId, sourceDocumentId));
+
+  if (children.some((c) => c.status === "POSTED")) {
+    return {
+      deleted: false,
+      deletedInvoiceIds: [],
+      deletedSourceDocumentId: null,
+      fileDeleted: false,
+      blockedReason:
+        "This source document has a posted invoice and cannot be hard-deleted. Void or remove it instead.",
+    };
+  }
+
+  // Remove child audit logs (FK), then child invoices, then the source document,
+  // atomically so a mid-operation failure cannot leave dangling rows.
+  await db.transaction(async (tx) => {
+    for (const child of children) {
+      await tx
+        .delete(invoiceAuditLogTable)
+        .where(eq(invoiceAuditLogTable.invoiceId, child.id));
+    }
+    await tx
+      .delete(invoiceCaptureTable)
+      .where(eq(invoiceCaptureTable.sourceDocumentId, sourceDocumentId));
+    await tx.delete(sourceDocumentsTable).where(eq(sourceDocumentsTable.id, sourceDocumentId));
+  });
+
+  // Now that all rows for this source are gone, delete the stored file — but only
+  // if no other invoice or source document still references the same object
+  // (files can, in principle, be shared). Best-effort: never fail the delete
+  // because the blob could not be removed.
+  let fileDeleted = false;
+  if (source.fileObjectPath) {
+    const path = source.fileObjectPath;
+    const [invoiceRefs, sourceRefs] = await Promise.all([
+      db
+        .select({ id: invoiceCaptureTable.id })
+        .from(invoiceCaptureTable)
+        .where(eq(invoiceCaptureTable.fileObjectPath, path))
+        .limit(1),
+      db
+        .select({ id: sourceDocumentsTable.id })
+        .from(sourceDocumentsTable)
+        .where(eq(sourceDocumentsTable.fileObjectPath, path))
+        .limit(1),
+    ]);
+    if (invoiceRefs.length === 0 && sourceRefs.length === 0) {
+      try {
+        await new ObjectStorageService().deleteObject(path);
+        fileDeleted = true;
+      } catch (err) {
+        logger.warn(
+          { sourceDocumentId, err: (err as Error)?.message },
+          "deleteSourceDocument: file delete failed (best-effort)",
+        );
+      }
+    }
+  }
+
+  return {
+    deleted: true,
+    deletedInvoiceIds: children.map((c) => c.id),
+    deletedSourceDocumentId: sourceDocumentId,
+    fileDeleted,
+  };
+}

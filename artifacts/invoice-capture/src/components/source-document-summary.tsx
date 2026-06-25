@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useLocation } from "wouter";
 import {
   useGetSourceDocument,
@@ -12,11 +13,15 @@ import {
   Clock,
   ArrowRight,
   ScanLine,
+  Ban,
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/status-badge";
+import { SourceDocumentCleanupActions } from "@/components/cleanup-actions";
 
 const POLL_INTERVAL_MS = 1500;
 
@@ -47,6 +52,7 @@ function pageRangeLabel(inv: Invoice): string | null {
 
 export function SourceDocumentSummary({ sourceDocumentId }: { sourceDocumentId: number }) {
   const [, setLocation] = useLocation();
+  const [showRemoved, setShowRemoved] = useState(false);
 
   const { data, isLoading, error } = useGetSourceDocument(sourceDocumentId, {
     query: {
@@ -75,30 +81,62 @@ export function SourceDocumentSummary({ sourceDocumentId }: { sourceDocumentId: 
     );
   }
 
-  const { source, invoices, invoiceCount, extractedCount, exceptionCount, pendingCount } = data;
+  const { source, invoices, invoiceCount, extractedCount, exceptionCount, pendingCount, removedCount } = data;
   const detecting = source.processingStatus === "PENDING" || source.processingStatus === "DETECTING";
   const detectionFailed = source.processingStatus === "EXCEPTION";
+  const isRemoved = source.removedAt != null;
+  const hasPostedChild = invoices.some((i) => i.status === "POSTED");
+  const activeInvoices = invoices.filter((i) => i.status !== "VOIDED");
+  const displayInvoices = showRemoved ? invoices : activeInvoices;
 
   return (
     <Card data-testid="source-summary">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <FileText className="h-5 w-5 shrink-0" />
-          <span className="truncate" data-testid="text-source-filename">
-            {source.originalFileName}
-          </span>
-        </CardTitle>
-        <CardDescription>
-          {detecting
-            ? "Detecting invoices in this file…"
-            : detectionFailed
-              ? "We couldn't process this file."
-              : `${invoiceCount} invoice${invoiceCount === 1 ? "" : "s"} detected${
-                  source.pageCount ? ` across ${source.pageCount} page${source.pageCount === 1 ? "" : "s"}` : ""
-                }.`}
-        </CardDescription>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5 shrink-0" />
+              <span className="truncate" data-testid="text-source-filename">
+                {source.originalFileName}
+              </span>
+              {isRemoved && (
+                <Badge variant="outline" className="border-muted-foreground/40 text-muted-foreground shrink-0">
+                  Removed
+                </Badge>
+              )}
+            </CardTitle>
+            <CardDescription className="mt-1">
+              {detecting
+                ? "Detecting invoices in this file…"
+                : detectionFailed
+                  ? "We couldn't process this file."
+                  : `${invoiceCount} invoice${invoiceCount === 1 ? "" : "s"} detected${
+                      source.pageCount ? ` across ${source.pageCount} page${source.pageCount === 1 ? "" : "s"}` : ""
+                    }.`}
+            </CardDescription>
+          </div>
+          {!detecting && (
+            <SourceDocumentCleanupActions
+              sourceDocumentId={sourceDocumentId}
+              hasPostedChild={hasPostedChild}
+              onDeleted={() => setLocation("/invoices")}
+            />
+          )}
+        </div>
       </CardHeader>
       <CardContent className="space-y-5">
+        {isRemoved && (
+          <div
+            className="flex items-start gap-3 rounded-lg border border-muted-foreground/20 bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
+            data-testid="source-removed-banner"
+          >
+            <Ban className="h-5 w-5 shrink-0" />
+            <span>
+              This file was removed{source.removalReason ? `: ${source.removalReason}` : "."} Its invoices are hidden
+              from active queues.
+            </span>
+          </div>
+        )}
         {detecting && (
           <div
             className="flex items-center gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700"
@@ -151,9 +189,23 @@ export function SourceDocumentSummary({ sourceDocumentId }: { sourceDocumentId: 
           </div>
         )}
 
-        {invoices.length > 0 && (
+        {removedCount > 0 && (
+          <div className="flex items-center justify-end gap-2">
+            <Switch
+              id="source-show-removed"
+              checked={showRemoved}
+              onCheckedChange={setShowRemoved}
+              data-testid="switch-source-show-removed"
+            />
+            <Label htmlFor="source-show-removed" className="text-sm text-muted-foreground">
+              Show removed ({removedCount})
+            </Label>
+          </div>
+        )}
+
+        {displayInvoices.length > 0 && (
           <div className="space-y-2" data-testid="source-invoice-list">
-            {invoices.map((inv) => {
+            {displayInvoices.map((inv) => {
               const range = pageRangeLabel(inv);
               const extracting =
                 inv.extractionStatus === "PENDING" ||

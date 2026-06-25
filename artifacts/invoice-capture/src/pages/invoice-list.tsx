@@ -9,7 +9,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/status-badge";
+import { InvoiceCleanupActions } from "@/components/cleanup-actions";
 import {
   FileText, AlertCircle, CheckSquare, CheckCircle, FilePlus, Loader2,
   Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown,
@@ -17,7 +20,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 
-type StatusFilter = "ALL" | "PENDING_EXTRACTION" | "EXCEPTION" | "PENDING_APPROVAL" | "APPROVED" | "POSTED";
+type StatusFilter = "ALL" | "PENDING_EXTRACTION" | "EXCEPTION" | "PENDING_APPROVAL" | "APPROVED" | "POSTED" | "VOIDED";
 type SortBy = "createdAt" | "invoiceDate" | "totalAmount" | "vendorName";
 type SortDir = "asc" | "desc";
 
@@ -28,6 +31,7 @@ const STATUS_TABS: { label: string; value: StatusFilter }[] = [
   { label: "Needs Approval", value: "PENDING_APPROVAL" },
   { label: "Approved", value: "APPROVED" },
   { label: "Posted", value: "POSTED" },
+  { label: "Removed", value: "VOIDED" },
 ];
 
 const PAGE_SIZE = 10;
@@ -45,8 +49,11 @@ export function InvoiceList() {
   const [page, setPage] = useState(1);
   const [sortBy, setSortBy] = useState<SortBy>("createdAt");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [showRemoved, setShowRemoved] = useState(false);
 
   const { data: stats, isLoading: statsLoading } = useGetInvoiceStats();
+
+  const viewingRemoved = statusFilter === "VOIDED";
 
   const queryParams = {
     status: statusFilter === "ALL" ? undefined : statusFilter,
@@ -55,6 +62,7 @@ export function InvoiceList() {
     sortDir,
     page,
     limit: PAGE_SIZE,
+    includeRemoved: showRemoved || viewingRemoved ? true : undefined,
   };
 
   const { data: invoicesRes, isLoading: invoicesLoading } = useListInvoices(queryParams, {
@@ -226,17 +234,34 @@ export function InvoiceList() {
       <Card className="flex-1 flex flex-col min-h-0">
         <CardHeader className="shrink-0 pb-0">
           <div className="flex flex-col gap-3">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-4">
               <CardTitle>Invoices</CardTitle>
-              <div className="relative w-64">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search invoice # or vendor…"
-                  className="pl-8 h-9"
-                  value={search}
-                  onChange={(e) => handleSearchChange(e.target.value)}
-                  data-testid="input-search"
-                />
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Switch
+                    id="show-removed"
+                    checked={showRemoved}
+                    onCheckedChange={(v) => {
+                      setShowRemoved(v);
+                      setPage(1);
+                    }}
+                    disabled={viewingRemoved}
+                    data-testid="switch-show-removed"
+                  />
+                  <Label htmlFor="show-removed" className="text-sm text-muted-foreground whitespace-nowrap">
+                    Show removed
+                  </Label>
+                </div>
+                <div className="relative w-64">
+                  <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    placeholder="Search invoice # or vendor…"
+                    className="pl-8 h-9"
+                    value={search}
+                    onChange={(e) => handleSearchChange(e.target.value)}
+                    data-testid="input-search"
+                  />
+                </div>
               </div>
             </div>
             <div className="flex gap-1 border-b pb-0 overflow-x-auto">
@@ -298,11 +323,18 @@ export function InvoiceList() {
                       <StatusBadge status={invoice.status} />
                     </TableCell>
                     <TableCell className="text-right">
-                      <Link href={`/invoices/${invoice.id}`}>
-                        <Button variant="ghost" size="sm" data-testid={`button-review-${invoice.id}`}>
-                          Review
-                        </Button>
-                      </Link>
+                      <div className="flex items-center justify-end gap-1">
+                        <Link href={`/invoices/${invoice.id}`}>
+                          <Button variant="ghost" size="sm" data-testid={`button-review-${invoice.id}`}>
+                            Review
+                          </Button>
+                        </Link>
+                        <InvoiceCleanupActions
+                          invoiceId={invoice.id}
+                          status={invoice.status}
+                          variant="compact"
+                        />
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))

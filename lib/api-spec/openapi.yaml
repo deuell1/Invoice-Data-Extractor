@@ -44,7 +44,13 @@ paths:
           in: query
           schema:
             type: string
-            enum: [PENDING_EXTRACTION, EXCEPTION, PENDING_APPROVAL, APPROVED, POSTED]
+            enum: [PENDING_EXTRACTION, EXCEPTION, PENDING_APPROVAL, APPROVED, POSTED, VOIDED]
+        - name: includeRemoved
+          in: query
+          description: When true, voided/removed invoices are included in results. Removed invoices are excluded by default.
+          schema:
+            type: boolean
+            default: false
         - name: vendorId
           in: query
           schema:
@@ -196,6 +202,87 @@ paths:
                 $ref: "#/components/schemas/ErrorEnvelope"
         "409":
           description: Duplicate invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      operationId: deleteInvoice
+      tags: [invoices]
+      summary: Permanently hard-delete an invoice (test-data cleanup)
+      description: >-
+        Permanently removes an invoice and its audit/extraction records. Posted
+        invoices cannot be hard-deleted (void/remove them instead). The stored
+        source file is deleted only when no other invoice references it. Requires
+        explicit confirmation.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HardDeleteInput"
+      responses:
+        "200":
+          description: Deletion result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResult"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Invoice cannot be hard-deleted (e.g. posted) or confirmation missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /invoices/{id}/void:
+    post:
+      operationId: voidInvoice
+      tags: [invoices]
+      summary: Void/remove an invoice (soft removal with reason)
+      description: >-
+        Marks an invoice as VOIDED with a required reason. Voided invoices are
+        excluded from active lists, queues, KPIs, CSV export and duplicate
+        detection by default.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RemovalInput"
+      responses:
+        "200":
+          description: Voided invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Missing removal reason
           content:
             application/json:
               schema:
@@ -656,6 +743,86 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
+    delete:
+      tags: [sourceDocuments]
+      operationId: deleteSourceDocument
+      summary: Permanently hard-delete a source document and all its invoices (test-data cleanup)
+      description: >-
+        Permanently removes a source document together with every child invoice
+        and their audit/extraction records, and deletes the stored file. Blocked
+        when any child invoice is posted. Requires explicit confirmation.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/HardDeleteInput"
+      responses:
+        "200":
+          description: Deletion result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteResult"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Source document cannot be hard-deleted (e.g. posted child) or confirmation missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /source-documents/{id}/remove:
+    post:
+      tags: [sourceDocuments]
+      operationId: removeSourceDocument
+      summary: Remove a source document and void all its invoices (soft removal with reason)
+      description: >-
+        Marks a source document and all of its child invoices as removed/voided
+        with a required reason. Removed records are excluded from active lists,
+        queues, KPIs, CSV export and duplicate detection by default.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RemovalInput"
+      responses:
+        "200":
+          description: Source document after removal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourceDocumentWithInvoices"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "422":
+          description: Missing removal reason
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
 
   # ─── Storage ─────────────────────────────────────────────────────────────────
   /storage/uploads/request-url:
@@ -766,7 +933,7 @@ components:
           type: integer
         status:
           type: string
-          enum: [PENDING_EXTRACTION, EXCEPTION, PENDING_APPROVAL, APPROVED, POSTED]
+          enum: [PENDING_EXTRACTION, EXCEPTION, PENDING_APPROVAL, APPROVED, POSTED, VOIDED]
         vendorId:
           type: ["integer", "null"]
         vendorName:
@@ -876,6 +1043,19 @@ components:
           type: string
           enum: [AP_PROCESSOR, AP_APPROVER]
           default: AP_PROCESSOR
+        removedAt:
+          type: ["string", "null"]
+          format: date-time
+          description: Timestamp when the invoice was voided/removed. Null when active.
+        removedBy:
+          type: ["string", "null"]
+          description: Actor who voided/removed the invoice.
+        removalReason:
+          type: ["string", "null"]
+          description: Required reason captured when the invoice was voided/removed.
+        removalNote:
+          type: ["string", "null"]
+          description: Optional free-text note captured at removal time.
         createdAt:
           type: string
           format: date-time
@@ -1119,6 +1299,19 @@ components:
           enum: [PENDING, DETECTING, COMPLETED, EXCEPTION]
         processingError:
           type: ["string", "null"]
+        removedAt:
+          type: ["string", "null"]
+          format: date-time
+          description: Timestamp when the source document was removed. Null when active.
+        removedBy:
+          type: ["string", "null"]
+          description: Actor who removed the source document.
+        removalReason:
+          type: ["string", "null"]
+          description: Required reason captured when the source document was removed.
+        removalNote:
+          type: ["string", "null"]
+          description: Optional free-text note captured at removal time.
         createdAt:
           type: string
           format: date-time
@@ -1152,6 +1345,7 @@ components:
         - extractedCount
         - exceptionCount
         - pendingCount
+        - removedCount
       properties:
         source:
           $ref: "#/components/schemas/SourceDocument"
@@ -1161,12 +1355,63 @@ components:
             $ref: "#/components/schemas/Invoice"
         invoiceCount:
           type: integer
+          description: Count of active (non-removed) invoices.
         extractedCount:
           type: integer
         exceptionCount:
           type: integer
         pendingCount:
           type: integer
+        removedCount:
+          type: integer
+          description: Count of voided/removed invoices belonging to this source document.
+
+    RemovalInput:
+      type: object
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          description: Required reason for voiding/removing the record.
+        note:
+          type: ["string", "null"]
+          description: Optional free-text note.
+        actor:
+          type: ["string", "null"]
+          description: Actor performing the removal (permissions deferred).
+
+    HardDeleteInput:
+      type: object
+      required:
+        - confirm
+      properties:
+        confirm:
+          type: boolean
+          description: Must be true to perform a permanent hard delete.
+        actor:
+          type: ["string", "null"]
+          description: Actor performing the deletion (permissions deferred).
+
+    DeleteResult:
+      type: object
+      required:
+        - deleted
+        - deletedInvoiceIds
+        - fileDeleted
+      properties:
+        deleted:
+          type: boolean
+        deletedInvoiceIds:
+          type: array
+          items:
+            type: integer
+        deletedSourceDocumentId:
+          type: ["integer", "null"]
+        fileDeleted:
+          type: boolean
+          description: Whether the underlying stored file was also deleted.
 
     # ─── Vendor ─────────────────────────────────────────────────────────────────
     Vendor:

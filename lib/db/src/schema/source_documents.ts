@@ -32,6 +32,10 @@ export const sourceDocumentsTable = pgTable("source_documents", {
     .notNull()
     .default("PENDING"),
   processingError: text("processing_error"),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
+  removedBy: text("removed_by"),
+  removalReason: text("removal_reason"),
+  removalNote: text("removal_note"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

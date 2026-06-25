@@ -2,8 +2,15 @@ import { Router, type IRouter } from "express";
 import { applyVendorMatch } from "../services/vendorMatcher";
 import { triggerExtraction } from "../services/extractionService";
 import { validateInvoice, VENDOR_HARD_BLOCK_REASONS } from "../services/validationService";
-import { eq, sql, and, inArray, ilike, or, asc, desc } from "drizzle-orm";
-import { db, invoiceCaptureTable, invoiceAuditLogTable, vendorIdTable } from "@workspace/db";
+import { eq, ne, sql, and, inArray, ilike, or, asc, desc, isNull } from "drizzle-orm";
+import {
+  db,
+  invoiceCaptureTable,
+  invoiceAuditLogTable,
+  vendorIdTable,
+  sourceDocumentsTable,
+} from "@workspace/db";
+import { ObjectStorageService } from "../lib/objectStorage";
 import {
   CreateInvoiceBody,
   UpdateInvoiceBody,
@@ -33,6 +40,10 @@ import {
   ExportInvoicesCsvQueryParams,
   CheckDuplicateParams,
   CheckDuplicateResponse,
+  VoidInvoiceParams,
+  VoidInvoiceBody,
+  DeleteInvoiceParams,
+  DeleteInvoiceBody,
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -86,6 +97,10 @@ async function getInvoiceById(id: number) {
       pageStart: invoiceCaptureTable.pageStart,
       pageEnd: invoiceCaptureTable.pageEnd,
       role: invoiceCaptureTable.role,
+      removedAt: invoiceCaptureTable.removedAt,
+      removedBy: invoiceCaptureTable.removedBy,
+      removalReason: invoiceCaptureTable.removalReason,
+      removalNote: invoiceCaptureTable.removalNote,
       createdAt: invoiceCaptureTable.createdAt,
       updatedAt: invoiceCaptureTable.updatedAt,
     })
@@ -115,6 +130,35 @@ async function appendAudit(params: {
     editorRole: params.editorRole ?? null,
     note: params.note ?? null,
   });
+}
+
+// ─── Helper: delete a stored file only when nothing else references it ───────
+// File-safety rule: the underlying source file must not be deleted while any
+// other invoice row OR any source_document row still points at it. Returns
+// whether the file was actually deleted.
+async function deleteFileIfUnreferenced(fileObjectPath: string): Promise<boolean> {
+  if (!fileObjectPath) return false;
+  const [invoiceRefs, sourceRefs] = await Promise.all([
+    db
+      .select({ id: invoiceCaptureTable.id })
+      .from(invoiceCaptureTable)
+      .where(eq(invoiceCaptureTable.fileObjectPath, fileObjectPath))
+      .limit(1),
+    db
+      .select({ id: sourceDocumentsTable.id })
+      .from(sourceDocumentsTable)
+      .where(eq(sourceDocumentsTable.fileObjectPath, fileObjectPath))
+      .limit(1),
+  ]);
+  if (invoiceRefs.length > 0 || sourceRefs.length > 0) return false;
+  try {
+    await new ObjectStorageService().deleteObject(fileObjectPath);
+    return true;
+  } catch (err) {
+    // Best-effort: never fail a delete operation because the blob could not be
+    // removed (it may already be gone). The DB rows are already deleted.
+    return false;
+  }
 }
 
 // ─── Helper: check duplicate (same vendor + invoice number, different id) ────
@@ -165,12 +209,16 @@ router.get("/invoices", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const { status, vendorId, search, sortBy, sortDir, page, limit } = parsed.data;
+  const { status, includeRemoved, vendorId, search, sortBy, sortDir, page, limit } = parsed.data;
   const offset = ((page ?? 1) - 1) * (limit ?? 20);
 
   const conditions = [];
   if (status) {
     conditions.push(eq(invoiceCaptureTable.status, status));
+  } else if (!includeRemoved) {
+    // Exclude voided/removed invoices from the active list unless the caller
+    // explicitly opts in (includeRemoved) or filters for VOIDED directly.
+    conditions.push(ne(invoiceCaptureTable.status, "VOIDED"));
   }
   if (vendorId != null) {
     conditions.push(eq(invoiceCaptureTable.vendorId, vendorId));
@@ -244,6 +292,10 @@ router.get("/invoices", async (req, res): Promise<void> => {
       pageStart: invoiceCaptureTable.pageStart,
       pageEnd: invoiceCaptureTable.pageEnd,
       role: invoiceCaptureTable.role,
+      removedAt: invoiceCaptureTable.removedAt,
+      removedBy: invoiceCaptureTable.removedBy,
+      removalReason: invoiceCaptureTable.removalReason,
+      removalNote: invoiceCaptureTable.removalNote,
       createdAt: invoiceCaptureTable.createdAt,
       updatedAt: invoiceCaptureTable.updatedAt,
     })
@@ -367,6 +419,7 @@ router.get("/invoices/stats", async (_req, res): Promise<void> => {
         count: sql<number>`count(*)::int`,
       })
       .from(invoiceCaptureTable)
+      .where(ne(invoiceCaptureTable.status, "VOIDED"))
       .groupBy(invoiceCaptureTable.status),
     db
       .select({ total: sql<number>`coalesce(sum(total_amount::numeric), 0)::float` })
@@ -375,7 +428,12 @@ router.get("/invoices/stats", async (_req, res): Promise<void> => {
     db
       .select({ count: sql<number>`count(*)::int` })
       .from(invoiceCaptureTable)
-      .where(eq(invoiceCaptureTable.reviewStatus, "NEEDS_REVIEW")),
+      .where(
+        and(
+          eq(invoiceCaptureTable.reviewStatus, "NEEDS_REVIEW"),
+          ne(invoiceCaptureTable.status, "VOIDED"),
+        ),
+      ),
   ]);
 
   const byStatus: Record<string, number> = {};
@@ -735,6 +793,113 @@ router.patch("/invoices/:id/status", async (req, res): Promise<void> => {
 
   const row = await getInvoiceById(params.data.id);
   res.json(UpdateInvoiceStatusResponse.parse(serializeInvoice(row)));
+});
+
+// ─── POST /invoices/:id/void ─────────────────────────────────────────────────
+// Soft-removal: mark an invoice VOIDED with a required reason. Voided invoices
+// are excluded from active lists, queues, KPIs, CSV export and duplicate
+// detection by default.
+router.post("/invoices/:id/void", async (req, res): Promise<void> => {
+  const params = VoidInvoiceParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const parsed = VoidInvoiceBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(422).json({ error: "A removal reason is required." });
+    return;
+  }
+
+  const existing = await getInvoiceById(params.data.id);
+  if (!existing) {
+    res.status(404).json({ error: "Invoice not found" });
+    return;
+  }
+
+  if (existing.status === "VOIDED") {
+    res.json(GetInvoiceResponse.parse(serializeInvoice(existing)));
+    return;
+  }
+
+  const actor = parsed.data.actor ?? null;
+  await db
+    .update(invoiceCaptureTable)
+    .set({
+      status: "VOIDED",
+      removedAt: new Date(),
+      removedBy: actor,
+      removalReason: parsed.data.reason,
+      removalNote: parsed.data.note ?? null,
+    })
+    .where(eq(invoiceCaptureTable.id, params.data.id));
+
+  await appendAudit({
+    invoiceId: params.data.id,
+    action: "VOIDED",
+    oldValue: existing.status,
+    newValue: "VOIDED",
+    editorRole: actor ?? undefined,
+    note: parsed.data.note ? `${parsed.data.reason} — ${parsed.data.note}` : parsed.data.reason,
+  });
+
+  const row = await getInvoiceById(params.data.id);
+  res.json(GetInvoiceResponse.parse(serializeInvoice(row)));
+});
+
+// ─── DELETE /invoices/:id ────────────────────────────────────────────────────
+// Permanent hard delete for test-data cleanup. Posted invoices cannot be
+// hard-deleted (they must be voided/removed). Audit records are removed first to
+// satisfy the FK, and the stored file is deleted only when nothing else still
+// references it.
+router.delete("/invoices/:id", async (req, res): Promise<void> => {
+  const params = DeleteInvoiceParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+  const parsed = DeleteInvoiceBody.safeParse(req.body);
+  if (!parsed.success || parsed.data.confirm !== true) {
+    res.status(422).json({ error: "Deletion must be explicitly confirmed." });
+    return;
+  }
+
+  const existing = await getInvoiceById(params.data.id);
+  if (!existing) {
+    res.status(404).json({ error: "Invoice not found" });
+    return;
+  }
+
+  if (existing.status === "POSTED") {
+    res.status(422).json({
+      error: "A posted invoice cannot be hard-deleted. Void or remove it instead.",
+    });
+    return;
+  }
+
+  // Delete the audit trail and invoice atomically so a mid-operation failure
+  // cannot leave dangling audit rows or a half-deleted record.
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(invoiceAuditLogTable)
+      .where(eq(invoiceAuditLogTable.invoiceId, params.data.id));
+    await tx.delete(invoiceCaptureTable).where(eq(invoiceCaptureTable.id, params.data.id));
+  });
+
+  // Only attempt to delete the stored file when this invoice is not tied to a
+  // source document. Source-document files are owned by the source document and
+  // are only removed when the source document itself is deleted.
+  let fileDeleted = false;
+  if (existing.sourceDocumentId == null && existing.fileObjectPath) {
+    fileDeleted = await deleteFileIfUnreferenced(existing.fileObjectPath);
+  }
+
+  res.json({
+    deleted: true,
+    deletedInvoiceIds: [params.data.id],
+    deletedSourceDocumentId: null,
+    fileDeleted,
+  });
 });
 
 // ─── PATCH /invoices/:id/voucher ─────────────────────────────────────────────

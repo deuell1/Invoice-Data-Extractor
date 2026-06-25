@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { InvoiceCleanupActions } from "@/components/cleanup-actions";
 import { Loader2, AlertTriangle, ArrowRight, RotateCcw, ChevronDown, ChevronRight, Pencil, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
@@ -354,6 +355,11 @@ export function ExceptionQueue() {
                             Review Data
                           </Button>
                         </Link>
+                        <InvoiceCleanupActions
+                          invoiceId={invoice.id}
+                          status={invoice.status}
+                          variant="compact"
+                        />
                       </TableCell>
                     </TableRow>,
                     isExpanded && (

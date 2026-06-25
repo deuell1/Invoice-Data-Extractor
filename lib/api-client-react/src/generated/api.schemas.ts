@@ -18,6 +18,7 @@ export const InvoiceStatus = {
   PENDING_APPROVAL: 'PENDING_APPROVAL',
   APPROVED: 'APPROVED',
   POSTED: 'POSTED',
+  VOIDED: 'VOIDED',
 } as const;
 
 export type InvoiceExtractionStatus = typeof InvoiceExtractionStatus[keyof typeof InvoiceExtractionStatus];
@@ -169,6 +170,26 @@ export interface Invoice {
      */
   pageEnd?: number | null;
   role?: InvoiceRole;
+  /**
+     * Timestamp when the invoice was voided/removed. Null when active.
+     * @nullable
+     */
+  removedAt?: string | null;
+  /**
+     * Actor who voided/removed the invoice.
+     * @nullable
+     */
+  removedBy?: string | null;
+  /**
+     * Required reason captured when the invoice was voided/removed.
+     * @nullable
+     */
+  removalReason?: string | null;
+  /**
+     * Optional free-text note captured at removal time.
+     * @nullable
+     */
+  removalNote?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -338,6 +359,26 @@ export interface SourceDocument {
   processingStatus: SourceDocumentProcessingStatus;
   /** @nullable */
   processingError?: string | null;
+  /**
+     * Timestamp when the source document was removed. Null when active.
+     * @nullable
+     */
+  removedAt?: string | null;
+  /**
+     * Actor who removed the source document.
+     * @nullable
+     */
+  removedBy?: string | null;
+  /**
+     * Required reason captured when the source document was removed.
+     * @nullable
+     */
+  removalReason?: string | null;
+  /**
+     * Optional free-text note captured at removal time.
+     * @nullable
+     */
+  removalNote?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -356,10 +397,50 @@ export interface SourceDocumentInput {
 export interface SourceDocumentWithInvoices {
   source: SourceDocument;
   invoices: Invoice[];
+  /** Count of active (non-removed) invoices. */
   invoiceCount: number;
   extractedCount: number;
   exceptionCount: number;
   pendingCount: number;
+  /** Count of voided/removed invoices belonging to this source document. */
+  removedCount: number;
+}
+
+export interface RemovalInput {
+  /**
+     * Required reason for voiding/removing the record.
+     * @minLength 1
+     */
+  reason: string;
+  /**
+     * Optional free-text note.
+     * @nullable
+     */
+  note?: string | null;
+  /**
+     * Actor performing the removal (permissions deferred).
+     * @nullable
+     */
+  actor?: string | null;
+}
+
+export interface HardDeleteInput {
+  /** Must be true to perform a permanent hard delete. */
+  confirm: boolean;
+  /**
+     * Actor performing the deletion (permissions deferred).
+     * @nullable
+     */
+  actor?: string | null;
+}
+
+export interface DeleteResult {
+  deleted: boolean;
+  deletedInvoiceIds: number[];
+  /** @nullable */
+  deletedSourceDocumentId?: number | null;
+  /** Whether the underlying stored file was also deleted. */
+  fileDeleted: boolean;
 }
 
 export interface Vendor {
@@ -485,6 +566,10 @@ export interface ErrorEnvelope {
 export type ListInvoicesParams = {
 status?: ListInvoicesStatus;
 /**
+ * When true, voided/removed invoices are included in results. Removed invoices are excluded by default.
+ */
+includeRemoved?: boolean;
+/**
  * @nullable
  */
 vendorId?: number | null;
@@ -507,6 +592,7 @@ export const ListInvoicesStatus = {
   PENDING_APPROVAL: 'PENDING_APPROVAL',
   APPROVED: 'APPROVED',
   POSTED: 'POSTED',
+  VOIDED: 'VOIDED',
 } as const;
 
 export type ListInvoicesSortBy = typeof ListInvoicesSortBy[keyof typeof ListInvoicesSortBy];

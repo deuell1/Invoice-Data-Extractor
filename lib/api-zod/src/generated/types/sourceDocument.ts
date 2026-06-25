@@ -24,6 +24,26 @@ export interface SourceDocument {
   processingStatus: SourceDocumentProcessingStatus;
   /** @nullable */
   processingError?: string | null;
+  /**
+     * Timestamp when the source document was removed. Null when active.
+     * @nullable
+     */
+  removedAt?: Date | null;
+  /**
+     * Actor who removed the source document.
+     * @nullable
+     */
+  removedBy?: string | null;
+  /**
+     * Required reason captured when the source document was removed.
+     * @nullable
+     */
+  removalReason?: string | null;
+  /**
+     * Optional free-text note captured at removal time.
+     * @nullable
+     */
+  removalNote?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

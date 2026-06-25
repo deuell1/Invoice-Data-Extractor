@@ -15,4 +15,5 @@ export const ListInvoicesStatus = {
   PENDING_APPROVAL: 'PENDING_APPROVAL',
   APPROVED: 'APPROVED',
   POSTED: 'POSTED',
+  VOIDED: 'VOIDED',
 } as const;

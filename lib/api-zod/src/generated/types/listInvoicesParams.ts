@@ -12,6 +12,10 @@ import type { ListInvoicesStatus } from './listInvoicesStatus';
 export type ListInvoicesParams = {
 status?: ListInvoicesStatus;
 /**
+ * When true, voided/removed invoices are included in results. Removed invoices are excluded by default.
+ */
+includeRemoved?: boolean;
+/**
  * @nullable
  */
 vendorId?: number | null;

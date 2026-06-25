@@ -25,6 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge } from "@/components/status-badge";
+import { InvoiceCleanupActions } from "@/components/cleanup-actions";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, AlertCircle, CheckCircle2, AlertTriangle, RefreshCw, Clock, FileText, Info, ExternalLink, Download, FileWarning, ChevronLeft, ChevronRight } from "lucide-react";
 import {
@@ -616,27 +617,37 @@ export function ExtractionReview() {
           >
             {hasBatch ? "Back to File" : "Back"}
           </Button>
-          <Button
-            variant="destructive"
-            onClick={handleFlagException}
-            disabled={updateStatus.isPending}
-            data-testid="button-flag-exception"
-          >
-            {updateStatus.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            Flag Exception
-          </Button>
-          <Button
-            onClick={handleSubmit}
-            disabled={submitInvoice.isPending}
-            data-testid="button-submit"
-          >
-            {submitInvoice.isPending ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <CheckCircle2 className="mr-2 h-4 w-4" />
-            )}
-            Submit for Approval
-          </Button>
+          <InvoiceCleanupActions
+            invoiceId={id}
+            status={invoice.status}
+            onVoided={() => setLocation(hasBatch ? `/sources/${sourceDocumentId}` : "/invoices")}
+            onDeleted={() => setLocation(hasBatch ? `/sources/${sourceDocumentId}` : "/invoices")}
+          />
+          {invoice.status !== "VOIDED" && (
+            <>
+              <Button
+                variant="destructive"
+                onClick={handleFlagException}
+                disabled={updateStatus.isPending}
+                data-testid="button-flag-exception"
+              >
+                {updateStatus.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Flag Exception
+              </Button>
+              <Button
+                onClick={handleSubmit}
+                disabled={submitInvoice.isPending}
+                data-testid="button-submit"
+              >
+                {submitInvoice.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                )}
+                Submit for Approval
+              </Button>
+            </>
+          )}
         </div>
       </div>
 

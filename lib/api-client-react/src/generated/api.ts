@@ -24,9 +24,11 @@ import type {
   AuditLogEntry,
   BulkActionInput,
   BulkActionResult,
+  DeleteResult,
   DuplicateCheckResult,
   ErrorEnvelope,
   ExportInvoicesCsvParams,
+  HardDeleteInput,
   HealthStatus,
   Invoice,
   InvoiceInput,
@@ -37,6 +39,7 @@ import type {
   ListInvoicesParams,
   ListVendorsParams,
   RejectInput,
+  RemovalInput,
   SourceDocumentInput,
   SourceDocumentWithInvoices,
   UploadUrlRequest,
@@ -603,6 +606,152 @@ export const useUpdateInvoice = <TError = ErrorType<ErrorEnvelope>,
         TContext
       > => {
       return useMutation(getUpdateInvoiceMutationOptions(options));
+    }
+
+export const getDeleteInvoiceUrl = (id: number,) => {
+
+
+
+
+  return `/api/invoices/${id}`
+}
+
+/**
+ * Permanently removes an invoice and its audit/extraction records. Posted invoices cannot be hard-deleted (void/remove them instead). The stored source file is deleted only when no other invoice references it. Requires explicit confirmation.
+ * @summary Permanently hard-delete an invoice (test-data cleanup)
+ */
+export const deleteInvoice = async (id: number,
+    hardDeleteInput: HardDeleteInput, options?: RequestInit): Promise<DeleteResult> => {
+
+  return customFetch<DeleteResult>(getDeleteInvoiceUrl(id),
+  {
+    ...options,
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      hardDeleteInput,)
+  }
+);}
+
+
+
+
+export const getDeleteInvoiceMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteInvoice>>, TError,{id: number;data: BodyType<HardDeleteInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteInvoice>>, TError,{id: number;data: BodyType<HardDeleteInput>}, TContext> => {
+
+const mutationKey = ['deleteInvoice'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteInvoice>>, {id: number;data: BodyType<HardDeleteInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  deleteInvoice(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteInvoiceMutationResult = NonNullable<Awaited<ReturnType<typeof deleteInvoice>>>
+    export type DeleteInvoiceMutationBody = BodyType<HardDeleteInput>
+    export type DeleteInvoiceMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Permanently hard-delete an invoice (test-data cleanup)
+ */
+export const useDeleteInvoice = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteInvoice>>, TError,{id: number;data: BodyType<HardDeleteInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteInvoice>>,
+        TError,
+        {id: number;data: BodyType<HardDeleteInput>},
+        TContext
+      > => {
+      return useMutation(getDeleteInvoiceMutationOptions(options));
+    }
+
+export const getVoidInvoiceUrl = (id: number,) => {
+
+
+
+
+  return `/api/invoices/${id}/void`
+}
+
+/**
+ * Marks an invoice as VOIDED with a required reason. Voided invoices are excluded from active lists, queues, KPIs, CSV export and duplicate detection by default.
+ * @summary Void/remove an invoice (soft removal with reason)
+ */
+export const voidInvoice = async (id: number,
+    removalInput: RemovalInput, options?: RequestInit): Promise<Invoice> => {
+
+  return customFetch<Invoice>(getVoidInvoiceUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      removalInput,)
+  }
+);}
+
+
+
+
+export const getVoidInvoiceMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof voidInvoice>>, TError,{id: number;data: BodyType<RemovalInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof voidInvoice>>, TError,{id: number;data: BodyType<RemovalInput>}, TContext> => {
+
+const mutationKey = ['voidInvoice'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof voidInvoice>>, {id: number;data: BodyType<RemovalInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  voidInvoice(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type VoidInvoiceMutationResult = NonNullable<Awaited<ReturnType<typeof voidInvoice>>>
+    export type VoidInvoiceMutationBody = BodyType<RemovalInput>
+    export type VoidInvoiceMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Void/remove an invoice (soft removal with reason)
+ */
+export const useVoidInvoice = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof voidInvoice>>, TError,{id: number;data: BodyType<RemovalInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof voidInvoice>>,
+        TError,
+        {id: number;data: BodyType<RemovalInput>},
+        TContext
+      > => {
+      return useMutation(getVoidInvoiceMutationOptions(options));
     }
 
 export const getMatchInvoiceVendorUrl = (id: number,) => {
@@ -1845,6 +1994,152 @@ export function useGetSourceDocument<TData = Awaited<ReturnType<typeof getSource
 
 
 
+
+export const getDeleteSourceDocumentUrl = (id: number,) => {
+
+
+
+
+  return `/api/source-documents/${id}`
+}
+
+/**
+ * Permanently removes a source document together with every child invoice and their audit/extraction records, and deletes the stored file. Blocked when any child invoice is posted. Requires explicit confirmation.
+ * @summary Permanently hard-delete a source document and all its invoices (test-data cleanup)
+ */
+export const deleteSourceDocument = async (id: number,
+    hardDeleteInput: HardDeleteInput, options?: RequestInit): Promise<DeleteResult> => {
+
+  return customFetch<DeleteResult>(getDeleteSourceDocumentUrl(id),
+  {
+    ...options,
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      hardDeleteInput,)
+  }
+);}
+
+
+
+
+export const getDeleteSourceDocumentMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSourceDocument>>, TError,{id: number;data: BodyType<HardDeleteInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteSourceDocument>>, TError,{id: number;data: BodyType<HardDeleteInput>}, TContext> => {
+
+const mutationKey = ['deleteSourceDocument'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteSourceDocument>>, {id: number;data: BodyType<HardDeleteInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  deleteSourceDocument(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteSourceDocumentMutationResult = NonNullable<Awaited<ReturnType<typeof deleteSourceDocument>>>
+    export type DeleteSourceDocumentMutationBody = BodyType<HardDeleteInput>
+    export type DeleteSourceDocumentMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Permanently hard-delete a source document and all its invoices (test-data cleanup)
+ */
+export const useDeleteSourceDocument = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSourceDocument>>, TError,{id: number;data: BodyType<HardDeleteInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteSourceDocument>>,
+        TError,
+        {id: number;data: BodyType<HardDeleteInput>},
+        TContext
+      > => {
+      return useMutation(getDeleteSourceDocumentMutationOptions(options));
+    }
+
+export const getRemoveSourceDocumentUrl = (id: number,) => {
+
+
+
+
+  return `/api/source-documents/${id}/remove`
+}
+
+/**
+ * Marks a source document and all of its child invoices as removed/voided with a required reason. Removed records are excluded from active lists, queues, KPIs, CSV export and duplicate detection by default.
+ * @summary Remove a source document and void all its invoices (soft removal with reason)
+ */
+export const removeSourceDocument = async (id: number,
+    removalInput: RemovalInput, options?: RequestInit): Promise<SourceDocumentWithInvoices> => {
+
+  return customFetch<SourceDocumentWithInvoices>(getRemoveSourceDocumentUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      removalInput,)
+  }
+);}
+
+
+
+
+export const getRemoveSourceDocumentMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeSourceDocument>>, TError,{id: number;data: BodyType<RemovalInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof removeSourceDocument>>, TError,{id: number;data: BodyType<RemovalInput>}, TContext> => {
+
+const mutationKey = ['removeSourceDocument'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof removeSourceDocument>>, {id: number;data: BodyType<RemovalInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  removeSourceDocument(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RemoveSourceDocumentMutationResult = NonNullable<Awaited<ReturnType<typeof removeSourceDocument>>>
+    export type RemoveSourceDocumentMutationBody = BodyType<RemovalInput>
+    export type RemoveSourceDocumentMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Remove a source document and void all its invoices (soft removal with reason)
+ */
+export const useRemoveSourceDocument = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof removeSourceDocument>>, TError,{id: number;data: BodyType<RemovalInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof removeSourceDocument>>,
+        TError,
+        {id: number;data: BodyType<RemovalInput>},
+        TContext
+      > => {
+      return useMutation(getRemoveSourceDocumentMutationOptions(options));
+    }
 
 export const getRequestUploadUrlUrl = () => {
 

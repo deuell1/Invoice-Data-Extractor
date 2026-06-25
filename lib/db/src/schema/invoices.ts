@@ -18,6 +18,7 @@ export const invoiceStatusEnum = pgEnum("invoice_status", [
   "PENDING_APPROVAL",
   "APPROVED",
   "POSTED",
+  "VOIDED",
 ]);
 
 export const invoiceRoleEnum = pgEnum("invoice_role", [
@@ -74,6 +75,10 @@ export const invoiceCaptureTable = pgTable("invoice_capture", {
   extractionAttempts: integer("extraction_attempts").notNull().default(0),
   extractionErrorDetail: text("extraction_error_detail"),
   role: invoiceRoleEnum("role").notNull().default("AP_PROCESSOR"),
+  removedAt: timestamp("removed_at", { withTimezone: true }),
+  removedBy: text("removed_by"),
+  removalReason: text("removal_reason"),
+  removalNote: text("removal_note"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true })
     .notNull()

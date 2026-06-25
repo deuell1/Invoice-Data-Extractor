@@ -11,8 +11,11 @@ import type { SourceDocument } from './sourceDocument';
 export interface SourceDocumentWithInvoices {
   source: SourceDocument;
   invoices: Invoice[];
+  /** Count of active (non-removed) invoices. */
   invoiceCount: number;
   extractedCount: number;
   exceptionCount: number;
   pendingCount: number;
+  /** Count of voided/removed invoices belonging to this source document. */
+  removedCount: number;
 }

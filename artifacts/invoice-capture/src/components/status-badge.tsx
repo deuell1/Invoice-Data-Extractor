@@ -5,7 +5,8 @@ type Status =
   | "EXCEPTION"
   | "PENDING_APPROVAL"
   | "APPROVED"
-  | "POSTED";
+  | "POSTED"
+  | "VOIDED";
 
 interface StatusBadgeProps {
   status: Status | string;
@@ -24,6 +25,8 @@ export function StatusBadge({ status, className }: StatusBadgeProps) {
       return <Badge variant="default" className={`bg-emerald-500 hover:bg-emerald-600 text-white ${className}`} data-testid={`status-${status}`}>Approved</Badge>;
     case "POSTED":
       return <Badge variant="outline" className={`border-emerald-500 text-emerald-600 ${className}`} data-testid={`status-${status}`}>Posted</Badge>;
+    case "VOIDED":
+      return <Badge variant="outline" className={`border-muted-foreground/40 text-muted-foreground line-through ${className}`} data-testid={`status-${status}`}>Voided</Badge>;
     default:
       return <Badge variant="outline" className={className} data-testid={`status-unknown`}>{status}</Badge>;
   }

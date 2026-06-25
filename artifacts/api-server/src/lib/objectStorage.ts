@@ -154,6 +154,19 @@ export class ObjectStorageService {
     return objectFile;
   }
 
+  // Permanently delete a stored object by its /objects/... path. Used for hard
+  // delete (test-data cleanup). Missing objects are treated as already-deleted.
+  async deleteObject(objectPath: string): Promise<void> {
+    let objectFile: File;
+    try {
+      objectFile = await this.getObjectEntityFile(objectPath);
+    } catch (err) {
+      if (err instanceof ObjectNotFoundError) return;
+      throw err;
+    }
+    await objectFile.delete({ ignoreNotFound: true });
+  }
+
   normalizeObjectEntityPath(rawPath: string): string {
     if (!rawPath.startsWith("https://storage.googleapis.com/")) {
       return rawPath;

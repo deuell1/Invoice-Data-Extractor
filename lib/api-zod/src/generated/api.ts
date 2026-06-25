@@ -20,13 +20,15 @@ export const HealthCheckResponse = zod.object({
 /**
  * @summary List all invoices
  */
+export const listInvoicesQueryIncludeRemovedDefault = false;
 export const listInvoicesQuerySortByDefault = `createdAt`;
 export const listInvoicesQuerySortDirDefault = `desc`;
 export const listInvoicesQueryPageDefault = 1;
 export const listInvoicesQueryLimitDefault = 20;
 
 export const ListInvoicesQueryParams = zod.object({
-  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED']).optional(),
+  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED', 'VOIDED']).optional(),
+  "includeRemoved": zod.coerce.boolean().default(listInvoicesQueryIncludeRemovedDefault).describe('When true, voided\/removed invoices are included in results. Removed invoices are excluded by default.'),
   "vendorId": zod.coerce.number().nullish(),
   "search": zod.coerce.string().optional().describe('Search by invoice number or vendor name'),
   "sortBy": zod.enum(['createdAt', 'invoiceDate', 'totalAmount', 'vendorName']).default(listInvoicesQuerySortByDefault),
@@ -43,7 +45,7 @@ export const listInvoicesResponseDataItemRoleDefault = `AP_PROCESSOR`;
 export const ListInvoicesResponse = zod.object({
   "data": zod.array(zod.object({
   "id": zod.number(),
-  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED']),
+  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED', 'VOIDED']),
   "vendorId": zod.number().nullish(),
   "vendorName": zod.string().nullish(),
   "invoiceNumber": zod.string().nullish(),
@@ -87,6 +89,10 @@ export const ListInvoicesResponse = zod.object({
   "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
   "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(listInvoicesResponseDataItemRoleDefault),
+  "removedAt": zod.coerce.date().nullish().describe('Timestamp when the invoice was voided\/removed. Null when active.'),
+  "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
+  "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
+  "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })),
@@ -157,7 +163,7 @@ export const getInvoiceResponseRoleDefault = `AP_PROCESSOR`;
 
 export const GetInvoiceResponse = zod.object({
   "id": zod.number(),
-  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED']),
+  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED', 'VOIDED']),
   "vendorId": zod.number().nullish(),
   "vendorName": zod.string().nullish(),
   "invoiceNumber": zod.string().nullish(),
@@ -201,6 +207,10 @@ export const GetInvoiceResponse = zod.object({
   "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
   "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(getInvoiceResponseRoleDefault),
+  "removedAt": zod.coerce.date().nullish().describe('Timestamp when the invoice was voided\/removed. Null when active.'),
+  "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
+  "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
+  "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -240,7 +250,7 @@ export const updateInvoiceResponseRoleDefault = `AP_PROCESSOR`;
 
 export const UpdateInvoiceResponse = zod.object({
   "id": zod.number(),
-  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED']),
+  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED', 'VOIDED']),
   "vendorId": zod.number().nullish(),
   "vendorName": zod.string().nullish(),
   "invoiceNumber": zod.string().nullish(),
@@ -284,6 +294,108 @@ export const UpdateInvoiceResponse = zod.object({
   "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
   "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(updateInvoiceResponseRoleDefault),
+  "removedAt": zod.coerce.date().nullish().describe('Timestamp when the invoice was voided\/removed. Null when active.'),
+  "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
+  "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
+  "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * Permanently removes an invoice and its audit/extraction records. Posted invoices cannot be hard-deleted (void/remove them instead). The stored source file is deleted only when no other invoice references it. Requires explicit confirmation.
+ * @summary Permanently hard-delete an invoice (test-data cleanup)
+ */
+export const DeleteInvoiceParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteInvoiceBody = zod.object({
+  "confirm": zod.boolean().describe('Must be true to perform a permanent hard delete.'),
+  "actor": zod.string().nullish().describe('Actor performing the deletion (permissions deferred).')
+})
+
+export const DeleteInvoiceResponse = zod.object({
+  "deleted": zod.boolean(),
+  "deletedInvoiceIds": zod.array(zod.number()),
+  "deletedSourceDocumentId": zod.number().nullish(),
+  "fileDeleted": zod.boolean().describe('Whether the underlying stored file was also deleted.')
+})
+
+
+/**
+ * Marks an invoice as VOIDED with a required reason. Voided invoices are excluded from active lists, queues, KPIs, CSV export and duplicate detection by default.
+ * @summary Void/remove an invoice (soft removal with reason)
+ */
+export const VoidInvoiceParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+
+
+export const VoidInvoiceBody = zod.object({
+  "reason": zod.string().min(1).describe('Required reason for voiding\/removing the record.'),
+  "note": zod.string().nullish().describe('Optional free-text note.'),
+  "actor": zod.string().nullish().describe('Actor performing the removal (permissions deferred).')
+})
+
+export const voidInvoiceResponseCurrencyDefault = `USD`;
+export const voidInvoiceResponseExtractionStatusDefault = `PENDING`;
+export const voidInvoiceResponseExtractionAttemptsDefault = 0;
+export const voidInvoiceResponseRoleDefault = `AP_PROCESSOR`;
+
+export const VoidInvoiceResponse = zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED', 'VOIDED']),
+  "vendorId": zod.number().nullish(),
+  "vendorName": zod.string().nullish(),
+  "invoiceNumber": zod.string().nullish(),
+  "invoiceDate": zod.string().nullish(),
+  "totalAmount": zod.number().nullish(),
+  "taxAmount": zod.number().nullish(),
+  "poNumber": zod.string().nullish(),
+  "currency": zod.string().default(voidInvoiceResponseCurrencyDefault),
+  "fileObjectPath": zod.string(),
+  "originalFileName": zod.string(),
+  "documentId": zod.string().nullish(),
+  "businessDocumentId": zod.string().nullish().describe('Business-facing display ID formatted as \"VendorID - InvoiceNumber - Amount\" (e.g. \"V-00123 - INV-12345 - 1309.00\"). Null until vendor is matched and invoice number\/total are available.'),
+  "vendorRawName": zod.string().nullish(),
+  "dueDate": zod.string().nullish(),
+  "voucherId": zod.string().nullish(),
+  "exceptionReason": zod.string().nullish(),
+  "lowConfidenceFields": zod.string().nullish(),
+  "confidenceScore": zod.number().nullish(),
+  "subtotal": zod.number().nullish(),
+  "freightAmount": zod.number().nullish(),
+  "paymentTerms": zod.string().nullish(),
+  "vendorMatchScore": zod.number().nullish(),
+  "validationStatus": zod.string().nullish().describe('Outcome of the authoritative validation engine (e.g. PASS, NEEDS_REVIEW, FAIL).'),
+  "reviewStatus": zod.string().nullish().describe('Review flag set when an invoice needs human review (e.g. NEEDS_REVIEW).'),
+  "overallReviewStatus": zod.string().nullish().describe('Aggregate human review state (e.g. PENDING, APPROVED).'),
+  "duplicateCheck": zod.string().nullish().describe('Result of the duplicate (vendor + invoice number) check.'),
+  "vendorCheck": zod.string().nullish().describe('Result of the vendor validation check (required\/active\/not on hold\/matched).'),
+  "poCheck": zod.string().nullish().describe('Result of the purchase order capture check.'),
+  "amountCheck": zod.string().nullish().describe('Result of the amount validation check (total > 0, currency).'),
+  "totalTieOut": zod.string().nullish().describe('Result of the header tie-out check (subtotal + tax + freight = total).'),
+  "validationDetails": zod.string().nullish().describe('JSON detail of all validation checks, blocking issues, and warnings.'),
+  "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(voidInvoiceResponseExtractionStatusDefault),
+  "extractionError": zod.string().nullish(),
+  "extractionAttempts": zod.number().default(voidInvoiceResponseExtractionAttemptsDefault),
+  "extractionErrorDetail": zod.string().nullish().describe('Safe JSON troubleshooting detail for a failed extraction (no sensitive data).'),
+  "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
+  "extractionNotes": zod.string().nullish(),
+  "lastExtractedAt": zod.coerce.date().nullish(),
+  "sourceDocumentId": zod.number().nullish().describe('ID of the source document this invoice was detected\/split from.'),
+  "invoiceSequence": zod.number().nullish().describe('1-based position of this invoice within its source document.'),
+  "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
+  "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
+  "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(voidInvoiceResponseRoleDefault),
+  "removedAt": zod.coerce.date().nullish().describe('Timestamp when the invoice was voided\/removed. Null when active.'),
+  "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
+  "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
+  "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -304,7 +416,7 @@ export const matchInvoiceVendorResponseRoleDefault = `AP_PROCESSOR`;
 
 export const MatchInvoiceVendorResponse = zod.object({
   "id": zod.number(),
-  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED']),
+  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED', 'VOIDED']),
   "vendorId": zod.number().nullish(),
   "vendorName": zod.string().nullish(),
   "invoiceNumber": zod.string().nullish(),
@@ -348,6 +460,10 @@ export const MatchInvoiceVendorResponse = zod.object({
   "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
   "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(matchInvoiceVendorResponseRoleDefault),
+  "removedAt": zod.coerce.date().nullish().describe('Timestamp when the invoice was voided\/removed. Null when active.'),
+  "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
+  "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
+  "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -368,7 +484,7 @@ export const extractInvoiceResponseRoleDefault = `AP_PROCESSOR`;
 
 export const ExtractInvoiceResponse = zod.object({
   "id": zod.number(),
-  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED']),
+  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED', 'VOIDED']),
   "vendorId": zod.number().nullish(),
   "vendorName": zod.string().nullish(),
   "invoiceNumber": zod.string().nullish(),
@@ -412,6 +528,10 @@ export const ExtractInvoiceResponse = zod.object({
   "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
   "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(extractInvoiceResponseRoleDefault),
+  "removedAt": zod.coerce.date().nullish().describe('Timestamp when the invoice was voided\/removed. Null when active.'),
+  "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
+  "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
+  "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -436,7 +556,7 @@ export const updateInvoiceStatusResponseRoleDefault = `AP_PROCESSOR`;
 
 export const UpdateInvoiceStatusResponse = zod.object({
   "id": zod.number(),
-  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED']),
+  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED', 'VOIDED']),
   "vendorId": zod.number().nullish(),
   "vendorName": zod.string().nullish(),
   "invoiceNumber": zod.string().nullish(),
@@ -480,6 +600,10 @@ export const UpdateInvoiceStatusResponse = zod.object({
   "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
   "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(updateInvoiceStatusResponseRoleDefault),
+  "removedAt": zod.coerce.date().nullish().describe('Timestamp when the invoice was voided\/removed. Null when active.'),
+  "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
+  "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
+  "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -506,7 +630,7 @@ export const setVoucherIdResponseRoleDefault = `AP_PROCESSOR`;
 
 export const SetVoucherIdResponse = zod.object({
   "id": zod.number(),
-  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED']),
+  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED', 'VOIDED']),
   "vendorId": zod.number().nullish(),
   "vendorName": zod.string().nullish(),
   "invoiceNumber": zod.string().nullish(),
@@ -550,6 +674,10 @@ export const SetVoucherIdResponse = zod.object({
   "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
   "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(setVoucherIdResponseRoleDefault),
+  "removedAt": zod.coerce.date().nullish().describe('Timestamp when the invoice was voided\/removed. Null when active.'),
+  "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
+  "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
+  "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -573,7 +701,7 @@ export const approveInvoiceResponseRoleDefault = `AP_PROCESSOR`;
 
 export const ApproveInvoiceResponse = zod.object({
   "id": zod.number(),
-  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED']),
+  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED', 'VOIDED']),
   "vendorId": zod.number().nullish(),
   "vendorName": zod.string().nullish(),
   "invoiceNumber": zod.string().nullish(),
@@ -617,6 +745,10 @@ export const ApproveInvoiceResponse = zod.object({
   "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
   "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(approveInvoiceResponseRoleDefault),
+  "removedAt": zod.coerce.date().nullish().describe('Timestamp when the invoice was voided\/removed. Null when active.'),
+  "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
+  "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
+  "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -643,7 +775,7 @@ export const rejectInvoiceResponseRoleDefault = `AP_PROCESSOR`;
 
 export const RejectInvoiceResponse = zod.object({
   "id": zod.number(),
-  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED']),
+  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED', 'VOIDED']),
   "vendorId": zod.number().nullish(),
   "vendorName": zod.string().nullish(),
   "invoiceNumber": zod.string().nullish(),
@@ -687,6 +819,10 @@ export const RejectInvoiceResponse = zod.object({
   "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
   "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(rejectInvoiceResponseRoleDefault),
+  "removedAt": zod.coerce.date().nullish().describe('Timestamp when the invoice was voided\/removed. Null when active.'),
+  "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
+  "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
+  "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -706,7 +842,7 @@ export const submitInvoiceResponseRoleDefault = `AP_PROCESSOR`;
 
 export const SubmitInvoiceResponse = zod.object({
   "id": zod.number(),
-  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED']),
+  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED', 'VOIDED']),
   "vendorId": zod.number().nullish(),
   "vendorName": zod.string().nullish(),
   "invoiceNumber": zod.string().nullish(),
@@ -750,6 +886,10 @@ export const SubmitInvoiceResponse = zod.object({
   "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
   "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(submitInvoiceResponseRoleDefault),
+  "removedAt": zod.coerce.date().nullish().describe('Timestamp when the invoice was voided\/removed. Null when active.'),
+  "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
+  "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
+  "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1002,12 +1142,16 @@ export const GetSourceDocumentResponse = zod.object({
   "detectedInvoiceCount": zod.number().nullish(),
   "processingStatus": zod.enum(['PENDING', 'DETECTING', 'COMPLETED', 'EXCEPTION']),
   "processingError": zod.string().nullish(),
+  "removedAt": zod.coerce.date().nullish().describe('Timestamp when the source document was removed. Null when active.'),
+  "removedBy": zod.string().nullish().describe('Actor who removed the source document.'),
+  "removalReason": zod.string().nullish().describe('Required reason captured when the source document was removed.'),
+  "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 }),
   "invoices": zod.array(zod.object({
   "id": zod.number(),
-  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED']),
+  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED', 'VOIDED']),
   "vendorId": zod.number().nullish(),
   "vendorName": zod.string().nullish(),
   "invoiceNumber": zod.string().nullish(),
@@ -1051,13 +1195,142 @@ export const GetSourceDocumentResponse = zod.object({
   "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
   "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
   "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(getSourceDocumentResponseInvoicesItemRoleDefault),
+  "removedAt": zod.coerce.date().nullish().describe('Timestamp when the invoice was voided\/removed. Null when active.'),
+  "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
+  "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
+  "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })),
-  "invoiceCount": zod.number(),
+  "invoiceCount": zod.number().describe('Count of active (non-removed) invoices.'),
   "extractedCount": zod.number(),
   "exceptionCount": zod.number(),
-  "pendingCount": zod.number()
+  "pendingCount": zod.number(),
+  "removedCount": zod.number().describe('Count of voided\/removed invoices belonging to this source document.')
+})
+
+
+/**
+ * Permanently removes a source document together with every child invoice and their audit/extraction records, and deletes the stored file. Blocked when any child invoice is posted. Requires explicit confirmation.
+ * @summary Permanently hard-delete a source document and all its invoices (test-data cleanup)
+ */
+export const DeleteSourceDocumentParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteSourceDocumentBody = zod.object({
+  "confirm": zod.boolean().describe('Must be true to perform a permanent hard delete.'),
+  "actor": zod.string().nullish().describe('Actor performing the deletion (permissions deferred).')
+})
+
+export const DeleteSourceDocumentResponse = zod.object({
+  "deleted": zod.boolean(),
+  "deletedInvoiceIds": zod.array(zod.number()),
+  "deletedSourceDocumentId": zod.number().nullish(),
+  "fileDeleted": zod.boolean().describe('Whether the underlying stored file was also deleted.')
+})
+
+
+/**
+ * Marks a source document and all of its child invoices as removed/voided with a required reason. Removed records are excluded from active lists, queues, KPIs, CSV export and duplicate detection by default.
+ * @summary Remove a source document and void all its invoices (soft removal with reason)
+ */
+export const RemoveSourceDocumentParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+
+
+export const RemoveSourceDocumentBody = zod.object({
+  "reason": zod.string().min(1).describe('Required reason for voiding\/removing the record.'),
+  "note": zod.string().nullish().describe('Optional free-text note.'),
+  "actor": zod.string().nullish().describe('Actor performing the removal (permissions deferred).')
+})
+
+export const removeSourceDocumentResponseInvoicesItemCurrencyDefault = `USD`;
+export const removeSourceDocumentResponseInvoicesItemExtractionStatusDefault = `PENDING`;
+export const removeSourceDocumentResponseInvoicesItemExtractionAttemptsDefault = 0;
+export const removeSourceDocumentResponseInvoicesItemRoleDefault = `AP_PROCESSOR`;
+
+export const RemoveSourceDocumentResponse = zod.object({
+  "source": zod.object({
+  "id": zod.number(),
+  "originalFileName": zod.string(),
+  "fileObjectPath": zod.string(),
+  "fileHash": zod.string().nullish(),
+  "sourceChannel": zod.string(),
+  "uploadedBy": zod.string().nullish(),
+  "uploadedAt": zod.coerce.date(),
+  "pageCount": zod.number().nullish(),
+  "detectedInvoiceCount": zod.number().nullish(),
+  "processingStatus": zod.enum(['PENDING', 'DETECTING', 'COMPLETED', 'EXCEPTION']),
+  "processingError": zod.string().nullish(),
+  "removedAt": zod.coerce.date().nullish().describe('Timestamp when the source document was removed. Null when active.'),
+  "removedBy": zod.string().nullish().describe('Actor who removed the source document.'),
+  "removalReason": zod.string().nullish().describe('Required reason captured when the source document was removed.'),
+  "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}),
+  "invoices": zod.array(zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED', 'VOIDED']),
+  "vendorId": zod.number().nullish(),
+  "vendorName": zod.string().nullish(),
+  "invoiceNumber": zod.string().nullish(),
+  "invoiceDate": zod.string().nullish(),
+  "totalAmount": zod.number().nullish(),
+  "taxAmount": zod.number().nullish(),
+  "poNumber": zod.string().nullish(),
+  "currency": zod.string().default(removeSourceDocumentResponseInvoicesItemCurrencyDefault),
+  "fileObjectPath": zod.string(),
+  "originalFileName": zod.string(),
+  "documentId": zod.string().nullish(),
+  "businessDocumentId": zod.string().nullish().describe('Business-facing display ID formatted as \"VendorID - InvoiceNumber - Amount\" (e.g. \"V-00123 - INV-12345 - 1309.00\"). Null until vendor is matched and invoice number\/total are available.'),
+  "vendorRawName": zod.string().nullish(),
+  "dueDate": zod.string().nullish(),
+  "voucherId": zod.string().nullish(),
+  "exceptionReason": zod.string().nullish(),
+  "lowConfidenceFields": zod.string().nullish(),
+  "confidenceScore": zod.number().nullish(),
+  "subtotal": zod.number().nullish(),
+  "freightAmount": zod.number().nullish(),
+  "paymentTerms": zod.string().nullish(),
+  "vendorMatchScore": zod.number().nullish(),
+  "validationStatus": zod.string().nullish().describe('Outcome of the authoritative validation engine (e.g. PASS, NEEDS_REVIEW, FAIL).'),
+  "reviewStatus": zod.string().nullish().describe('Review flag set when an invoice needs human review (e.g. NEEDS_REVIEW).'),
+  "overallReviewStatus": zod.string().nullish().describe('Aggregate human review state (e.g. PENDING, APPROVED).'),
+  "duplicateCheck": zod.string().nullish().describe('Result of the duplicate (vendor + invoice number) check.'),
+  "vendorCheck": zod.string().nullish().describe('Result of the vendor validation check (required\/active\/not on hold\/matched).'),
+  "poCheck": zod.string().nullish().describe('Result of the purchase order capture check.'),
+  "amountCheck": zod.string().nullish().describe('Result of the amount validation check (total > 0, currency).'),
+  "totalTieOut": zod.string().nullish().describe('Result of the header tie-out check (subtotal + tax + freight = total).'),
+  "validationDetails": zod.string().nullish().describe('JSON detail of all validation checks, blocking issues, and warnings.'),
+  "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(removeSourceDocumentResponseInvoicesItemExtractionStatusDefault),
+  "extractionError": zod.string().nullish(),
+  "extractionAttempts": zod.number().default(removeSourceDocumentResponseInvoicesItemExtractionAttemptsDefault),
+  "extractionErrorDetail": zod.string().nullish().describe('Safe JSON troubleshooting detail for a failed extraction (no sensitive data).'),
+  "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
+  "extractionNotes": zod.string().nullish(),
+  "lastExtractedAt": zod.coerce.date().nullish(),
+  "sourceDocumentId": zod.number().nullish().describe('ID of the source document this invoice was detected\/split from.'),
+  "invoiceSequence": zod.number().nullish().describe('1-based position of this invoice within its source document.'),
+  "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
+  "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
+  "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(removeSourceDocumentResponseInvoicesItemRoleDefault),
+  "removedAt": zod.coerce.date().nullish().describe('Timestamp when the invoice was voided\/removed. Null when active.'),
+  "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
+  "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
+  "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})),
+  "invoiceCount": zod.number().describe('Count of active (non-removed) invoices.'),
+  "extractedCount": zod.number(),
+  "exceptionCount": zod.number(),
+  "pendingCount": zod.number(),
+  "removedCount": zod.number().describe('Count of voided\/removed invoices belonging to this source document.')
 })
 
 
