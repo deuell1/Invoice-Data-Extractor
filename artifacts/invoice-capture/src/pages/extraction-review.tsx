@@ -114,7 +114,7 @@ export function ExtractionReview() {
     },
   });
 
-  const { data: vendorsData } = useListVendors({ limit: 500 });
+  const { data: vendorsData } = useListVendors({ limit: 1000 });
   const { data: auditLogs } = useGetInvoiceAuditLog(id, {
     query: { enabled: !!id, queryKey: getGetInvoiceAuditLogQueryKey(id) },
   });

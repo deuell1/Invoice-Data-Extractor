@@ -84,7 +84,7 @@ function EditFieldsModal({
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const { data: vendorsData } = useListVendors({ limit: 100 });
+  const { data: vendorsData } = useListVendors({ limit: 1000 });
   const updateInvoice = useUpdateInvoice();
 
   const flagged = invoice.lowConfidenceFields?.split(",").map((f) => f.trim()) ?? [];

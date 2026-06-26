@@ -1,4 +1,5 @@
 - [Date serialization in Drizzle routes](date-serialization.md) — nullable timestamp columns return Date objects but Zod string schemas reject them; must serialize before parsing.
+- [Vendor autocomplete reachability](vendor-autocomplete-reachability.md) — combobox ranks name/code/alias client-side but server search matches name only; must load the full vendor list or capped vendors become unreachable.
 - [Duplicate guard consistency (Invoice Capture)](duplicate-guard-consistency.md) — duplicate detection must hard-block at every entry point (create/patch/approve/voucher/check-duplicate/validation), exclude only VOIDED, and never persist OCR vendorId.
 - [Invoice removal/cleanup model](removal-model.md) — VOIDED invoices (source docs use removedAt) excluded by default from queues/KPIs/export/dupes unless includeRemoved; multi-step delete in txn; file deleted only when unreferenced.
 - [Review-screen local state keying](review-screen-local-state-keying.md) — seed form/derived state via a ref keyed by record id+phase, not a one-time boolean, so navigation re-seeds without clobbering edits.
