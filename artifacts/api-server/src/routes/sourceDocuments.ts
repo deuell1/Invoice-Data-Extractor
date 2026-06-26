@@ -1,4 +1,11 @@
 import { Router, type IRouter } from "express";
+import { and, eq, ilike, inArray, isNull, desc, sql } from "drizzle-orm";
+import {
+  db,
+  sourceDocumentsTable,
+  invoiceCaptureTable,
+  invoiceAuditLogTable,
+} from "@workspace/db";
 import {
   CreateSourceDocumentBody,
   GetSourceDocumentParams,
@@ -7,6 +14,10 @@ import {
   RemoveSourceDocumentBody,
   DeleteSourceDocumentParams,
   DeleteSourceDocumentBody,
+  ListSourceDocumentsQueryParams,
+  ListSourceDocumentsResponse,
+  GetSourceDocumentAuditParams,
+  GetSourceDocumentAuditResponse,
 } from "@workspace/api-zod";
 import {
   createSourceDocument,
@@ -15,6 +26,20 @@ import {
   deleteSourceDocument,
   type SourceDocumentWithInvoices,
 } from "../services/sourceDocumentService";
+
+const isoOrNull = (v: unknown): string | null =>
+  v instanceof Date ? v.toISOString() : ((v as string | null) ?? null);
+
+/** Convert a raw source_documents row to the API shape (dates → ISO strings). */
+function serializeSource(d: typeof sourceDocumentsTable.$inferSelect) {
+  return {
+    ...d,
+    uploadedAt: isoOrNull(d.uploadedAt) as string,
+    removedAt: isoOrNull(d.removedAt),
+    createdAt: isoOrNull(d.createdAt) as string,
+    updatedAt: isoOrNull(d.updatedAt) as string,
+  };
+}
 
 const router: IRouter = Router();
 
@@ -162,6 +187,139 @@ router.delete("/source-documents/:id", async (req, res): Promise<void> => {
     deletedSourceDocumentId: result.deletedSourceDocumentId,
     fileDeleted: result.fileDeleted,
   });
+});
+
+// ─── GET /source-documents ───────────────────────────────────────────────────
+// List uploaded source documents (paged) with per-document linked-invoice counts.
+router.get("/source-documents", async (req, res): Promise<void> => {
+  const parsed = ListSourceDocumentsQueryParams.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  const { processingStatus, includeRemoved, search, page, limit } = parsed.data;
+  const offset = ((page ?? 1) - 1) * (limit ?? 20);
+
+  const conds = [];
+  if (processingStatus) {
+    conds.push(eq(sourceDocumentsTable.processingStatus, processingStatus));
+  }
+  if (!includeRemoved) {
+    conds.push(isNull(sourceDocumentsTable.removedAt));
+  }
+  if (search) {
+    conds.push(ilike(sourceDocumentsTable.originalFileName, `%${search}%`));
+  }
+  const where = conds.length > 0 ? and(...conds) : undefined;
+
+  const [docs, countRows] = await Promise.all([
+    db
+      .select()
+      .from(sourceDocumentsTable)
+      .where(where)
+      .orderBy(desc(sourceDocumentsTable.createdAt))
+      .limit(limit ?? 20)
+      .offset(offset),
+    db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(sourceDocumentsTable)
+      .where(where),
+  ]);
+
+  const ids = docs.map((d) => d.id);
+  const countsById = new Map<
+    number,
+    { invoiceCount: number; extractedCount: number; exceptionCount: number; removedCount: number }
+  >();
+  if (ids.length > 0) {
+    const rows = await db
+      .select({
+        sid: invoiceCaptureTable.sourceDocumentId,
+        invoiceCount: sql<number>`(count(*) filter (where ${invoiceCaptureTable.status} <> 'VOIDED'))::int`,
+        extractedCount: sql<number>`(count(*) filter (where ${invoiceCaptureTable.status} <> 'VOIDED' and ${invoiceCaptureTable.extractionStatus} = 'COMPLETED'))::int`,
+        exceptionCount: sql<number>`(count(*) filter (where ${invoiceCaptureTable.status} = 'EXCEPTION'))::int`,
+        removedCount: sql<number>`(count(*) filter (where ${invoiceCaptureTable.status} = 'VOIDED'))::int`,
+      })
+      .from(invoiceCaptureTable)
+      .where(inArray(invoiceCaptureTable.sourceDocumentId, ids))
+      .groupBy(invoiceCaptureTable.sourceDocumentId);
+    for (const r of rows) {
+      if (r.sid != null) {
+        countsById.set(r.sid, {
+          invoiceCount: r.invoiceCount,
+          extractedCount: r.extractedCount,
+          exceptionCount: r.exceptionCount,
+          removedCount: r.removedCount,
+        });
+      }
+    }
+  }
+
+  const data = docs.map((d) => {
+    const c =
+      countsById.get(d.id) ??
+      { invoiceCount: 0, extractedCount: 0, exceptionCount: 0, removedCount: 0 };
+    return {
+      source: serializeSource(d),
+      invoiceCount: c.invoiceCount,
+      extractedCount: c.extractedCount,
+      exceptionCount: c.exceptionCount,
+      removedCount: c.removedCount,
+    };
+  });
+
+  res.json(
+    ListSourceDocumentsResponse.parse({
+      data,
+      total: countRows[0]?.count ?? 0,
+      page: page ?? 1,
+      limit: limit ?? 20,
+    }),
+  );
+});
+
+// ─── GET /source-documents/:id/audit ─────────────────────────────────────────
+// Aggregated audit trail across every invoice detected in a source document.
+router.get("/source-documents/:id/audit", async (req, res): Promise<void> => {
+  const params = GetSourceDocumentAuditParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const [doc] = await db
+    .select({ id: sourceDocumentsTable.id })
+    .from(sourceDocumentsTable)
+    .where(eq(sourceDocumentsTable.id, params.data.id))
+    .limit(1);
+  if (!doc) {
+    res.status(404).json({ error: "Source document not found" });
+    return;
+  }
+
+  const invoiceIds = (
+    await db
+      .select({ id: invoiceCaptureTable.id })
+      .from(invoiceCaptureTable)
+      .where(eq(invoiceCaptureTable.sourceDocumentId, params.data.id))
+  ).map((r) => r.id);
+
+  if (invoiceIds.length === 0) {
+    res.json(GetSourceDocumentAuditResponse.parse([]));
+    return;
+  }
+
+  const rows = await db
+    .select()
+    .from(invoiceAuditLogTable)
+    .where(inArray(invoiceAuditLogTable.invoiceId, invoiceIds))
+    .orderBy(desc(invoiceAuditLogTable.createdAt));
+
+  res.json(
+    GetSourceDocumentAuditResponse.parse(
+      rows.map((r) => ({ ...r, createdAt: isoOrNull(r.createdAt) as string })),
+    ),
+  );
 });
 
 export default router;

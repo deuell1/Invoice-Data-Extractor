@@ -190,6 +190,34 @@ export interface Invoice {
      * @nullable
      */
   removalNote?: string | null;
+  /**
+     * File-based export readiness — one of NOT_READY, READY, EXPORTED, FAILED, BLOCKED. This is NOT an ERP status.
+     * @nullable
+     */
+  exportStatus?: string | null;
+  /**
+     * Business ID of the export batch this invoice was last included in.
+     * @nullable
+     */
+  exportBatchId?: string | null;
+  /** @nullable */
+  exportedAt?: Date | null;
+  /** @nullable */
+  exportBlockedReason?: string | null;
+  exportRetryCount?: number;
+  /** @nullable */
+  exportFileName?: string | null;
+  /** @nullable */
+  exportFormat?: string | null;
+  /**
+     * AP user assigned to work this exception.
+     * @nullable
+     */
+  exceptionOwner?: string | null;
+  /** @nullable */
+  exceptionReviewedAt?: Date | null;
+  /** @nullable */
+  exceptionReviewedBy?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }

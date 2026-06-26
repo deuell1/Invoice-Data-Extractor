@@ -6,10 +6,13 @@ export const poHeaderTable = pgTable("po_header", {
   id: serial("id").primaryKey(),
   poNumber: text("po_number").notNull().unique(),
   vendorCode: text("vendor_code"),
+  poDate: text("po_date"),
+  buyer: text("buyer"),
   description: text("description"),
   totalAmount: numeric("total_amount", { precision: 18, scale: 2 }),
   currency: text("currency").notNull().default("USD"),
   status: text("status").notNull().default("OPEN"),
+  importBatchId: text("import_batch_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

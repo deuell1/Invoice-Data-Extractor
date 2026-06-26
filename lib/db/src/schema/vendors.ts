@@ -15,6 +15,7 @@ export const vendorIdTable = pgTable("vendor_id", {
   aliases: json("aliases").$type<string[]>().default([]),
   onHold: boolean("on_hold").notNull().default(false),
   isActive: boolean("is_active").notNull().default(true),
+  importBatchId: text("import_batch_id"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).$onUpdate(() => new Date()),
 });

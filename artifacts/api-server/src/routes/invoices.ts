@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { applyVendorMatch, findBestVendorMatch } from "../services/vendorMatcher";
 import { triggerExtraction } from "../services/extractionService";
 import { validateInvoice, VENDOR_HARD_BLOCK_REASONS } from "../services/validationService";
-import { eq, ne, sql, and, inArray, ilike, or, asc, desc, isNull } from "drizzle-orm";
+import { eq, ne, sql, and, inArray, ilike, or, asc, desc, isNull, gte, lte } from "drizzle-orm";
 import {
   db,
   invoiceCaptureTable,
@@ -82,6 +82,16 @@ async function getInvoiceById(id: number) {
       tieOutStatus: invoiceCaptureTable.tieOutStatus,
       tieOutExplanation: invoiceCaptureTable.tieOutExplanation,
       paymentTerms: invoiceCaptureTable.paymentTerms,
+      exportStatus: invoiceCaptureTable.exportStatus,
+      exportBatchId: invoiceCaptureTable.exportBatchId,
+      exportedAt: invoiceCaptureTable.exportedAt,
+      exportBlockedReason: invoiceCaptureTable.exportBlockedReason,
+      exportRetryCount: invoiceCaptureTable.exportRetryCount,
+      exportFileName: invoiceCaptureTable.exportFileName,
+      exportFormat: invoiceCaptureTable.exportFormat,
+      exceptionOwner: invoiceCaptureTable.exceptionOwner,
+      exceptionReviewedAt: invoiceCaptureTable.exceptionReviewedAt,
+      exceptionReviewedBy: invoiceCaptureTable.exceptionReviewedBy,
       vendorMatchScore: invoiceCaptureTable.vendorMatchScore,
       validationStatus: invoiceCaptureTable.validationStatus,
       reviewStatus: invoiceCaptureTable.reviewStatus,
@@ -237,6 +247,14 @@ function serializeInvoice(row: Awaited<ReturnType<typeof getInvoiceById>>) {
       row.lastExtractedAt instanceof Date
         ? row.lastExtractedAt.toISOString()
         : (row.lastExtractedAt ?? null),
+    exportedAt:
+      (row as { exportedAt?: unknown }).exportedAt instanceof Date
+        ? ((row as { exportedAt: Date }).exportedAt).toISOString()
+        : ((row as { exportedAt?: string | null }).exportedAt ?? null),
+    exceptionReviewedAt:
+      (row as { exceptionReviewedAt?: unknown }).exceptionReviewedAt instanceof Date
+        ? ((row as { exceptionReviewedAt: Date }).exceptionReviewedAt).toISOString()
+        : ((row as { exceptionReviewedAt?: string | null }).exceptionReviewedAt ?? null),
   };
 }
 
@@ -247,7 +265,30 @@ router.get("/invoices", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const { status, includeRemoved, vendorId, search, sortBy, sortDir, page, limit } = parsed.data;
+  const {
+    status,
+    includeRemoved,
+    vendorId,
+    search,
+    tieOutStatus,
+    validationStatus,
+    exportStatus,
+    sourceDocumentId,
+    poNumber,
+    voucherId,
+    businessDocumentId,
+    exportBatchId,
+    dateFrom,
+    dateTo,
+    amountMin,
+    amountMax,
+    confidenceMin,
+    confidenceMax,
+    sortBy,
+    sortDir,
+    page,
+    limit,
+  } = parsed.data;
   const offset = ((page ?? 1) - 1) * (limit ?? 20);
 
   const conditions = [];
@@ -267,8 +308,66 @@ router.get("/invoices", async (req, res): Promise<void> => {
       or(
         ilike(invoiceCaptureTable.invoiceNumber, pattern),
         ilike(vendorIdTable.vendorName, pattern),
+        ilike(vendorIdTable.vendorCode, pattern),
+        ilike(invoiceCaptureTable.poNumber, pattern),
+        ilike(invoiceCaptureTable.voucherId, pattern),
+        ilike(invoiceCaptureTable.originalFileName, pattern),
+        ilike(invoiceCaptureTable.businessDocumentId, pattern),
       )!
     );
+  }
+  if (tieOutStatus) {
+    conditions.push(eq(invoiceCaptureTable.tieOutStatus, tieOutStatus));
+  }
+  if (validationStatus) {
+    conditions.push(eq(invoiceCaptureTable.validationStatus, validationStatus));
+  }
+  if (exportStatus) {
+    // A null export_status is treated as NOT_READY (no readiness recorded yet).
+    if (exportStatus === "NOT_READY") {
+      conditions.push(
+        or(
+          isNull(invoiceCaptureTable.exportStatus),
+          eq(invoiceCaptureTable.exportStatus, "NOT_READY"),
+        )!,
+      );
+    } else {
+      conditions.push(eq(invoiceCaptureTable.exportStatus, exportStatus));
+    }
+  }
+  if (sourceDocumentId != null) {
+    conditions.push(eq(invoiceCaptureTable.sourceDocumentId, sourceDocumentId));
+  }
+  if (poNumber) {
+    conditions.push(ilike(invoiceCaptureTable.poNumber, `%${poNumber}%`));
+  }
+  if (voucherId) {
+    conditions.push(ilike(invoiceCaptureTable.voucherId, `%${voucherId}%`));
+  }
+  if (businessDocumentId) {
+    conditions.push(ilike(invoiceCaptureTable.businessDocumentId, `%${businessDocumentId}%`));
+  }
+  if (exportBatchId) {
+    conditions.push(eq(invoiceCaptureTable.exportBatchId, exportBatchId));
+  }
+  if (dateFrom) {
+    conditions.push(gte(invoiceCaptureTable.invoiceDate, dateFrom));
+  }
+  if (dateTo) {
+    conditions.push(lte(invoiceCaptureTable.invoiceDate, dateTo));
+  }
+  if (amountMin != null) {
+    conditions.push(gte(invoiceCaptureTable.totalAmount, String(amountMin)));
+  }
+  if (amountMax != null) {
+    conditions.push(lte(invoiceCaptureTable.totalAmount, String(amountMax)));
+  }
+  // confidenceMin/Max arrive as percentages (0-100); confidenceScore is stored 0-1.
+  if (confidenceMin != null) {
+    conditions.push(gte(invoiceCaptureTable.confidenceScore, String(confidenceMin / 100)));
+  }
+  if (confidenceMax != null) {
+    conditions.push(lte(invoiceCaptureTable.confidenceScore, String(confidenceMax / 100)));
   }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -277,8 +376,11 @@ router.get("/invoices", async (req, res): Promise<void> => {
     const dir = sortDir === "asc" ? asc : desc;
     switch (sortBy) {
       case "invoiceDate": return dir(invoiceCaptureTable.invoiceDate);
+      case "dueDate": return dir(invoiceCaptureTable.dueDate);
       case "totalAmount": return dir(invoiceCaptureTable.totalAmount);
       case "vendorName": return dir(vendorIdTable.vendorName);
+      case "confidenceScore": return dir(invoiceCaptureTable.confidenceScore);
+      case "status": return dir(invoiceCaptureTable.status);
       default: return dir(invoiceCaptureTable.createdAt);
     }
   })();
@@ -315,6 +417,16 @@ router.get("/invoices", async (req, res): Promise<void> => {
       tieOutStatus: invoiceCaptureTable.tieOutStatus,
       tieOutExplanation: invoiceCaptureTable.tieOutExplanation,
       paymentTerms: invoiceCaptureTable.paymentTerms,
+      exportStatus: invoiceCaptureTable.exportStatus,
+      exportBatchId: invoiceCaptureTable.exportBatchId,
+      exportedAt: invoiceCaptureTable.exportedAt,
+      exportBlockedReason: invoiceCaptureTable.exportBlockedReason,
+      exportRetryCount: invoiceCaptureTable.exportRetryCount,
+      exportFileName: invoiceCaptureTable.exportFileName,
+      exportFormat: invoiceCaptureTable.exportFormat,
+      exceptionOwner: invoiceCaptureTable.exceptionOwner,
+      exceptionReviewedAt: invoiceCaptureTable.exceptionReviewedAt,
+      exceptionReviewedBy: invoiceCaptureTable.exceptionReviewedBy,
       vendorMatchScore: invoiceCaptureTable.vendorMatchScore,
       validationStatus: invoiceCaptureTable.validationStatus,
       reviewStatus: invoiceCaptureTable.reviewStatus,

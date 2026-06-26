@@ -66,6 +66,18 @@ export const invoiceCaptureTable = pgTable("invoice_capture", {
   tieOutStatus: text("tie_out_status"),
   tieOutExplanation: text("tie_out_explanation"),
   paymentTerms: text("payment_terms"),
+  // ── Phase 2: export readiness (file-based; NOT ERP integration) ──
+  exportStatus: text("export_status"),
+  exportBatchId: text("export_batch_id"),
+  exportedAt: timestamp("exported_at", { withTimezone: true }),
+  exportBlockedReason: text("export_blocked_reason"),
+  exportRetryCount: integer("export_retry_count").notNull().default(0),
+  exportFileName: text("export_file_name"),
+  exportFormat: text("export_format"),
+  // ── Phase 2: exception management ──
+  exceptionOwner: text("exception_owner"),
+  exceptionReviewedAt: timestamp("exception_reviewed_at", { withTimezone: true }),
+  exceptionReviewedBy: text("exception_reviewed_by"),
   vendorMatchScore: numeric("vendor_match_score", { precision: 5, scale: 4 }),
   validationStatus: text("validation_status"),
   reviewStatus: text("review_status"),

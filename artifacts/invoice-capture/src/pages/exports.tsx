@@ -1,0 +1,329 @@
+import { useState } from "react";
+import {
+  useCreateExport,
+  useListExports,
+  useListVendors,
+  getListExportsQueryKey,
+  getDownloadExportUrl,
+  type ExportBatch,
+} from "@workspace/api-client-react";
+import { ExportRequestExportType, ExportRequestFormat } from "@workspace/api-client-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
+import { useQueryClient } from "@tanstack/react-query";
+import { cn } from "@/lib/utils";
+import { Loader2, Download, FileDown, Inbox, CheckCircle2 } from "lucide-react";
+import { format } from "date-fns";
+
+type ExportType = (typeof ExportRequestExportType)[keyof typeof ExportRequestExportType];
+
+const EXPORT_TYPES: { value: ExportType; label: string; description: string }[] = [
+  { value: ExportRequestExportType.AP_INVOICE_FILE, label: "AP Invoice File", description: "Export-ready AP invoice file package." },
+  { value: ExportRequestExportType.APPROVED, label: "Approved Invoices", description: "All approved invoices." },
+  { value: ExportRequestExportType.POSTED, label: "Posted Invoices", description: "All posted invoices." },
+  { value: ExportRequestExportType.ALL_ACTIVE, label: "All Active Invoices", description: "All active (non-removed) invoices." },
+  { value: ExportRequestExportType.EXCEPTIONS, label: "Exceptions", description: "Invoices currently in exception." },
+  { value: ExportRequestExportType.TIE_OUT_FAILURES, label: "Tie-Out Failures", description: "Invoices that failed header tie-out." },
+  { value: ExportRequestExportType.VENDOR_SUMMARY, label: "Vendor Summary", description: "Aggregated vendor-level summary." },
+  { value: ExportRequestExportType.SOURCE_DOCUMENT_SUMMARY, label: "Source Document Summary", description: "Aggregated source document summary." },
+];
+
+const STATUS_FILTER_OPTIONS = ["READY", "EXPORTED", "FAILED", "BLOCKED", "NOT_READY"] as const;
+const STATUS_FILTER_LABELS: Record<string, string> = {
+  READY: "Export Ready",
+  EXPORTED: "Exported",
+  FAILED: "Export Failed",
+  BLOCKED: "Export Blocked",
+  NOT_READY: "Not Ready",
+};
+
+const HISTORY_PAGE_SIZE = 10;
+
+function ExportStatusBadge({ status }: { status: string }) {
+  const isSuccess = status === "SUCCESS";
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "text-xs",
+        isSuccess ? "text-emerald-700 border-emerald-300 bg-emerald-50" : "text-destructive border-destructive/40 bg-destructive/5",
+      )}
+      data-testid={`badge-export-status-${status}`}
+    >
+      {status}
+    </Badge>
+  );
+}
+
+export function ExportsPage() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const [exportType, setExportType] = useState<ExportType>(ExportRequestExportType.APPROVED);
+  const [statusFilter, setStatusFilter] = useState<string>("ANY");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [vendorId, setVendorId] = useState<string>("ANY");
+  const [exportedBy, setExportedBy] = useState("");
+  const [createdBatch, setCreatedBatch] = useState<ExportBatch | null>(null);
+
+  const [page, setPage] = useState(1);
+
+  const createExport = useCreateExport();
+  const { data: vendorsData } = useListVendors({ limit: 1000 });
+
+  const historyParams = { page, limit: HISTORY_PAGE_SIZE };
+  const { data: history, isLoading: historyLoading } = useListExports(historyParams, {
+    query: { queryKey: getListExportsQueryKey(historyParams) },
+  });
+  const totalPages = Math.max(1, Math.ceil((history?.total ?? 0) / HISTORY_PAGE_SIZE));
+
+  const selectedTypeMeta = EXPORT_TYPES.find((t) => t.value === exportType);
+
+  const handleCreate = async () => {
+    try {
+      const batch = await createExport.mutateAsync({
+        data: {
+          exportType,
+          format: ExportRequestFormat.CSV,
+          status: statusFilter === "ANY" ? null : statusFilter,
+          dateFrom: dateFrom || null,
+          dateTo: dateTo || null,
+          vendorId: vendorId === "ANY" ? null : parseInt(vendorId, 10),
+          exportedBy: exportedBy.trim() || null,
+        },
+      });
+      setCreatedBatch(batch);
+      toast({
+        title: "Export created",
+        description: `Batch ${batch.batchId} · ${batch.recordCount} records.`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/exports"] });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Export failed", description: e?.data?.error || "Could not create the export." });
+    }
+  };
+
+  const downloadable = (batch: ExportBatch) => batch.status === "SUCCESS" && !!batch.fileObjectPath;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+          <FileDown className="h-6 w-6" />
+          Exports
+        </h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Generate CSV export files and download previously generated batches.
+        </p>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>New Export</CardTitle>
+          <CardDescription>Choose an export type and optional filters, then generate the file.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="export-type">Export Type</Label>
+              <Select value={exportType} onValueChange={(v) => setExportType(v as ExportType)}>
+                <SelectTrigger id="export-type" data-testid="select-export-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {EXPORT_TYPES.map((t) => (
+                    <SelectItem key={t.value} value={t.value} data-testid={`option-export-type-${t.value}`}>
+                      {t.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedTypeMeta && <p className="text-xs text-muted-foreground">{selectedTypeMeta.description}</p>}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="export-format">Format</Label>
+              <Select value={ExportRequestFormat.CSV} disabled>
+                <SelectTrigger id="export-format" data-testid="select-export-format">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ExportRequestFormat.CSV}>CSV</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="export-status">Export Readiness (optional)</Label>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger id="export-status" data-testid="select-export-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ANY">Any</SelectItem>
+                  {STATUS_FILTER_OPTIONS.map((s) => (
+                    <SelectItem key={s} value={s}>{STATUS_FILTER_LABELS[s]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="export-vendor">Vendor (optional)</Label>
+              <Select value={vendorId} onValueChange={setVendorId}>
+                <SelectTrigger id="export-vendor" data-testid="select-export-vendor">
+                  <SelectValue placeholder="All vendors" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ANY">All vendors</SelectItem>
+                  {vendorsData?.data?.map((v) => (
+                    <SelectItem key={v.id} value={v.id.toString()}>{v.vendorName}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="date-from">Date From (optional)</Label>
+              <Input id="date-from" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} data-testid="input-date-from" />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="date-to">Date To (optional)</Label>
+              <Input id="date-to" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} data-testid="input-date-to" />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="exported-by">Exported By (optional)</Label>
+              <Input id="exported-by" placeholder="ap.clerk" value={exportedBy} onChange={(e) => setExportedBy(e.target.value)} data-testid="input-exported-by" />
+            </div>
+          </div>
+
+          <div>
+            <Button onClick={handleCreate} disabled={createExport.isPending} data-testid="button-create-export">
+              {createExport.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+              Generate Export
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {createdBatch && (
+        <Card className="border-emerald-200" data-testid="card-created-batch">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-emerald-700">
+              <CheckCircle2 className="h-5 w-5" />
+              Export Generated
+            </CardTitle>
+            <CardDescription>Batch {createdBatch.batchId}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 text-sm items-center">
+              <div><span className="text-muted-foreground">Type: </span>{createdBatch.exportType}</div>
+              <div><span className="text-muted-foreground">Records: </span>{createdBatch.recordCount}</div>
+              <div className="flex items-center gap-2"><span className="text-muted-foreground">Status: </span><ExportStatusBadge status={createdBatch.status} /></div>
+              <div>
+                {downloadable(createdBatch) ? (
+                  <a href={getDownloadExportUrl(createdBatch.id)} download data-testid="link-download-created">
+                    <Button variant="outline" size="sm">
+                      <Download className="mr-2 h-4 w-4" />
+                      Download
+                    </Button>
+                  </a>
+                ) : (
+                  <span className="text-xs text-muted-foreground">No file available</span>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Export History</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Batch ID</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Format</TableHead>
+                <TableHead className="text-right">Records</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Exported</TableHead>
+                <TableHead>File</TableHead>
+                <TableHead className="text-right">Download</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {historyLoading ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
+                  </TableCell>
+                </TableRow>
+              ) : history?.data?.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={8} className="text-center py-12 text-muted-foreground">
+                    <div className="flex flex-col items-center justify-center space-y-3">
+                      <Inbox className="h-8 w-8" />
+                      <p>No exports yet.</p>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : (
+                history?.data?.map((batch) => (
+                  <TableRow key={batch.id} data-testid={`row-export-${batch.id}`}>
+                    <TableCell className="font-mono text-xs">{batch.batchId}</TableCell>
+                    <TableCell>{batch.exportType}</TableCell>
+                    <TableCell>{batch.format}</TableCell>
+                    <TableCell className="text-right">{batch.recordCount}</TableCell>
+                    <TableCell><ExportStatusBadge status={batch.status} /></TableCell>
+                    <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                      {format(new Date(batch.exportedAt), "MMM d, yyyy HH:mm")}
+                    </TableCell>
+                    <TableCell className="max-w-[200px] truncate">{batch.fileName || "—"}</TableCell>
+                    <TableCell className="text-right">
+                      {downloadable(batch) ? (
+                        <a href={getDownloadExportUrl(batch.id)} download data-testid={`link-download-${batch.id}`}>
+                          <Button variant="ghost" size="sm">
+                            <Download className="h-4 w-4" />
+                          </Button>
+                        </a>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+          {(history?.total ?? 0) > 0 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t text-sm text-muted-foreground">
+              <span>{history?.total ?? 0} export{history?.total !== 1 ? "s" : ""}</span>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page <= 1} data-testid="button-history-prev">
+                  Previous
+                </Button>
+                <span>Page {page} of {totalPages}</span>
+                <Button variant="outline" size="sm" onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page >= totalPages} data-testid="button-history-next">
+                  Next
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

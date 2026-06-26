@@ -5,9 +5,11 @@
  * Invoice Capture MVP API
  * OpenAPI spec version: 0.1.0
  */
+import type { ListInvoicesExportStatus } from './listInvoicesExportStatus';
 import type { ListInvoicesSortBy } from './listInvoicesSortBy';
 import type { ListInvoicesSortDir } from './listInvoicesSortDir';
 import type { ListInvoicesStatus } from './listInvoicesStatus';
+import type { ListInvoicesTieOutStatus } from './listInvoicesTieOutStatus';
 
 export type ListInvoicesParams = {
 status?: ListInvoicesStatus;
@@ -20,9 +22,46 @@ includeRemoved?: boolean;
  */
 vendorId?: number | null;
 /**
- * Search by invoice number or vendor name
+ * Free-text search across invoice number, vendor name, vendor code, PO number, voucher ID, source file name, and business document ID
  */
 search?: string;
+tieOutStatus?: ListInvoicesTieOutStatus;
+validationStatus?: string;
+exportStatus?: ListInvoicesExportStatus;
+/**
+ * @nullable
+ */
+sourceDocumentId?: number | null;
+poNumber?: string;
+voucherId?: string;
+businessDocumentId?: string;
+exportBatchId?: string;
+/**
+ * Filter by invoiceDate on/after this date (YYYY-MM-DD)
+ */
+dateFrom?: string;
+/**
+ * Filter by invoiceDate on/before this date (YYYY-MM-DD)
+ */
+dateTo?: string;
+/**
+ * @nullable
+ */
+amountMin?: number | null;
+/**
+ * @nullable
+ */
+amountMax?: number | null;
+/**
+ * Minimum overall confidence as a percentage (0-100)
+ * @nullable
+ */
+confidenceMin?: number | null;
+/**
+ * Maximum overall confidence as a percentage (0-100)
+ * @nullable
+ */
+confidenceMax?: number | null;
 sortBy?: ListInvoicesSortBy;
 sortDir?: ListInvoicesSortDir;
 page?: number;

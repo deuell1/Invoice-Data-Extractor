@@ -30,8 +30,22 @@ export const ListInvoicesQueryParams = zod.object({
   "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED', 'VOIDED']).optional(),
   "includeRemoved": zod.coerce.boolean().default(listInvoicesQueryIncludeRemovedDefault).describe('When true, voided\/removed invoices are included in results. Removed invoices are excluded by default.'),
   "vendorId": zod.coerce.number().nullish(),
-  "search": zod.coerce.string().optional().describe('Search by invoice number or vendor name'),
-  "sortBy": zod.enum(['createdAt', 'invoiceDate', 'totalAmount', 'vendorName']).default(listInvoicesQuerySortByDefault),
+  "search": zod.coerce.string().optional().describe('Free-text search across invoice number, vendor name, vendor code, PO number, voucher ID, source file name, and business document ID'),
+  "tieOutStatus": zod.enum(['PASS', 'WARNING', 'FAIL', 'SKIPPED']).optional(),
+  "validationStatus": zod.coerce.string().optional(),
+  "exportStatus": zod.enum(['NOT_READY', 'READY', 'EXPORTED', 'FAILED', 'BLOCKED']).optional(),
+  "sourceDocumentId": zod.coerce.number().nullish(),
+  "poNumber": zod.coerce.string().optional(),
+  "voucherId": zod.coerce.string().optional(),
+  "businessDocumentId": zod.coerce.string().optional(),
+  "exportBatchId": zod.coerce.string().optional(),
+  "dateFrom": zod.coerce.string().optional().describe('Filter by invoiceDate on\/after this date (YYYY-MM-DD)'),
+  "dateTo": zod.coerce.string().optional().describe('Filter by invoiceDate on\/before this date (YYYY-MM-DD)'),
+  "amountMin": zod.coerce.number().nullish(),
+  "amountMax": zod.coerce.number().nullish(),
+  "confidenceMin": zod.coerce.number().nullish().describe('Minimum overall confidence as a percentage (0-100)'),
+  "confidenceMax": zod.coerce.number().nullish().describe('Maximum overall confidence as a percentage (0-100)'),
+  "sortBy": zod.enum(['createdAt', 'invoiceDate', 'dueDate', 'totalAmount', 'vendorName', 'confidenceScore', 'status']).default(listInvoicesQuerySortByDefault),
   "sortDir": zod.enum(['asc', 'desc']).default(listInvoicesQuerySortDirDefault),
   "page": zod.coerce.number().default(listInvoicesQueryPageDefault),
   "limit": zod.coerce.number().default(listInvoicesQueryLimitDefault)
@@ -41,6 +55,7 @@ export const listInvoicesResponseDataItemCurrencyDefault = `USD`;
 export const listInvoicesResponseDataItemExtractionStatusDefault = `PENDING`;
 export const listInvoicesResponseDataItemExtractionAttemptsDefault = 0;
 export const listInvoicesResponseDataItemRoleDefault = `AP_PROCESSOR`;
+export const listInvoicesResponseDataItemExportRetryCountDefault = 0;
 
 export const ListInvoicesResponse = zod.object({
   "data": zod.array(zod.object({
@@ -99,6 +114,16 @@ export const ListInvoicesResponse = zod.object({
   "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
   "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
   "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
+  "exportStatus": zod.string().nullish().describe('File-based export readiness — one of NOT_READY, READY, EXPORTED, FAILED, BLOCKED. This is NOT an ERP status.'),
+  "exportBatchId": zod.string().nullish().describe('Business ID of the export batch this invoice was last included in.'),
+  "exportedAt": zod.coerce.date().nullish(),
+  "exportBlockedReason": zod.string().nullish(),
+  "exportRetryCount": zod.number().default(listInvoicesResponseDataItemExportRetryCountDefault),
+  "exportFileName": zod.string().nullish(),
+  "exportFormat": zod.string().nullish(),
+  "exceptionOwner": zod.string().nullish().describe('AP user assigned to work this exception.'),
+  "exceptionReviewedAt": zod.coerce.date().nullish(),
+  "exceptionReviewedBy": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })),
@@ -166,6 +191,7 @@ export const getInvoiceResponseCurrencyDefault = `USD`;
 export const getInvoiceResponseExtractionStatusDefault = `PENDING`;
 export const getInvoiceResponseExtractionAttemptsDefault = 0;
 export const getInvoiceResponseRoleDefault = `AP_PROCESSOR`;
+export const getInvoiceResponseExportRetryCountDefault = 0;
 
 export const GetInvoiceResponse = zod.object({
   "id": zod.number(),
@@ -223,6 +249,16 @@ export const GetInvoiceResponse = zod.object({
   "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
   "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
   "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
+  "exportStatus": zod.string().nullish().describe('File-based export readiness — one of NOT_READY, READY, EXPORTED, FAILED, BLOCKED. This is NOT an ERP status.'),
+  "exportBatchId": zod.string().nullish().describe('Business ID of the export batch this invoice was last included in.'),
+  "exportedAt": zod.coerce.date().nullish(),
+  "exportBlockedReason": zod.string().nullish(),
+  "exportRetryCount": zod.number().default(getInvoiceResponseExportRetryCountDefault),
+  "exportFileName": zod.string().nullish(),
+  "exportFormat": zod.string().nullish(),
+  "exceptionOwner": zod.string().nullish().describe('AP user assigned to work this exception.'),
+  "exceptionReviewedAt": zod.coerce.date().nullish(),
+  "exceptionReviewedBy": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -261,6 +297,7 @@ export const updateInvoiceResponseCurrencyDefault = `USD`;
 export const updateInvoiceResponseExtractionStatusDefault = `PENDING`;
 export const updateInvoiceResponseExtractionAttemptsDefault = 0;
 export const updateInvoiceResponseRoleDefault = `AP_PROCESSOR`;
+export const updateInvoiceResponseExportRetryCountDefault = 0;
 
 export const UpdateInvoiceResponse = zod.object({
   "id": zod.number(),
@@ -318,6 +355,16 @@ export const UpdateInvoiceResponse = zod.object({
   "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
   "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
   "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
+  "exportStatus": zod.string().nullish().describe('File-based export readiness — one of NOT_READY, READY, EXPORTED, FAILED, BLOCKED. This is NOT an ERP status.'),
+  "exportBatchId": zod.string().nullish().describe('Business ID of the export batch this invoice was last included in.'),
+  "exportedAt": zod.coerce.date().nullish(),
+  "exportBlockedReason": zod.string().nullish(),
+  "exportRetryCount": zod.number().default(updateInvoiceResponseExportRetryCountDefault),
+  "exportFileName": zod.string().nullish(),
+  "exportFormat": zod.string().nullish(),
+  "exceptionOwner": zod.string().nullish().describe('AP user assigned to work this exception.'),
+  "exceptionReviewedAt": zod.coerce.date().nullish(),
+  "exceptionReviewedBy": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -365,6 +412,7 @@ export const voidInvoiceResponseCurrencyDefault = `USD`;
 export const voidInvoiceResponseExtractionStatusDefault = `PENDING`;
 export const voidInvoiceResponseExtractionAttemptsDefault = 0;
 export const voidInvoiceResponseRoleDefault = `AP_PROCESSOR`;
+export const voidInvoiceResponseExportRetryCountDefault = 0;
 
 export const VoidInvoiceResponse = zod.object({
   "id": zod.number(),
@@ -422,6 +470,16 @@ export const VoidInvoiceResponse = zod.object({
   "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
   "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
   "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
+  "exportStatus": zod.string().nullish().describe('File-based export readiness — one of NOT_READY, READY, EXPORTED, FAILED, BLOCKED. This is NOT an ERP status.'),
+  "exportBatchId": zod.string().nullish().describe('Business ID of the export batch this invoice was last included in.'),
+  "exportedAt": zod.coerce.date().nullish(),
+  "exportBlockedReason": zod.string().nullish(),
+  "exportRetryCount": zod.number().default(voidInvoiceResponseExportRetryCountDefault),
+  "exportFileName": zod.string().nullish(),
+  "exportFormat": zod.string().nullish(),
+  "exceptionOwner": zod.string().nullish().describe('AP user assigned to work this exception.'),
+  "exceptionReviewedAt": zod.coerce.date().nullish(),
+  "exceptionReviewedBy": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -439,6 +497,7 @@ export const matchInvoiceVendorResponseCurrencyDefault = `USD`;
 export const matchInvoiceVendorResponseExtractionStatusDefault = `PENDING`;
 export const matchInvoiceVendorResponseExtractionAttemptsDefault = 0;
 export const matchInvoiceVendorResponseRoleDefault = `AP_PROCESSOR`;
+export const matchInvoiceVendorResponseExportRetryCountDefault = 0;
 
 export const MatchInvoiceVendorResponse = zod.object({
   "id": zod.number(),
@@ -496,6 +555,16 @@ export const MatchInvoiceVendorResponse = zod.object({
   "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
   "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
   "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
+  "exportStatus": zod.string().nullish().describe('File-based export readiness — one of NOT_READY, READY, EXPORTED, FAILED, BLOCKED. This is NOT an ERP status.'),
+  "exportBatchId": zod.string().nullish().describe('Business ID of the export batch this invoice was last included in.'),
+  "exportedAt": zod.coerce.date().nullish(),
+  "exportBlockedReason": zod.string().nullish(),
+  "exportRetryCount": zod.number().default(matchInvoiceVendorResponseExportRetryCountDefault),
+  "exportFileName": zod.string().nullish(),
+  "exportFormat": zod.string().nullish(),
+  "exceptionOwner": zod.string().nullish().describe('AP user assigned to work this exception.'),
+  "exceptionReviewedAt": zod.coerce.date().nullish(),
+  "exceptionReviewedBy": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -513,6 +582,7 @@ export const extractInvoiceResponseCurrencyDefault = `USD`;
 export const extractInvoiceResponseExtractionStatusDefault = `PENDING`;
 export const extractInvoiceResponseExtractionAttemptsDefault = 0;
 export const extractInvoiceResponseRoleDefault = `AP_PROCESSOR`;
+export const extractInvoiceResponseExportRetryCountDefault = 0;
 
 export const ExtractInvoiceResponse = zod.object({
   "id": zod.number(),
@@ -570,6 +640,16 @@ export const ExtractInvoiceResponse = zod.object({
   "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
   "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
   "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
+  "exportStatus": zod.string().nullish().describe('File-based export readiness — one of NOT_READY, READY, EXPORTED, FAILED, BLOCKED. This is NOT an ERP status.'),
+  "exportBatchId": zod.string().nullish().describe('Business ID of the export batch this invoice was last included in.'),
+  "exportedAt": zod.coerce.date().nullish(),
+  "exportBlockedReason": zod.string().nullish(),
+  "exportRetryCount": zod.number().default(extractInvoiceResponseExportRetryCountDefault),
+  "exportFileName": zod.string().nullish(),
+  "exportFormat": zod.string().nullish(),
+  "exceptionOwner": zod.string().nullish().describe('AP user assigned to work this exception.'),
+  "exceptionReviewedAt": zod.coerce.date().nullish(),
+  "exceptionReviewedBy": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -591,6 +671,7 @@ export const updateInvoiceStatusResponseCurrencyDefault = `USD`;
 export const updateInvoiceStatusResponseExtractionStatusDefault = `PENDING`;
 export const updateInvoiceStatusResponseExtractionAttemptsDefault = 0;
 export const updateInvoiceStatusResponseRoleDefault = `AP_PROCESSOR`;
+export const updateInvoiceStatusResponseExportRetryCountDefault = 0;
 
 export const UpdateInvoiceStatusResponse = zod.object({
   "id": zod.number(),
@@ -648,6 +729,16 @@ export const UpdateInvoiceStatusResponse = zod.object({
   "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
   "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
   "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
+  "exportStatus": zod.string().nullish().describe('File-based export readiness — one of NOT_READY, READY, EXPORTED, FAILED, BLOCKED. This is NOT an ERP status.'),
+  "exportBatchId": zod.string().nullish().describe('Business ID of the export batch this invoice was last included in.'),
+  "exportedAt": zod.coerce.date().nullish(),
+  "exportBlockedReason": zod.string().nullish(),
+  "exportRetryCount": zod.number().default(updateInvoiceStatusResponseExportRetryCountDefault),
+  "exportFileName": zod.string().nullish(),
+  "exportFormat": zod.string().nullish(),
+  "exceptionOwner": zod.string().nullish().describe('AP user assigned to work this exception.'),
+  "exceptionReviewedAt": zod.coerce.date().nullish(),
+  "exceptionReviewedBy": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -671,6 +762,7 @@ export const setVoucherIdResponseCurrencyDefault = `USD`;
 export const setVoucherIdResponseExtractionStatusDefault = `PENDING`;
 export const setVoucherIdResponseExtractionAttemptsDefault = 0;
 export const setVoucherIdResponseRoleDefault = `AP_PROCESSOR`;
+export const setVoucherIdResponseExportRetryCountDefault = 0;
 
 export const SetVoucherIdResponse = zod.object({
   "id": zod.number(),
@@ -728,6 +820,16 @@ export const SetVoucherIdResponse = zod.object({
   "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
   "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
   "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
+  "exportStatus": zod.string().nullish().describe('File-based export readiness — one of NOT_READY, READY, EXPORTED, FAILED, BLOCKED. This is NOT an ERP status.'),
+  "exportBatchId": zod.string().nullish().describe('Business ID of the export batch this invoice was last included in.'),
+  "exportedAt": zod.coerce.date().nullish(),
+  "exportBlockedReason": zod.string().nullish(),
+  "exportRetryCount": zod.number().default(setVoucherIdResponseExportRetryCountDefault),
+  "exportFileName": zod.string().nullish(),
+  "exportFormat": zod.string().nullish(),
+  "exceptionOwner": zod.string().nullish().describe('AP user assigned to work this exception.'),
+  "exceptionReviewedAt": zod.coerce.date().nullish(),
+  "exceptionReviewedBy": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -748,6 +850,7 @@ export const approveInvoiceResponseCurrencyDefault = `USD`;
 export const approveInvoiceResponseExtractionStatusDefault = `PENDING`;
 export const approveInvoiceResponseExtractionAttemptsDefault = 0;
 export const approveInvoiceResponseRoleDefault = `AP_PROCESSOR`;
+export const approveInvoiceResponseExportRetryCountDefault = 0;
 
 export const ApproveInvoiceResponse = zod.object({
   "id": zod.number(),
@@ -805,6 +908,16 @@ export const ApproveInvoiceResponse = zod.object({
   "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
   "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
   "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
+  "exportStatus": zod.string().nullish().describe('File-based export readiness — one of NOT_READY, READY, EXPORTED, FAILED, BLOCKED. This is NOT an ERP status.'),
+  "exportBatchId": zod.string().nullish().describe('Business ID of the export batch this invoice was last included in.'),
+  "exportedAt": zod.coerce.date().nullish(),
+  "exportBlockedReason": zod.string().nullish(),
+  "exportRetryCount": zod.number().default(approveInvoiceResponseExportRetryCountDefault),
+  "exportFileName": zod.string().nullish(),
+  "exportFormat": zod.string().nullish(),
+  "exceptionOwner": zod.string().nullish().describe('AP user assigned to work this exception.'),
+  "exceptionReviewedAt": zod.coerce.date().nullish(),
+  "exceptionReviewedBy": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -828,6 +941,7 @@ export const rejectInvoiceResponseCurrencyDefault = `USD`;
 export const rejectInvoiceResponseExtractionStatusDefault = `PENDING`;
 export const rejectInvoiceResponseExtractionAttemptsDefault = 0;
 export const rejectInvoiceResponseRoleDefault = `AP_PROCESSOR`;
+export const rejectInvoiceResponseExportRetryCountDefault = 0;
 
 export const RejectInvoiceResponse = zod.object({
   "id": zod.number(),
@@ -885,6 +999,16 @@ export const RejectInvoiceResponse = zod.object({
   "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
   "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
   "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
+  "exportStatus": zod.string().nullish().describe('File-based export readiness — one of NOT_READY, READY, EXPORTED, FAILED, BLOCKED. This is NOT an ERP status.'),
+  "exportBatchId": zod.string().nullish().describe('Business ID of the export batch this invoice was last included in.'),
+  "exportedAt": zod.coerce.date().nullish(),
+  "exportBlockedReason": zod.string().nullish(),
+  "exportRetryCount": zod.number().default(rejectInvoiceResponseExportRetryCountDefault),
+  "exportFileName": zod.string().nullish(),
+  "exportFormat": zod.string().nullish(),
+  "exceptionOwner": zod.string().nullish().describe('AP user assigned to work this exception.'),
+  "exceptionReviewedAt": zod.coerce.date().nullish(),
+  "exceptionReviewedBy": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -901,6 +1025,7 @@ export const submitInvoiceResponseCurrencyDefault = `USD`;
 export const submitInvoiceResponseExtractionStatusDefault = `PENDING`;
 export const submitInvoiceResponseExtractionAttemptsDefault = 0;
 export const submitInvoiceResponseRoleDefault = `AP_PROCESSOR`;
+export const submitInvoiceResponseExportRetryCountDefault = 0;
 
 export const SubmitInvoiceResponse = zod.object({
   "id": zod.number(),
@@ -958,6 +1083,16 @@ export const SubmitInvoiceResponse = zod.object({
   "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
   "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
   "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
+  "exportStatus": zod.string().nullish().describe('File-based export readiness — one of NOT_READY, READY, EXPORTED, FAILED, BLOCKED. This is NOT an ERP status.'),
+  "exportBatchId": zod.string().nullish().describe('Business ID of the export batch this invoice was last included in.'),
+  "exportedAt": zod.coerce.date().nullish(),
+  "exportBlockedReason": zod.string().nullish(),
+  "exportRetryCount": zod.number().default(submitInvoiceResponseExportRetryCountDefault),
+  "exportFileName": zod.string().nullish(),
+  "exportFormat": zod.string().nullish(),
+  "exceptionOwner": zod.string().nullish().describe('AP user assigned to work this exception.'),
+  "exceptionReviewedAt": zod.coerce.date().nullish(),
+  "exceptionReviewedBy": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })
@@ -1171,6 +1306,53 @@ export const GetInvoiceAuditLogResponse = zod.array(GetInvoiceAuditLogResponseIt
 
 
 /**
+ * @summary List uploaded source documents with linked-invoice counts
+ */
+export const listSourceDocumentsQueryIncludeRemovedDefault = false;
+export const listSourceDocumentsQueryPageDefault = 1;
+export const listSourceDocumentsQueryLimitDefault = 20;
+
+export const ListSourceDocumentsQueryParams = zod.object({
+  "processingStatus": zod.enum(['PENDING', 'DETECTING', 'COMPLETED', 'EXCEPTION']).optional(),
+  "includeRemoved": zod.coerce.boolean().default(listSourceDocumentsQueryIncludeRemovedDefault),
+  "search": zod.coerce.string().optional().describe('Match by original file name'),
+  "page": zod.coerce.number().default(listSourceDocumentsQueryPageDefault),
+  "limit": zod.coerce.number().default(listSourceDocumentsQueryLimitDefault)
+})
+
+export const ListSourceDocumentsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "source": zod.object({
+  "id": zod.number(),
+  "originalFileName": zod.string(),
+  "fileObjectPath": zod.string(),
+  "fileHash": zod.string().nullish(),
+  "sourceChannel": zod.string(),
+  "uploadedBy": zod.string().nullish(),
+  "uploadedAt": zod.coerce.date(),
+  "pageCount": zod.number().nullish(),
+  "detectedInvoiceCount": zod.number().nullish(),
+  "processingStatus": zod.enum(['PENDING', 'DETECTING', 'COMPLETED', 'EXCEPTION']),
+  "processingError": zod.string().nullish(),
+  "removedAt": zod.coerce.date().nullish().describe('Timestamp when the source document was removed. Null when active.'),
+  "removedBy": zod.string().nullish().describe('Actor who removed the source document.'),
+  "removalReason": zod.string().nullish().describe('Required reason captured when the source document was removed.'),
+  "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+}),
+  "invoiceCount": zod.number(),
+  "extractedCount": zod.number(),
+  "exceptionCount": zod.number(),
+  "removedCount": zod.number()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+
+/**
  * @summary Create a source document from an uploaded file and start detection
  */
 
@@ -1196,6 +1378,7 @@ export const getSourceDocumentResponseInvoicesItemCurrencyDefault = `USD`;
 export const getSourceDocumentResponseInvoicesItemExtractionStatusDefault = `PENDING`;
 export const getSourceDocumentResponseInvoicesItemExtractionAttemptsDefault = 0;
 export const getSourceDocumentResponseInvoicesItemRoleDefault = `AP_PROCESSOR`;
+export const getSourceDocumentResponseInvoicesItemExportRetryCountDefault = 0;
 
 export const GetSourceDocumentResponse = zod.object({
   "source": zod.object({
@@ -1273,6 +1456,16 @@ export const GetSourceDocumentResponse = zod.object({
   "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
   "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
   "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
+  "exportStatus": zod.string().nullish().describe('File-based export readiness — one of NOT_READY, READY, EXPORTED, FAILED, BLOCKED. This is NOT an ERP status.'),
+  "exportBatchId": zod.string().nullish().describe('Business ID of the export batch this invoice was last included in.'),
+  "exportedAt": zod.coerce.date().nullish(),
+  "exportBlockedReason": zod.string().nullish(),
+  "exportRetryCount": zod.number().default(getSourceDocumentResponseInvoicesItemExportRetryCountDefault),
+  "exportFileName": zod.string().nullish(),
+  "exportFormat": zod.string().nullish(),
+  "exceptionOwner": zod.string().nullish().describe('AP user assigned to work this exception.'),
+  "exceptionReviewedAt": zod.coerce.date().nullish(),
+  "exceptionReviewedBy": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })),
@@ -1326,6 +1519,7 @@ export const removeSourceDocumentResponseInvoicesItemCurrencyDefault = `USD`;
 export const removeSourceDocumentResponseInvoicesItemExtractionStatusDefault = `PENDING`;
 export const removeSourceDocumentResponseInvoicesItemExtractionAttemptsDefault = 0;
 export const removeSourceDocumentResponseInvoicesItemRoleDefault = `AP_PROCESSOR`;
+export const removeSourceDocumentResponseInvoicesItemExportRetryCountDefault = 0;
 
 export const RemoveSourceDocumentResponse = zod.object({
   "source": zod.object({
@@ -1403,6 +1597,16 @@ export const RemoveSourceDocumentResponse = zod.object({
   "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
   "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
   "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
+  "exportStatus": zod.string().nullish().describe('File-based export readiness — one of NOT_READY, READY, EXPORTED, FAILED, BLOCKED. This is NOT an ERP status.'),
+  "exportBatchId": zod.string().nullish().describe('Business ID of the export batch this invoice was last included in.'),
+  "exportedAt": zod.coerce.date().nullish(),
+  "exportBlockedReason": zod.string().nullish(),
+  "exportRetryCount": zod.number().default(removeSourceDocumentResponseInvoicesItemExportRetryCountDefault),
+  "exportFileName": zod.string().nullish(),
+  "exportFormat": zod.string().nullish(),
+  "exceptionOwner": zod.string().nullish().describe('AP user assigned to work this exception.'),
+  "exceptionReviewedAt": zod.coerce.date().nullish(),
+  "exceptionReviewedBy": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
 })),
@@ -1447,6 +1651,786 @@ export const GetPublicObjectParams = zod.object({
  */
 export const GetStorageObjectParams = zod.object({
   "objectPath": zod.coerce.string()
+})
+
+
+/**
+ * @summary Aggregated dashboard metrics for AP invoice capture (Phase 2)
+ */
+export const GetDashboardMetricsQueryParams = zod.object({
+  "dateFrom": zod.coerce.string().optional(),
+  "dateTo": zod.coerce.string().optional(),
+  "vendorId": zod.coerce.number().nullish(),
+  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED', 'VOIDED']).optional(),
+  "exportStatus": zod.enum(['NOT_READY', 'READY', 'EXPORTED', 'FAILED', 'BLOCKED']).optional()
+})
+
+export const GetDashboardMetricsResponse = zod.object({
+  "total": zod.number(),
+  "pendingExtraction": zod.number(),
+  "exception": zod.number(),
+  "pendingApproval": zod.number(),
+  "approved": zod.number(),
+  "posted": zod.number(),
+  "voided": zod.number(),
+  "needsReview": zod.number(),
+  "exportReady": zod.number(),
+  "exported": zod.number(),
+  "exportFailed": zod.number(),
+  "exportBlocked": zod.number(),
+  "tieOutFail": zod.number(),
+  "tieOutWarning": zod.number(),
+  "duplicateWarning": zod.number(),
+  "missingPo": zod.number(),
+  "missingDueDate": zod.number(),
+  "avgExtractionConfidence": zod.number().nullish().describe('Average overall confidence (0-100) across invoices that have a score, or null.'),
+  "avgVendorMatchConfidence": zod.number().nullish(),
+  "exceptionRate": zod.number().describe('Exception count divided by total active invoices (0-1).'),
+  "totalApprovedAmount": zod.number(),
+  "valueByStatus": zod.array(zod.object({
+  "status": zod.string(),
+  "count": zod.number(),
+  "totalAmount": zod.number()
+}))
+})
+
+
+/**
+ * @summary Per-vendor invoice analytics
+ */
+export const GetVendorAnalyticsQueryParams = zod.object({
+  "dateFrom": zod.coerce.string().optional(),
+  "dateTo": zod.coerce.string().optional()
+})
+
+export const getVendorAnalyticsResponseDataItemDuplicateWarningCountDefault = 0;
+export const getVendorAnalyticsResponseDataItemTieOutFailCountDefault = 0;
+export const getVendorAnalyticsResponseDataItemMissingPoCountDefault = 0;
+
+export const GetVendorAnalyticsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "vendorId": zod.number(),
+  "vendorCode": zod.string(),
+  "vendorName": zod.string(),
+  "vendorStatus": zod.string().optional().describe('ACTIVE, INACTIVE, or ON_HOLD.'),
+  "invoiceCount": zod.number(),
+  "totalAmount": zod.number(),
+  "avgVendorMatchConfidence": zod.number().nullish(),
+  "exceptionCount": zod.number(),
+  "duplicateWarningCount": zod.number().default(getVendorAnalyticsResponseDataItemDuplicateWarningCountDefault),
+  "tieOutFailCount": zod.number().default(getVendorAnalyticsResponseDataItemTieOutFailCountDefault),
+  "missingPoCount": zod.number().default(getVendorAnalyticsResponseDataItemMissingPoCountDefault),
+  "exportedCount": zod.number()
+}))
+})
+
+
+/**
+ * @summary List invoices in exception with management filters
+ */
+export const listExceptionsQuerySortByDefault = `age`;
+export const listExceptionsQuerySortDirDefault = `desc`;
+export const listExceptionsQueryPageDefault = 1;
+export const listExceptionsQueryLimitDefault = 20;
+
+export const ListExceptionsQueryParams = zod.object({
+  "reason": zod.coerce.string().optional().describe('Filter by exception reason substring'),
+  "owner": zod.coerce.string().optional(),
+  "reviewed": zod.coerce.boolean().nullish(),
+  "sortBy": zod.enum(['age', 'vendorName', 'totalAmount', 'confidenceScore', 'status']).default(listExceptionsQuerySortByDefault),
+  "sortDir": zod.enum(['asc', 'desc']).default(listExceptionsQuerySortDirDefault),
+  "page": zod.coerce.number().default(listExceptionsQueryPageDefault),
+  "limit": zod.coerce.number().default(listExceptionsQueryLimitDefault)
+})
+
+export const listExceptionsResponseDataItemCurrencyDefault = `USD`;
+export const listExceptionsResponseDataItemExtractionStatusDefault = `PENDING`;
+export const listExceptionsResponseDataItemExtractionAttemptsDefault = 0;
+export const listExceptionsResponseDataItemRoleDefault = `AP_PROCESSOR`;
+export const listExceptionsResponseDataItemExportRetryCountDefault = 0;
+
+export const ListExceptionsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED', 'VOIDED']),
+  "vendorId": zod.number().nullish(),
+  "vendorName": zod.string().nullish(),
+  "invoiceNumber": zod.string().nullish(),
+  "invoiceDate": zod.string().nullish(),
+  "totalAmount": zod.number().nullish(),
+  "taxAmount": zod.number().nullish(),
+  "poNumber": zod.string().nullish(),
+  "currency": zod.string().default(listExceptionsResponseDataItemCurrencyDefault),
+  "fileObjectPath": zod.string(),
+  "originalFileName": zod.string(),
+  "documentId": zod.string().nullish(),
+  "businessDocumentId": zod.string().nullish().describe('Business-facing display ID formatted as \"VendorID - InvoiceNumber - Amount\" (e.g. \"V-00123 - INV-12345 - 1309.00\"). Null until vendor is matched and invoice number\/total are available.'),
+  "vendorRawName": zod.string().nullish(),
+  "dueDate": zod.string().nullish(),
+  "voucherId": zod.string().nullish(),
+  "exceptionReason": zod.string().nullish(),
+  "lowConfidenceFields": zod.string().nullish(),
+  "confidenceScore": zod.number().nullish(),
+  "subtotal": zod.number().nullish(),
+  "freightAmount": zod.number().nullish(),
+  "discountAmount": zod.number().nullish().describe('Discount\/credit reduction extracted from the invoice (stored as a positive magnitude; subtracted in the tie-out formula).'),
+  "otherChargesAmount": zod.number().nullish().describe('Other charges, fees, or surcharges extracted from the invoice (added in the tie-out formula; negative values represent credits).'),
+  "tieOutExpectedTotal": zod.number().nullish().describe('Computed expected total = subtotal + tax + freight + other charges − discount.'),
+  "tieOutDifference": zod.number().nullish().describe('Extracted invoice total minus the expected total.'),
+  "tieOutStatus": zod.string().nullish().describe('Header tie-out outcome — one of PASS, WARNING, FAIL, SKIPPED.'),
+  "tieOutExplanation": zod.string().nullish().describe('Human-readable explanation of how the tie-out was computed and why it passed, warned, failed, or was skipped.'),
+  "paymentTerms": zod.string().nullish(),
+  "vendorMatchScore": zod.number().nullish(),
+  "validationStatus": zod.string().nullish().describe('Outcome of the authoritative validation engine (e.g. PASS, NEEDS_REVIEW, FAIL).'),
+  "reviewStatus": zod.string().nullish().describe('Review flag set when an invoice needs human review (e.g. NEEDS_REVIEW).'),
+  "overallReviewStatus": zod.string().nullish().describe('Aggregate human review state (e.g. PENDING, APPROVED).'),
+  "duplicateCheck": zod.string().nullish().describe('Result of the duplicate (vendor + invoice number) check.'),
+  "vendorCheck": zod.string().nullish().describe('Result of the vendor validation check (required\/active\/not on hold\/matched).'),
+  "poCheck": zod.string().nullish().describe('Result of the purchase order capture check.'),
+  "amountCheck": zod.string().nullish().describe('Result of the amount validation check (total > 0, currency).'),
+  "totalTieOut": zod.string().nullish().describe('Result of the header tie-out check (subtotal + tax + freight = total).'),
+  "validationDetails": zod.string().nullish().describe('JSON detail of all validation checks, blocking issues, and warnings.'),
+  "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(listExceptionsResponseDataItemExtractionStatusDefault),
+  "extractionError": zod.string().nullish(),
+  "extractionAttempts": zod.number().default(listExceptionsResponseDataItemExtractionAttemptsDefault),
+  "extractionErrorDetail": zod.string().nullish().describe('Safe JSON troubleshooting detail for a failed extraction (no sensitive data).'),
+  "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
+  "extractionNotes": zod.string().nullish(),
+  "lastExtractedAt": zod.coerce.date().nullish(),
+  "sourceDocumentId": zod.number().nullish().describe('ID of the source document this invoice was detected\/split from.'),
+  "invoiceSequence": zod.number().nullish().describe('1-based position of this invoice within its source document.'),
+  "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
+  "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
+  "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(listExceptionsResponseDataItemRoleDefault),
+  "removedAt": zod.coerce.date().nullish().describe('Timestamp when the invoice was voided\/removed. Null when active.'),
+  "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
+  "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
+  "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
+  "exportStatus": zod.string().nullish().describe('File-based export readiness — one of NOT_READY, READY, EXPORTED, FAILED, BLOCKED. This is NOT an ERP status.'),
+  "exportBatchId": zod.string().nullish().describe('Business ID of the export batch this invoice was last included in.'),
+  "exportedAt": zod.coerce.date().nullish(),
+  "exportBlockedReason": zod.string().nullish(),
+  "exportRetryCount": zod.number().default(listExceptionsResponseDataItemExportRetryCountDefault),
+  "exportFileName": zod.string().nullish(),
+  "exportFormat": zod.string().nullish(),
+  "exceptionOwner": zod.string().nullish().describe('AP user assigned to work this exception.'),
+  "exceptionReviewedAt": zod.coerce.date().nullish(),
+  "exceptionReviewedBy": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+
+/**
+ * @summary Exception activity history for an invoice
+ */
+export const GetExceptionEventsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetExceptionEventsResponseItem = zod.object({
+  "id": zod.number(),
+  "invoiceId": zod.number(),
+  "eventType": zod.string().describe('NOTE, ASSIGNED, REVIEWED, RETURNED_TO_APPROVAL, or REOPENED.'),
+  "note": zod.string().nullish(),
+  "actor": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+})
+export const GetExceptionEventsResponse = zod.array(GetExceptionEventsResponseItem)
+
+
+/**
+ * @summary Add an internal note to an exception
+ */
+export const AddExceptionNoteParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+
+
+export const AddExceptionNoteBody = zod.object({
+  "note": zod.string().min(1),
+  "actor": zod.string().nullish()
+})
+
+
+/**
+ * @summary Assign an owner to an exception
+ */
+export const AssignExceptionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+
+
+export const AssignExceptionBody = zod.object({
+  "owner": zod.string().min(1),
+  "actor": zod.string().nullish()
+})
+
+export const assignExceptionResponseCurrencyDefault = `USD`;
+export const assignExceptionResponseExtractionStatusDefault = `PENDING`;
+export const assignExceptionResponseExtractionAttemptsDefault = 0;
+export const assignExceptionResponseRoleDefault = `AP_PROCESSOR`;
+export const assignExceptionResponseExportRetryCountDefault = 0;
+
+export const AssignExceptionResponse = zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED', 'VOIDED']),
+  "vendorId": zod.number().nullish(),
+  "vendorName": zod.string().nullish(),
+  "invoiceNumber": zod.string().nullish(),
+  "invoiceDate": zod.string().nullish(),
+  "totalAmount": zod.number().nullish(),
+  "taxAmount": zod.number().nullish(),
+  "poNumber": zod.string().nullish(),
+  "currency": zod.string().default(assignExceptionResponseCurrencyDefault),
+  "fileObjectPath": zod.string(),
+  "originalFileName": zod.string(),
+  "documentId": zod.string().nullish(),
+  "businessDocumentId": zod.string().nullish().describe('Business-facing display ID formatted as \"VendorID - InvoiceNumber - Amount\" (e.g. \"V-00123 - INV-12345 - 1309.00\"). Null until vendor is matched and invoice number\/total are available.'),
+  "vendorRawName": zod.string().nullish(),
+  "dueDate": zod.string().nullish(),
+  "voucherId": zod.string().nullish(),
+  "exceptionReason": zod.string().nullish(),
+  "lowConfidenceFields": zod.string().nullish(),
+  "confidenceScore": zod.number().nullish(),
+  "subtotal": zod.number().nullish(),
+  "freightAmount": zod.number().nullish(),
+  "discountAmount": zod.number().nullish().describe('Discount\/credit reduction extracted from the invoice (stored as a positive magnitude; subtracted in the tie-out formula).'),
+  "otherChargesAmount": zod.number().nullish().describe('Other charges, fees, or surcharges extracted from the invoice (added in the tie-out formula; negative values represent credits).'),
+  "tieOutExpectedTotal": zod.number().nullish().describe('Computed expected total = subtotal + tax + freight + other charges − discount.'),
+  "tieOutDifference": zod.number().nullish().describe('Extracted invoice total minus the expected total.'),
+  "tieOutStatus": zod.string().nullish().describe('Header tie-out outcome — one of PASS, WARNING, FAIL, SKIPPED.'),
+  "tieOutExplanation": zod.string().nullish().describe('Human-readable explanation of how the tie-out was computed and why it passed, warned, failed, or was skipped.'),
+  "paymentTerms": zod.string().nullish(),
+  "vendorMatchScore": zod.number().nullish(),
+  "validationStatus": zod.string().nullish().describe('Outcome of the authoritative validation engine (e.g. PASS, NEEDS_REVIEW, FAIL).'),
+  "reviewStatus": zod.string().nullish().describe('Review flag set when an invoice needs human review (e.g. NEEDS_REVIEW).'),
+  "overallReviewStatus": zod.string().nullish().describe('Aggregate human review state (e.g. PENDING, APPROVED).'),
+  "duplicateCheck": zod.string().nullish().describe('Result of the duplicate (vendor + invoice number) check.'),
+  "vendorCheck": zod.string().nullish().describe('Result of the vendor validation check (required\/active\/not on hold\/matched).'),
+  "poCheck": zod.string().nullish().describe('Result of the purchase order capture check.'),
+  "amountCheck": zod.string().nullish().describe('Result of the amount validation check (total > 0, currency).'),
+  "totalTieOut": zod.string().nullish().describe('Result of the header tie-out check (subtotal + tax + freight = total).'),
+  "validationDetails": zod.string().nullish().describe('JSON detail of all validation checks, blocking issues, and warnings.'),
+  "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(assignExceptionResponseExtractionStatusDefault),
+  "extractionError": zod.string().nullish(),
+  "extractionAttempts": zod.number().default(assignExceptionResponseExtractionAttemptsDefault),
+  "extractionErrorDetail": zod.string().nullish().describe('Safe JSON troubleshooting detail for a failed extraction (no sensitive data).'),
+  "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
+  "extractionNotes": zod.string().nullish(),
+  "lastExtractedAt": zod.coerce.date().nullish(),
+  "sourceDocumentId": zod.number().nullish().describe('ID of the source document this invoice was detected\/split from.'),
+  "invoiceSequence": zod.number().nullish().describe('1-based position of this invoice within its source document.'),
+  "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
+  "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
+  "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(assignExceptionResponseRoleDefault),
+  "removedAt": zod.coerce.date().nullish().describe('Timestamp when the invoice was voided\/removed. Null when active.'),
+  "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
+  "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
+  "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
+  "exportStatus": zod.string().nullish().describe('File-based export readiness — one of NOT_READY, READY, EXPORTED, FAILED, BLOCKED. This is NOT an ERP status.'),
+  "exportBatchId": zod.string().nullish().describe('Business ID of the export batch this invoice was last included in.'),
+  "exportedAt": zod.coerce.date().nullish(),
+  "exportBlockedReason": zod.string().nullish(),
+  "exportRetryCount": zod.number().default(assignExceptionResponseExportRetryCountDefault),
+  "exportFileName": zod.string().nullish(),
+  "exportFormat": zod.string().nullish(),
+  "exceptionOwner": zod.string().nullish().describe('AP user assigned to work this exception.'),
+  "exceptionReviewedAt": zod.coerce.date().nullish(),
+  "exceptionReviewedBy": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Mark an exception as reviewed
+ */
+export const ReviewExceptionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const reviewExceptionBodyReviewedDefault = true;
+
+export const ReviewExceptionBody = zod.object({
+  "reviewed": zod.boolean().default(reviewExceptionBodyReviewedDefault),
+  "note": zod.string().nullish(),
+  "actor": zod.string().nullish()
+})
+
+export const reviewExceptionResponseCurrencyDefault = `USD`;
+export const reviewExceptionResponseExtractionStatusDefault = `PENDING`;
+export const reviewExceptionResponseExtractionAttemptsDefault = 0;
+export const reviewExceptionResponseRoleDefault = `AP_PROCESSOR`;
+export const reviewExceptionResponseExportRetryCountDefault = 0;
+
+export const ReviewExceptionResponse = zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED', 'VOIDED']),
+  "vendorId": zod.number().nullish(),
+  "vendorName": zod.string().nullish(),
+  "invoiceNumber": zod.string().nullish(),
+  "invoiceDate": zod.string().nullish(),
+  "totalAmount": zod.number().nullish(),
+  "taxAmount": zod.number().nullish(),
+  "poNumber": zod.string().nullish(),
+  "currency": zod.string().default(reviewExceptionResponseCurrencyDefault),
+  "fileObjectPath": zod.string(),
+  "originalFileName": zod.string(),
+  "documentId": zod.string().nullish(),
+  "businessDocumentId": zod.string().nullish().describe('Business-facing display ID formatted as \"VendorID - InvoiceNumber - Amount\" (e.g. \"V-00123 - INV-12345 - 1309.00\"). Null until vendor is matched and invoice number\/total are available.'),
+  "vendorRawName": zod.string().nullish(),
+  "dueDate": zod.string().nullish(),
+  "voucherId": zod.string().nullish(),
+  "exceptionReason": zod.string().nullish(),
+  "lowConfidenceFields": zod.string().nullish(),
+  "confidenceScore": zod.number().nullish(),
+  "subtotal": zod.number().nullish(),
+  "freightAmount": zod.number().nullish(),
+  "discountAmount": zod.number().nullish().describe('Discount\/credit reduction extracted from the invoice (stored as a positive magnitude; subtracted in the tie-out formula).'),
+  "otherChargesAmount": zod.number().nullish().describe('Other charges, fees, or surcharges extracted from the invoice (added in the tie-out formula; negative values represent credits).'),
+  "tieOutExpectedTotal": zod.number().nullish().describe('Computed expected total = subtotal + tax + freight + other charges − discount.'),
+  "tieOutDifference": zod.number().nullish().describe('Extracted invoice total minus the expected total.'),
+  "tieOutStatus": zod.string().nullish().describe('Header tie-out outcome — one of PASS, WARNING, FAIL, SKIPPED.'),
+  "tieOutExplanation": zod.string().nullish().describe('Human-readable explanation of how the tie-out was computed and why it passed, warned, failed, or was skipped.'),
+  "paymentTerms": zod.string().nullish(),
+  "vendorMatchScore": zod.number().nullish(),
+  "validationStatus": zod.string().nullish().describe('Outcome of the authoritative validation engine (e.g. PASS, NEEDS_REVIEW, FAIL).'),
+  "reviewStatus": zod.string().nullish().describe('Review flag set when an invoice needs human review (e.g. NEEDS_REVIEW).'),
+  "overallReviewStatus": zod.string().nullish().describe('Aggregate human review state (e.g. PENDING, APPROVED).'),
+  "duplicateCheck": zod.string().nullish().describe('Result of the duplicate (vendor + invoice number) check.'),
+  "vendorCheck": zod.string().nullish().describe('Result of the vendor validation check (required\/active\/not on hold\/matched).'),
+  "poCheck": zod.string().nullish().describe('Result of the purchase order capture check.'),
+  "amountCheck": zod.string().nullish().describe('Result of the amount validation check (total > 0, currency).'),
+  "totalTieOut": zod.string().nullish().describe('Result of the header tie-out check (subtotal + tax + freight = total).'),
+  "validationDetails": zod.string().nullish().describe('JSON detail of all validation checks, blocking issues, and warnings.'),
+  "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(reviewExceptionResponseExtractionStatusDefault),
+  "extractionError": zod.string().nullish(),
+  "extractionAttempts": zod.number().default(reviewExceptionResponseExtractionAttemptsDefault),
+  "extractionErrorDetail": zod.string().nullish().describe('Safe JSON troubleshooting detail for a failed extraction (no sensitive data).'),
+  "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
+  "extractionNotes": zod.string().nullish(),
+  "lastExtractedAt": zod.coerce.date().nullish(),
+  "sourceDocumentId": zod.number().nullish().describe('ID of the source document this invoice was detected\/split from.'),
+  "invoiceSequence": zod.number().nullish().describe('1-based position of this invoice within its source document.'),
+  "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
+  "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
+  "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(reviewExceptionResponseRoleDefault),
+  "removedAt": zod.coerce.date().nullish().describe('Timestamp when the invoice was voided\/removed. Null when active.'),
+  "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
+  "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
+  "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
+  "exportStatus": zod.string().nullish().describe('File-based export readiness — one of NOT_READY, READY, EXPORTED, FAILED, BLOCKED. This is NOT an ERP status.'),
+  "exportBatchId": zod.string().nullish().describe('Business ID of the export batch this invoice was last included in.'),
+  "exportedAt": zod.coerce.date().nullish(),
+  "exportBlockedReason": zod.string().nullish(),
+  "exportRetryCount": zod.number().default(reviewExceptionResponseExportRetryCountDefault),
+  "exportFileName": zod.string().nullish(),
+  "exportFormat": zod.string().nullish(),
+  "exceptionOwner": zod.string().nullish().describe('AP user assigned to work this exception.'),
+  "exceptionReviewedAt": zod.coerce.date().nullish(),
+  "exceptionReviewedBy": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Return a resolved exception to the approval queue
+ */
+export const ReturnExceptionToApprovalParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const ReturnExceptionToApprovalBody = zod.object({
+  "note": zod.string().nullish(),
+  "actor": zod.string().nullish()
+})
+
+export const returnExceptionToApprovalResponseCurrencyDefault = `USD`;
+export const returnExceptionToApprovalResponseExtractionStatusDefault = `PENDING`;
+export const returnExceptionToApprovalResponseExtractionAttemptsDefault = 0;
+export const returnExceptionToApprovalResponseRoleDefault = `AP_PROCESSOR`;
+export const returnExceptionToApprovalResponseExportRetryCountDefault = 0;
+
+export const ReturnExceptionToApprovalResponse = zod.object({
+  "id": zod.number(),
+  "status": zod.enum(['PENDING_EXTRACTION', 'EXCEPTION', 'PENDING_APPROVAL', 'APPROVED', 'POSTED', 'VOIDED']),
+  "vendorId": zod.number().nullish(),
+  "vendorName": zod.string().nullish(),
+  "invoiceNumber": zod.string().nullish(),
+  "invoiceDate": zod.string().nullish(),
+  "totalAmount": zod.number().nullish(),
+  "taxAmount": zod.number().nullish(),
+  "poNumber": zod.string().nullish(),
+  "currency": zod.string().default(returnExceptionToApprovalResponseCurrencyDefault),
+  "fileObjectPath": zod.string(),
+  "originalFileName": zod.string(),
+  "documentId": zod.string().nullish(),
+  "businessDocumentId": zod.string().nullish().describe('Business-facing display ID formatted as \"VendorID - InvoiceNumber - Amount\" (e.g. \"V-00123 - INV-12345 - 1309.00\"). Null until vendor is matched and invoice number\/total are available.'),
+  "vendorRawName": zod.string().nullish(),
+  "dueDate": zod.string().nullish(),
+  "voucherId": zod.string().nullish(),
+  "exceptionReason": zod.string().nullish(),
+  "lowConfidenceFields": zod.string().nullish(),
+  "confidenceScore": zod.number().nullish(),
+  "subtotal": zod.number().nullish(),
+  "freightAmount": zod.number().nullish(),
+  "discountAmount": zod.number().nullish().describe('Discount\/credit reduction extracted from the invoice (stored as a positive magnitude; subtracted in the tie-out formula).'),
+  "otherChargesAmount": zod.number().nullish().describe('Other charges, fees, or surcharges extracted from the invoice (added in the tie-out formula; negative values represent credits).'),
+  "tieOutExpectedTotal": zod.number().nullish().describe('Computed expected total = subtotal + tax + freight + other charges − discount.'),
+  "tieOutDifference": zod.number().nullish().describe('Extracted invoice total minus the expected total.'),
+  "tieOutStatus": zod.string().nullish().describe('Header tie-out outcome — one of PASS, WARNING, FAIL, SKIPPED.'),
+  "tieOutExplanation": zod.string().nullish().describe('Human-readable explanation of how the tie-out was computed and why it passed, warned, failed, or was skipped.'),
+  "paymentTerms": zod.string().nullish(),
+  "vendorMatchScore": zod.number().nullish(),
+  "validationStatus": zod.string().nullish().describe('Outcome of the authoritative validation engine (e.g. PASS, NEEDS_REVIEW, FAIL).'),
+  "reviewStatus": zod.string().nullish().describe('Review flag set when an invoice needs human review (e.g. NEEDS_REVIEW).'),
+  "overallReviewStatus": zod.string().nullish().describe('Aggregate human review state (e.g. PENDING, APPROVED).'),
+  "duplicateCheck": zod.string().nullish().describe('Result of the duplicate (vendor + invoice number) check.'),
+  "vendorCheck": zod.string().nullish().describe('Result of the vendor validation check (required\/active\/not on hold\/matched).'),
+  "poCheck": zod.string().nullish().describe('Result of the purchase order capture check.'),
+  "amountCheck": zod.string().nullish().describe('Result of the amount validation check (total > 0, currency).'),
+  "totalTieOut": zod.string().nullish().describe('Result of the header tie-out check (subtotal + tax + freight = total).'),
+  "validationDetails": zod.string().nullish().describe('JSON detail of all validation checks, blocking issues, and warnings.'),
+  "extractionStatus": zod.enum(['PENDING', 'PROCESSING', 'COMPLETED', 'FAILED']).default(returnExceptionToApprovalResponseExtractionStatusDefault),
+  "extractionError": zod.string().nullish(),
+  "extractionAttempts": zod.number().default(returnExceptionToApprovalResponseExtractionAttemptsDefault),
+  "extractionErrorDetail": zod.string().nullish().describe('Safe JSON troubleshooting detail for a failed extraction (no sensitive data).'),
+  "fieldConfidence": zod.string().nullish().describe('JSON map of per-field confidence (0-100) keyed by field name.'),
+  "extractionNotes": zod.string().nullish(),
+  "lastExtractedAt": zod.coerce.date().nullish(),
+  "sourceDocumentId": zod.number().nullish().describe('ID of the source document this invoice was detected\/split from.'),
+  "invoiceSequence": zod.number().nullish().describe('1-based position of this invoice within its source document.'),
+  "pageStart": zod.number().nullish().describe('1-based first page of this invoice within the source document.'),
+  "pageEnd": zod.number().nullish().describe('1-based last page (inclusive) of this invoice within the source document.'),
+  "role": zod.enum(['AP_PROCESSOR', 'AP_APPROVER']).default(returnExceptionToApprovalResponseRoleDefault),
+  "removedAt": zod.coerce.date().nullish().describe('Timestamp when the invoice was voided\/removed. Null when active.'),
+  "removedBy": zod.string().nullish().describe('Actor who voided\/removed the invoice.'),
+  "removalReason": zod.string().nullish().describe('Required reason captured when the invoice was voided\/removed.'),
+  "removalNote": zod.string().nullish().describe('Optional free-text note captured at removal time.'),
+  "exportStatus": zod.string().nullish().describe('File-based export readiness — one of NOT_READY, READY, EXPORTED, FAILED, BLOCKED. This is NOT an ERP status.'),
+  "exportBatchId": zod.string().nullish().describe('Business ID of the export batch this invoice was last included in.'),
+  "exportedAt": zod.coerce.date().nullish(),
+  "exportBlockedReason": zod.string().nullish(),
+  "exportRetryCount": zod.number().default(returnExceptionToApprovalResponseExportRetryCountDefault),
+  "exportFileName": zod.string().nullish(),
+  "exportFormat": zod.string().nullish(),
+  "exceptionOwner": zod.string().nullish().describe('AP user assigned to work this exception.'),
+  "exceptionReviewedAt": zod.coerce.date().nullish(),
+  "exceptionReviewedBy": zod.string().nullish(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Aggregated audit trail across a source document's invoices
+ */
+export const GetSourceDocumentAuditParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetSourceDocumentAuditResponseItem = zod.object({
+  "id": zod.number(),
+  "invoiceId": zod.number(),
+  "action": zod.string(),
+  "fieldName": zod.string().nullish(),
+  "oldValue": zod.string().nullish(),
+  "newValue": zod.string().nullish(),
+  "editorRole": zod.string().nullish(),
+  "note": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+})
+export const GetSourceDocumentAuditResponse = zod.array(GetSourceDocumentAuditResponseItem)
+
+
+/**
+ * @summary List import batch history
+ */
+export const listImportsQueryPageDefault = 1;
+export const listImportsQueryLimitDefault = 20;
+
+export const ListImportsQueryParams = zod.object({
+  "importType": zod.enum(['VENDOR_MASTER', 'PO_REFERENCE', 'INVOICE_CORRECTION']).optional(),
+  "page": zod.coerce.number().default(listImportsQueryPageDefault),
+  "limit": zod.coerce.number().default(listImportsQueryLimitDefault)
+})
+
+export const ListImportsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "batchId": zod.string(),
+  "importType": zod.string(),
+  "fileName": zod.string(),
+  "uploadedBy": zod.string().nullish(),
+  "uploadedAt": zod.coerce.date(),
+  "rowCount": zod.number(),
+  "rowsAccepted": zod.number(),
+  "rowsRejected": zod.number(),
+  "status": zod.enum(['PENDING', 'VALIDATED', 'COMMITTED', 'CANCELLED', 'FAILED']),
+  "errorSummary": zod.string().nullish(),
+  "rowErrors": zod.array(zod.object({
+  "row": zod.number(),
+  "column": zod.string().nullish(),
+  "message": zod.string()
+})).optional(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+
+/**
+ * @summary Commit a validated import (applies rows to the database)
+ */
+
+export const commitImportBodyUpdateExistingDefault = false;
+
+export const CommitImportBody = zod.object({
+  "importType": zod.enum(['VENDOR_MASTER', 'PO_REFERENCE', 'INVOICE_CORRECTION']),
+  "fileName": zod.string().min(1),
+  "content": zod.string(),
+  "uploadedBy": zod.string().nullish(),
+  "updateExisting": zod.boolean().default(commitImportBodyUpdateExistingDefault).describe('When true, existing rows (by natural key) are updated; otherwise duplicates are skipped.')
+})
+
+
+/**
+ * @summary Validate an import file and preview rows without committing
+ */
+
+
+
+export const ValidateImportBody = zod.object({
+  "importType": zod.enum(['VENDOR_MASTER', 'PO_REFERENCE', 'INVOICE_CORRECTION']),
+  "fileName": zod.string().min(1),
+  "content": zod.string().describe('Raw CSV file content.')
+})
+
+export const ValidateImportResponse = zod.object({
+  "importType": zod.string(),
+  "fileName": zod.string(),
+  "columns": zod.array(zod.string()),
+  "rowCount": zod.number(),
+  "rowsValid": zod.number(),
+  "rowsRejected": zod.number(),
+  "preview": zod.array(zod.object({
+  "rowNumber": zod.number(),
+  "valid": zod.boolean(),
+  "data": zod.record(zod.string(), zod.string()),
+  "errors": zod.array(zod.string())
+})),
+  "errorSummary": zod.string().nullish(),
+  "hasBlockingErrors": zod.boolean()
+})
+
+
+/**
+ * @summary Download a CSV template for an import type
+ */
+export const GetImportTemplateQueryParams = zod.object({
+  "importType": zod.enum(['VENDOR_MASTER', 'PO_REFERENCE', 'INVOICE_CORRECTION'])
+})
+
+
+/**
+ * @summary Get an import batch by ID
+ */
+export const GetImportParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetImportResponse = zod.object({
+  "id": zod.number(),
+  "batchId": zod.string(),
+  "importType": zod.string(),
+  "fileName": zod.string(),
+  "uploadedBy": zod.string().nullish(),
+  "uploadedAt": zod.coerce.date(),
+  "rowCount": zod.number(),
+  "rowsAccepted": zod.number(),
+  "rowsRejected": zod.number(),
+  "status": zod.enum(['PENDING', 'VALIDATED', 'COMMITTED', 'CANCELLED', 'FAILED']),
+  "errorSummary": zod.string().nullish(),
+  "rowErrors": zod.array(zod.object({
+  "row": zod.number(),
+  "column": zod.string().nullish(),
+  "message": zod.string()
+})).optional(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary List export batch history
+ */
+export const listExportsQueryPageDefault = 1;
+export const listExportsQueryLimitDefault = 20;
+
+export const ListExportsQueryParams = zod.object({
+  "page": zod.coerce.number().default(listExportsQueryPageDefault),
+  "limit": zod.coerce.number().default(listExportsQueryLimitDefault)
+})
+
+export const ListExportsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "batchId": zod.string(),
+  "exportType": zod.string(),
+  "format": zod.string(),
+  "filterJson": zod.record(zod.string(), zod.unknown()).optional(),
+  "recordCount": zod.number(),
+  "exportedBy": zod.string().nullish(),
+  "exportedAt": zod.coerce.date(),
+  "fileName": zod.string().nullish(),
+  "fileObjectPath": zod.string().nullish(),
+  "status": zod.enum(['SUCCESS', 'FAILED']),
+  "createdAt": zod.coerce.date()
+})),
+  "total": zod.number(),
+  "page": zod.number(),
+  "limit": zod.number()
+})
+
+
+/**
+ * @summary Generate an export file package and record the batch
+ */
+export const createExportBodyFormatDefault = `CSV`;
+
+export const CreateExportBody = zod.object({
+  "exportType": zod.enum(['AP_INVOICE_FILE', 'APPROVED', 'POSTED', 'ALL_ACTIVE', 'EXCEPTIONS', 'TIE_OUT_FAILURES', 'VENDOR_SUMMARY', 'SOURCE_DOCUMENT_SUMMARY']),
+  "format": zod.enum(['CSV']).default(createExportBodyFormatDefault),
+  "status": zod.string().nullish(),
+  "dateFrom": zod.string().nullish(),
+  "dateTo": zod.string().nullish(),
+  "vendorId": zod.number().nullish(),
+  "exportedBy": zod.string().nullish()
+})
+
+
+/**
+ * @summary Get an export batch by ID
+ */
+export const GetExportParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetExportResponse = zod.object({
+  "id": zod.number(),
+  "batchId": zod.string(),
+  "exportType": zod.string(),
+  "format": zod.string(),
+  "filterJson": zod.record(zod.string(), zod.unknown()).optional(),
+  "recordCount": zod.number(),
+  "exportedBy": zod.string().nullish(),
+  "exportedAt": zod.coerce.date(),
+  "fileName": zod.string().nullish(),
+  "fileObjectPath": zod.string().nullish(),
+  "status": zod.enum(['SUCCESS', 'FAILED']),
+  "createdAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Download the CSV file for an export batch
+ */
+export const DownloadExportParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+/**
+ * @summary List recorded extraction-accuracy runs
+ */
+export const ListAccuracyRunsResponse = zod.object({
+  "data": zod.array(zod.object({
+  "id": zod.number(),
+  "runDate": zod.coerce.date(),
+  "testPackName": zod.string(),
+  "invoicesTested": zod.number(),
+  "fieldsTested": zod.number(),
+  "correctFields": zod.number(),
+  "incorrectFields": zod.number(),
+  "missingFields": zod.number(),
+  "overallAccuracy": zod.number().nullish(),
+  "accuracyByCategory": zod.record(zod.string(), zod.number()).optional(),
+  "threshold": zod.number().nullish(),
+  "passed": zod.boolean().nullish(),
+  "reportRef": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+})),
+  "measured": zod.boolean().describe('False when no labeled accuracy run has been recorded (\"Not measured\").')
+})
+
+
+/**
+ * @summary Record the result of a labeled accuracy run
+ */
+
+
+
+export const CreateAccuracyRunBody = zod.object({
+  "testPackName": zod.string().min(1),
+  "invoicesTested": zod.number(),
+  "fieldsTested": zod.number(),
+  "correctFields": zod.number(),
+  "incorrectFields": zod.number(),
+  "missingFields": zod.number(),
+  "overallAccuracy": zod.number().nullish(),
+  "accuracyByCategory": zod.record(zod.string(), zod.number()).optional(),
+  "threshold": zod.number().nullish(),
+  "passed": zod.boolean().nullish(),
+  "reportRef": zod.string().nullish()
+})
+
+
+/**
+ * @summary Get internal configuration (safe defaults applied)
+ */
+export const GetSettingsResponse = zod.object({
+  "extractionConfidenceThreshold": zod.number().describe('Percent (0-100). Safe default 85.'),
+  "vendorMatchThreshold": zod.number().describe('Percent (0-100). Safe default 85.'),
+  "tieOutPassTolerance": zod.number().describe('Absolute currency tolerance for a tie-out PASS. Safe default 0.01.'),
+  "tieOutWarningTolerance": zod.number().describe('Absolute currency tolerance for a tie-out WARNING. Safe default 0.05.'),
+  "defaultPageSize": zod.number().describe('Default list page size. Safe default 20.'),
+  "defaultExportFormat": zod.string().describe('Default export format. Safe default CSV.')
+})
+
+
+/**
+ * @summary Update internal configuration
+ */
+export const UpdateSettingsBody = zod.object({
+  "extractionConfidenceThreshold": zod.number().nullish(),
+  "vendorMatchThreshold": zod.number().nullish(),
+  "tieOutPassTolerance": zod.number().nullish(),
+  "tieOutWarningTolerance": zod.number().nullish(),
+  "defaultPageSize": zod.number().nullish(),
+  "defaultExportFormat": zod.string().nullish(),
+  "updatedBy": zod.string().nullish()
+})
+
+export const UpdateSettingsResponse = zod.object({
+  "extractionConfidenceThreshold": zod.number().describe('Percent (0-100). Safe default 85.'),
+  "vendorMatchThreshold": zod.number().describe('Percent (0-100). Safe default 85.'),
+  "tieOutPassTolerance": zod.number().describe('Absolute currency tolerance for a tie-out PASS. Safe default 0.01.'),
+  "tieOutWarningTolerance": zod.number().describe('Absolute currency tolerance for a tie-out WARNING. Safe default 0.05.'),
+  "defaultPageSize": zod.number().describe('Default list page size. Safe default 20.'),
+  "defaultExportFormat": zod.string().describe('Default export format. Safe default CSV.')
 })
 
 

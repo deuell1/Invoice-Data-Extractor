@@ -5,10 +5,19 @@ import {
   AlertCircle, 
   CheckSquare, 
   Users, 
-  Menu,
   PanelLeftClose,
   PanelLeftOpen,
-  LayoutDashboard
+  LayoutDashboard,
+  Search,
+  Files,
+  ShieldAlert,
+  BarChart3,
+  Upload,
+  Download,
+  Target,
+  History,
+  Settings,
+  Construction
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -22,10 +31,21 @@ export function Layout({ children }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const navigation = [
+    { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
     { name: "Invoices", href: "/invoices", icon: FileText },
+    { name: "Search", href: "/search", icon: Search },
+    { name: "Sources", href: "/sources", icon: Files },
     { name: "Exceptions", href: "/exceptions", icon: AlertCircle },
+    { name: "Exception Mgmt", href: "/exception-management", icon: ShieldAlert },
     { name: "Approvals", href: "/approvals", icon: CheckSquare },
     { name: "Vendors", href: "/vendors", icon: Users },
+    { name: "Analytics", href: "/analytics", icon: BarChart3 },
+    { name: "Imports", href: "/imports", icon: Upload },
+    { name: "Exports", href: "/exports", icon: Download },
+    { name: "Accuracy", href: "/accuracy", icon: Target },
+    { name: "Audit", href: "/audit", icon: History },
+    { name: "Settings", href: "/settings", icon: Settings },
+    { name: "Phase 3", href: "/phase3", icon: Construction },
   ];
 
   return (

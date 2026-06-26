@@ -59,12 +59,74 @@ paths:
           in: query
           schema:
             type: string
-          description: Search by invoice number or vendor name
+          description: Free-text search across invoice number, vendor name, vendor code, PO number, voucher ID, source file name, and business document ID
+        - name: tieOutStatus
+          in: query
+          schema:
+            type: string
+            enum: [PASS, WARNING, FAIL, SKIPPED]
+        - name: validationStatus
+          in: query
+          schema:
+            type: string
+        - name: exportStatus
+          in: query
+          schema:
+            type: string
+            enum: [NOT_READY, READY, EXPORTED, FAILED, BLOCKED]
+        - name: sourceDocumentId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: poNumber
+          in: query
+          schema:
+            type: string
+        - name: voucherId
+          in: query
+          schema:
+            type: string
+        - name: businessDocumentId
+          in: query
+          schema:
+            type: string
+        - name: exportBatchId
+          in: query
+          schema:
+            type: string
+        - name: dateFrom
+          in: query
+          description: Filter by invoiceDate on/after this date (YYYY-MM-DD)
+          schema:
+            type: string
+        - name: dateTo
+          in: query
+          description: Filter by invoiceDate on/before this date (YYYY-MM-DD)
+          schema:
+            type: string
+        - name: amountMin
+          in: query
+          schema:
+            type: ["number", "null"]
+        - name: amountMax
+          in: query
+          schema:
+            type: ["number", "null"]
+        - name: confidenceMin
+          in: query
+          description: Minimum overall confidence as a percentage (0-100)
+          schema:
+            type: ["number", "null"]
+        - name: confidenceMax
+          in: query
+          description: Maximum overall confidence as a percentage (0-100)
+          schema:
+            type: ["number", "null"]
         - name: sortBy
           in: query
           schema:
             type: string
-            enum: [createdAt, invoiceDate, totalAmount, vendorName]
+            enum: [createdAt, invoiceDate, dueDate, totalAmount, vendorName, confidenceScore, status]
             default: createdAt
         - name: sortDir
           in: query
@@ -695,6 +757,43 @@ paths:
 
   # ─── Source Documents ────────────────────────────────────────────────────────
   /source-documents:
+    get:
+      tags: [sourceDocuments]
+      operationId: listSourceDocuments
+      summary: List uploaded source documents with linked-invoice counts
+      parameters:
+        - name: processingStatus
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, DETECTING, COMPLETED, EXCEPTION]
+        - name: includeRemoved
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Match by original file name
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Source document list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SourceDocumentListResponse"
     post:
       tags: [sourceDocuments]
       operationId: createSourceDocument
@@ -908,6 +1007,530 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  # ─── Phase 2: Dashboard & Analytics ──────────────────────────────────────────
+  /dashboard/metrics:
+    get:
+      tags: [dashboard]
+      operationId: getDashboardMetrics
+      summary: Aggregated dashboard metrics for AP invoice capture (Phase 2)
+      parameters:
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+        - name: vendorId
+          in: query
+          schema:
+            type: ["integer", "null"]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING_EXTRACTION, EXCEPTION, PENDING_APPROVAL, APPROVED, POSTED, VOIDED]
+        - name: exportStatus
+          in: query
+          schema:
+            type: string
+            enum: [NOT_READY, READY, EXPORTED, FAILED, BLOCKED]
+      responses:
+        "200":
+          description: Dashboard metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardMetrics"
+
+  /analytics/vendors:
+    get:
+      tags: [analytics]
+      operationId: getVendorAnalytics
+      summary: Per-vendor invoice analytics
+      parameters:
+        - name: dateFrom
+          in: query
+          schema:
+            type: string
+        - name: dateTo
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Vendor analytics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VendorAnalyticsResponse"
+
+  # ─── Phase 2: Exception Management ───────────────────────────────────────────
+  /exceptions:
+    get:
+      tags: [exceptions]
+      operationId: listExceptions
+      summary: List invoices in exception with management filters
+      parameters:
+        - name: reason
+          in: query
+          schema:
+            type: string
+          description: Filter by exception reason substring
+        - name: owner
+          in: query
+          schema:
+            type: string
+        - name: reviewed
+          in: query
+          schema:
+            type: ["boolean", "null"]
+        - name: sortBy
+          in: query
+          schema:
+            type: string
+            enum: [age, vendorName, totalAmount, confidenceScore, status]
+            default: age
+        - name: sortDir
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Exception list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvoiceListResponse"
+
+  /invoices/{id}/exception/events:
+    get:
+      tags: [exceptions]
+      operationId: getExceptionEvents
+      summary: Exception activity history for an invoice
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Exception events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ExceptionEvent"
+
+  /invoices/{id}/exception/note:
+    post:
+      tags: [exceptions]
+      operationId: addExceptionNote
+      summary: Add an internal note to an exception
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExceptionNoteInput"
+      responses:
+        "201":
+          description: Note recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExceptionEvent"
+
+  /invoices/{id}/exception/assign:
+    post:
+      tags: [exceptions]
+      operationId: assignException
+      summary: Assign an owner to an exception
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExceptionAssignInput"
+      responses:
+        "200":
+          description: Updated invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+
+  /invoices/{id}/exception/review:
+    post:
+      tags: [exceptions]
+      operationId: reviewException
+      summary: Mark an exception as reviewed
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExceptionReviewInput"
+      responses:
+        "200":
+          description: Updated invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+
+  /invoices/{id}/exception/return-to-approval:
+    post:
+      tags: [exceptions]
+      operationId: returnExceptionToApproval
+      summary: Return a resolved exception to the approval queue
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExceptionReturnInput"
+      responses:
+        "200":
+          description: Updated invoice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Invoice"
+        "422":
+          description: Invoice is not in a returnable state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /source-documents/{id}/audit:
+    get:
+      tags: [sourceDocuments]
+      operationId: getSourceDocumentAudit
+      summary: Aggregated audit trail across a source document's invoices
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Audit entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AuditLogEntry"
+
+  # ─── Phase 2: Imports (file-based reference data) ─────────────────────────────
+  /imports:
+    get:
+      tags: [imports]
+      operationId: listImports
+      summary: List import batch history
+      parameters:
+        - name: importType
+          in: query
+          schema:
+            type: string
+            enum: [VENDOR_MASTER, PO_REFERENCE, INVOICE_CORRECTION]
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Import batches
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportBatchListResponse"
+    post:
+      tags: [imports]
+      operationId: commitImport
+      summary: Commit a validated import (applies rows to the database)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportCommitInput"
+      responses:
+        "201":
+          description: Import committed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportBatch"
+        "422":
+          description: Import has blocking validation errors
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /imports/validate:
+    post:
+      tags: [imports]
+      operationId: validateImport
+      summary: Validate an import file and preview rows without committing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ImportValidationInput"
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportValidationResult"
+
+  /imports/template:
+    get:
+      tags: [imports]
+      operationId: getImportTemplate
+      summary: Download a CSV template for an import type
+      parameters:
+        - name: importType
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [VENDOR_MASTER, PO_REFERENCE, INVOICE_CORRECTION]
+      responses:
+        "200":
+          description: CSV template
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+
+  /imports/{id}:
+    get:
+      tags: [imports]
+      operationId: getImport
+      summary: Get an import batch by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Import batch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ImportBatch"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  # ─── Phase 2: Exports (file-based; NOT ERP integration) ──────────────────────
+  /exports:
+    get:
+      tags: [exports]
+      operationId: listExports
+      summary: List export batch history
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Export batches
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportBatchListResponse"
+    post:
+      tags: [exports]
+      operationId: createExport
+      summary: Generate an export file package and record the batch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExportRequest"
+      responses:
+        "201":
+          description: Export batch created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportBatch"
+
+  /exports/{id}:
+    get:
+      tags: [exports]
+      operationId: getExport
+      summary: Get an export batch by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Export batch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExportBatch"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /exports/{id}/download:
+    get:
+      tags: [exports]
+      operationId: downloadExport
+      summary: Download the CSV file for an export batch
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: CSV file download
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+
+  # ─── Phase 2: Accuracy reporting framework ───────────────────────────────────
+  /accuracy-runs:
+    get:
+      tags: [accuracy]
+      operationId: listAccuracyRuns
+      summary: List recorded extraction-accuracy runs
+      responses:
+        "200":
+          description: Accuracy runs (measured=false when no labeled pack has been run)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccuracyRunListResponse"
+    post:
+      tags: [accuracy]
+      operationId: createAccuracyRun
+      summary: Record the result of a labeled accuracy run
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccuracyRunInput"
+      responses:
+        "201":
+          description: Accuracy run recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccuracyRun"
+
+  # ─── Phase 2: Admin settings ─────────────────────────────────────────────────
+  /settings:
+    get:
+      tags: [settings]
+      operationId: getSettings
+      summary: Get internal configuration (safe defaults applied)
+      responses:
+        "200":
+          description: Settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+    put:
+      tags: [settings]
+      operationId: updateSettings
+      summary: Update internal configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsUpdate"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Settings"
+
 components:
   schemas:
     HealthStatus:
@@ -1074,6 +1697,32 @@ components:
         removalNote:
           type: ["string", "null"]
           description: Optional free-text note captured at removal time.
+        exportStatus:
+          type: ["string", "null"]
+          description: File-based export readiness — one of NOT_READY, READY, EXPORTED, FAILED, BLOCKED. This is NOT an ERP status.
+        exportBatchId:
+          type: ["string", "null"]
+          description: Business ID of the export batch this invoice was last included in.
+        exportedAt:
+          type: ["string", "null"]
+          format: date-time
+        exportBlockedReason:
+          type: ["string", "null"]
+        exportRetryCount:
+          type: integer
+          default: 0
+        exportFileName:
+          type: ["string", "null"]
+        exportFormat:
+          type: ["string", "null"]
+        exceptionOwner:
+          type: ["string", "null"]
+          description: AP user assigned to work this exception.
+        exceptionReviewedAt:
+          type: ["string", "null"]
+          format: date-time
+        exceptionReviewedBy:
+          type: ["string", "null"]
         createdAt:
           type: string
           format: date-time
@@ -1642,3 +2291,624 @@ components:
       properties:
         error:
           type: string
+
+    # ─── Phase 2: Dashboard & Analytics ──────────────────────────────────────
+    StatusValue:
+      type: object
+      required: [status, count, totalAmount]
+      properties:
+        status:
+          type: string
+        count:
+          type: integer
+        totalAmount:
+          type: number
+
+    DashboardMetrics:
+      type: object
+      required:
+        - total
+        - pendingExtraction
+        - exception
+        - pendingApproval
+        - approved
+        - posted
+        - voided
+        - needsReview
+        - exportReady
+        - exported
+        - exportFailed
+        - exportBlocked
+        - tieOutFail
+        - tieOutWarning
+        - duplicateWarning
+        - missingPo
+        - missingDueDate
+        - exceptionRate
+        - totalApprovedAmount
+        - valueByStatus
+      properties:
+        total:
+          type: integer
+        pendingExtraction:
+          type: integer
+        exception:
+          type: integer
+        pendingApproval:
+          type: integer
+        approved:
+          type: integer
+        posted:
+          type: integer
+        voided:
+          type: integer
+        needsReview:
+          type: integer
+        exportReady:
+          type: integer
+        exported:
+          type: integer
+        exportFailed:
+          type: integer
+        exportBlocked:
+          type: integer
+        tieOutFail:
+          type: integer
+        tieOutWarning:
+          type: integer
+        duplicateWarning:
+          type: integer
+        missingPo:
+          type: integer
+        missingDueDate:
+          type: integer
+        avgExtractionConfidence:
+          type: ["number", "null"]
+          description: Average overall confidence (0-100) across invoices that have a score, or null.
+        avgVendorMatchConfidence:
+          type: ["number", "null"]
+        exceptionRate:
+          type: number
+          description: Exception count divided by total active invoices (0-1).
+        totalApprovedAmount:
+          type: number
+        valueByStatus:
+          type: array
+          items:
+            $ref: "#/components/schemas/StatusValue"
+
+    VendorAnalyticsRow:
+      type: object
+      required:
+        - vendorId
+        - vendorCode
+        - vendorName
+        - invoiceCount
+        - totalAmount
+        - exceptionCount
+        - exportedCount
+      properties:
+        vendorId:
+          type: integer
+        vendorCode:
+          type: string
+        vendorName:
+          type: string
+        vendorStatus:
+          type: string
+          description: ACTIVE, INACTIVE, or ON_HOLD.
+        invoiceCount:
+          type: integer
+        totalAmount:
+          type: number
+        avgVendorMatchConfidence:
+          type: ["number", "null"]
+        exceptionCount:
+          type: integer
+        duplicateWarningCount:
+          type: integer
+          default: 0
+        tieOutFailCount:
+          type: integer
+          default: 0
+        missingPoCount:
+          type: integer
+          default: 0
+        exportedCount:
+          type: integer
+
+    VendorAnalyticsResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/VendorAnalyticsRow"
+
+    # ─── Phase 2: Exception Management ───────────────────────────────────────
+    ExceptionEvent:
+      type: object
+      required: [id, invoiceId, eventType, createdAt]
+      properties:
+        id:
+          type: integer
+        invoiceId:
+          type: integer
+        eventType:
+          type: string
+          description: NOTE, ASSIGNED, REVIEWED, RETURNED_TO_APPROVAL, or REOPENED.
+        note:
+          type: ["string", "null"]
+        actor:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+
+    ExceptionNoteInput:
+      type: object
+      required: [note]
+      properties:
+        note:
+          type: string
+          minLength: 1
+        actor:
+          type: ["string", "null"]
+
+    ExceptionAssignInput:
+      type: object
+      required: [owner]
+      properties:
+        owner:
+          type: string
+          minLength: 1
+        actor:
+          type: ["string", "null"]
+
+    ExceptionReviewInput:
+      type: object
+      properties:
+        reviewed:
+          type: boolean
+          default: true
+        note:
+          type: ["string", "null"]
+        actor:
+          type: ["string", "null"]
+
+    ExceptionReturnInput:
+      type: object
+      properties:
+        note:
+          type: ["string", "null"]
+        actor:
+          type: ["string", "null"]
+
+    # ─── Phase 2: Source Document list ───────────────────────────────────────
+    SourceDocumentSummary:
+      type: object
+      required:
+        - source
+        - invoiceCount
+        - extractedCount
+        - exceptionCount
+        - removedCount
+      properties:
+        source:
+          $ref: "#/components/schemas/SourceDocument"
+        invoiceCount:
+          type: integer
+        extractedCount:
+          type: integer
+        exceptionCount:
+          type: integer
+        removedCount:
+          type: integer
+
+    SourceDocumentListResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SourceDocumentSummary"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    # ─── Phase 2: Imports ────────────────────────────────────────────────────
+    ImportRowError:
+      type: object
+      required: [row, message]
+      properties:
+        row:
+          type: integer
+        column:
+          type: ["string", "null"]
+        message:
+          type: string
+
+    ImportPreviewRow:
+      type: object
+      required: [rowNumber, valid, data, errors]
+      properties:
+        rowNumber:
+          type: integer
+        valid:
+          type: boolean
+        data:
+          type: object
+          additionalProperties:
+            type: string
+        errors:
+          type: array
+          items:
+            type: string
+
+    ImportValidationInput:
+      type: object
+      required: [importType, fileName, content]
+      properties:
+        importType:
+          type: string
+          enum: [VENDOR_MASTER, PO_REFERENCE, INVOICE_CORRECTION]
+        fileName:
+          type: string
+          minLength: 1
+        content:
+          type: string
+          description: Raw CSV file content.
+
+    ImportValidationResult:
+      type: object
+      required:
+        - importType
+        - fileName
+        - columns
+        - rowCount
+        - rowsValid
+        - rowsRejected
+        - preview
+        - hasBlockingErrors
+      properties:
+        importType:
+          type: string
+        fileName:
+          type: string
+        columns:
+          type: array
+          items:
+            type: string
+        rowCount:
+          type: integer
+        rowsValid:
+          type: integer
+        rowsRejected:
+          type: integer
+        preview:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportPreviewRow"
+        errorSummary:
+          type: ["string", "null"]
+        hasBlockingErrors:
+          type: boolean
+
+    ImportCommitInput:
+      type: object
+      required: [importType, fileName, content]
+      properties:
+        importType:
+          type: string
+          enum: [VENDOR_MASTER, PO_REFERENCE, INVOICE_CORRECTION]
+        fileName:
+          type: string
+          minLength: 1
+        content:
+          type: string
+        uploadedBy:
+          type: ["string", "null"]
+        updateExisting:
+          type: boolean
+          default: false
+          description: When true, existing rows (by natural key) are updated; otherwise duplicates are skipped.
+
+    ImportBatch:
+      type: object
+      required:
+        - id
+        - batchId
+        - importType
+        - fileName
+        - uploadedAt
+        - rowCount
+        - rowsAccepted
+        - rowsRejected
+        - status
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: integer
+        batchId:
+          type: string
+        importType:
+          type: string
+        fileName:
+          type: string
+        uploadedBy:
+          type: ["string", "null"]
+        uploadedAt:
+          type: string
+          format: date-time
+        rowCount:
+          type: integer
+        rowsAccepted:
+          type: integer
+        rowsRejected:
+          type: integer
+        status:
+          type: string
+          enum: [PENDING, VALIDATED, COMMITTED, CANCELLED, FAILED]
+        errorSummary:
+          type: ["string", "null"]
+        rowErrors:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportRowError"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ImportBatchListResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ImportBatch"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    # ─── Phase 2: Exports ────────────────────────────────────────────────────
+    ExportRequest:
+      type: object
+      required: [exportType]
+      properties:
+        exportType:
+          type: string
+          enum:
+            - AP_INVOICE_FILE
+            - APPROVED
+            - POSTED
+            - ALL_ACTIVE
+            - EXCEPTIONS
+            - TIE_OUT_FAILURES
+            - VENDOR_SUMMARY
+            - SOURCE_DOCUMENT_SUMMARY
+        format:
+          type: string
+          enum: [CSV]
+          default: CSV
+        status:
+          type: ["string", "null"]
+        dateFrom:
+          type: ["string", "null"]
+        dateTo:
+          type: ["string", "null"]
+        vendorId:
+          type: ["integer", "null"]
+        exportedBy:
+          type: ["string", "null"]
+
+    ExportBatch:
+      type: object
+      required:
+        - id
+        - batchId
+        - exportType
+        - format
+        - recordCount
+        - exportedAt
+        - status
+        - createdAt
+      properties:
+        id:
+          type: integer
+        batchId:
+          type: string
+        exportType:
+          type: string
+        format:
+          type: string
+        filterJson:
+          type: object
+          additionalProperties: true
+        recordCount:
+          type: integer
+        exportedBy:
+          type: ["string", "null"]
+        exportedAt:
+          type: string
+          format: date-time
+        fileName:
+          type: ["string", "null"]
+        fileObjectPath:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [SUCCESS, FAILED]
+        createdAt:
+          type: string
+          format: date-time
+
+    ExportBatchListResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExportBatch"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    # ─── Phase 2: Accuracy ───────────────────────────────────────────────────
+    AccuracyRun:
+      type: object
+      required:
+        - id
+        - runDate
+        - testPackName
+        - invoicesTested
+        - fieldsTested
+        - correctFields
+        - incorrectFields
+        - missingFields
+        - createdAt
+      properties:
+        id:
+          type: integer
+        runDate:
+          type: string
+          format: date-time
+        testPackName:
+          type: string
+        invoicesTested:
+          type: integer
+        fieldsTested:
+          type: integer
+        correctFields:
+          type: integer
+        incorrectFields:
+          type: integer
+        missingFields:
+          type: integer
+        overallAccuracy:
+          type: ["number", "null"]
+        accuracyByCategory:
+          type: object
+          additionalProperties:
+            type: number
+        threshold:
+          type: ["number", "null"]
+        passed:
+          type: ["boolean", "null"]
+        reportRef:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+
+    AccuracyRunInput:
+      type: object
+      required:
+        - testPackName
+        - invoicesTested
+        - fieldsTested
+        - correctFields
+        - incorrectFields
+        - missingFields
+      properties:
+        testPackName:
+          type: string
+          minLength: 1
+        invoicesTested:
+          type: integer
+        fieldsTested:
+          type: integer
+        correctFields:
+          type: integer
+        incorrectFields:
+          type: integer
+        missingFields:
+          type: integer
+        overallAccuracy:
+          type: ["number", "null"]
+        accuracyByCategory:
+          type: object
+          additionalProperties:
+            type: number
+        threshold:
+          type: ["number", "null"]
+        passed:
+          type: ["boolean", "null"]
+        reportRef:
+          type: ["string", "null"]
+
+    AccuracyRunListResponse:
+      type: object
+      required: [data, measured]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AccuracyRun"
+        measured:
+          type: boolean
+          description: False when no labeled accuracy run has been recorded ("Not measured").
+
+    # ─── Phase 2: Settings ───────────────────────────────────────────────────
+    Settings:
+      type: object
+      required:
+        - extractionConfidenceThreshold
+        - vendorMatchThreshold
+        - tieOutPassTolerance
+        - tieOutWarningTolerance
+        - defaultPageSize
+        - defaultExportFormat
+      properties:
+        extractionConfidenceThreshold:
+          type: number
+          description: Percent (0-100). Safe default 85.
+        vendorMatchThreshold:
+          type: number
+          description: Percent (0-100). Safe default 85.
+        tieOutPassTolerance:
+          type: number
+          description: Absolute currency tolerance for a tie-out PASS. Safe default 0.01.
+        tieOutWarningTolerance:
+          type: number
+          description: Absolute currency tolerance for a tie-out WARNING. Safe default 0.05.
+        defaultPageSize:
+          type: integer
+          description: Default list page size. Safe default 20.
+        defaultExportFormat:
+          type: string
+          description: Default export format. Safe default CSV.
+
+    SettingsUpdate:
+      type: object
+      properties:
+        extractionConfidenceThreshold:
+          type: ["number", "null"]
+        vendorMatchThreshold:
+          type: ["number", "null"]
+        tieOutPassTolerance:
+          type: ["number", "null"]
+        tieOutWarningTolerance:
+          type: ["number", "null"]
+        defaultPageSize:
+          type: ["integer", "null"]
+        defaultExportFormat:
+          type: ["string", "null"]
+        updatedBy:
+          type: ["string", "null"]

@@ -220,6 +220,34 @@ export interface Invoice {
      * @nullable
      */
   removalNote?: string | null;
+  /**
+     * File-based export readiness — one of NOT_READY, READY, EXPORTED, FAILED, BLOCKED. This is NOT an ERP status.
+     * @nullable
+     */
+  exportStatus?: string | null;
+  /**
+     * Business ID of the export batch this invoice was last included in.
+     * @nullable
+     */
+  exportBatchId?: string | null;
+  /** @nullable */
+  exportedAt?: string | null;
+  /** @nullable */
+  exportBlockedReason?: string | null;
+  exportRetryCount?: number;
+  /** @nullable */
+  exportFileName?: string | null;
+  /** @nullable */
+  exportFormat?: string | null;
+  /**
+     * AP user assigned to work this exception.
+     * @nullable
+     */
+  exceptionOwner?: string | null;
+  /** @nullable */
+  exceptionReviewedAt?: string | null;
+  /** @nullable */
+  exceptionReviewedBy?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -597,6 +625,376 @@ export interface ErrorEnvelope {
   error: string;
 }
 
+export interface StatusValue {
+  status: string;
+  count: number;
+  totalAmount: number;
+}
+
+export interface DashboardMetrics {
+  total: number;
+  pendingExtraction: number;
+  exception: number;
+  pendingApproval: number;
+  approved: number;
+  posted: number;
+  voided: number;
+  needsReview: number;
+  exportReady: number;
+  exported: number;
+  exportFailed: number;
+  exportBlocked: number;
+  tieOutFail: number;
+  tieOutWarning: number;
+  duplicateWarning: number;
+  missingPo: number;
+  missingDueDate: number;
+  /**
+     * Average overall confidence (0-100) across invoices that have a score, or null.
+     * @nullable
+     */
+  avgExtractionConfidence?: number | null;
+  /** @nullable */
+  avgVendorMatchConfidence?: number | null;
+  /** Exception count divided by total active invoices (0-1). */
+  exceptionRate: number;
+  totalApprovedAmount: number;
+  valueByStatus: StatusValue[];
+}
+
+export interface VendorAnalyticsRow {
+  vendorId: number;
+  vendorCode: string;
+  vendorName: string;
+  /** ACTIVE, INACTIVE, or ON_HOLD. */
+  vendorStatus?: string;
+  invoiceCount: number;
+  totalAmount: number;
+  /** @nullable */
+  avgVendorMatchConfidence?: number | null;
+  exceptionCount: number;
+  duplicateWarningCount?: number;
+  tieOutFailCount?: number;
+  missingPoCount?: number;
+  exportedCount: number;
+}
+
+export interface VendorAnalyticsResponse {
+  data: VendorAnalyticsRow[];
+}
+
+export interface ExceptionEvent {
+  id: number;
+  invoiceId: number;
+  /** NOTE, ASSIGNED, REVIEWED, RETURNED_TO_APPROVAL, or REOPENED. */
+  eventType: string;
+  /** @nullable */
+  note?: string | null;
+  /** @nullable */
+  actor?: string | null;
+  createdAt: string;
+}
+
+export interface ExceptionNoteInput {
+  /** @minLength 1 */
+  note: string;
+  /** @nullable */
+  actor?: string | null;
+}
+
+export interface ExceptionAssignInput {
+  /** @minLength 1 */
+  owner: string;
+  /** @nullable */
+  actor?: string | null;
+}
+
+export interface ExceptionReviewInput {
+  reviewed?: boolean;
+  /** @nullable */
+  note?: string | null;
+  /** @nullable */
+  actor?: string | null;
+}
+
+export interface ExceptionReturnInput {
+  /** @nullable */
+  note?: string | null;
+  /** @nullable */
+  actor?: string | null;
+}
+
+export interface SourceDocumentSummary {
+  source: SourceDocument;
+  invoiceCount: number;
+  extractedCount: number;
+  exceptionCount: number;
+  removedCount: number;
+}
+
+export interface SourceDocumentListResponse {
+  data: SourceDocumentSummary[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface ImportRowError {
+  row: number;
+  /** @nullable */
+  column?: string | null;
+  message: string;
+}
+
+export type ImportPreviewRowData = {[key: string]: string};
+
+export interface ImportPreviewRow {
+  rowNumber: number;
+  valid: boolean;
+  data: ImportPreviewRowData;
+  errors: string[];
+}
+
+export type ImportValidationInputImportType = typeof ImportValidationInputImportType[keyof typeof ImportValidationInputImportType];
+
+
+export const ImportValidationInputImportType = {
+  VENDOR_MASTER: 'VENDOR_MASTER',
+  PO_REFERENCE: 'PO_REFERENCE',
+  INVOICE_CORRECTION: 'INVOICE_CORRECTION',
+} as const;
+
+export interface ImportValidationInput {
+  importType: ImportValidationInputImportType;
+  /** @minLength 1 */
+  fileName: string;
+  /** Raw CSV file content. */
+  content: string;
+}
+
+export interface ImportValidationResult {
+  importType: string;
+  fileName: string;
+  columns: string[];
+  rowCount: number;
+  rowsValid: number;
+  rowsRejected: number;
+  preview: ImportPreviewRow[];
+  /** @nullable */
+  errorSummary?: string | null;
+  hasBlockingErrors: boolean;
+}
+
+export type ImportCommitInputImportType = typeof ImportCommitInputImportType[keyof typeof ImportCommitInputImportType];
+
+
+export const ImportCommitInputImportType = {
+  VENDOR_MASTER: 'VENDOR_MASTER',
+  PO_REFERENCE: 'PO_REFERENCE',
+  INVOICE_CORRECTION: 'INVOICE_CORRECTION',
+} as const;
+
+export interface ImportCommitInput {
+  importType: ImportCommitInputImportType;
+  /** @minLength 1 */
+  fileName: string;
+  content: string;
+  /** @nullable */
+  uploadedBy?: string | null;
+  /** When true, existing rows (by natural key) are updated; otherwise duplicates are skipped. */
+  updateExisting?: boolean;
+}
+
+export type ImportBatchStatus = typeof ImportBatchStatus[keyof typeof ImportBatchStatus];
+
+
+export const ImportBatchStatus = {
+  PENDING: 'PENDING',
+  VALIDATED: 'VALIDATED',
+  COMMITTED: 'COMMITTED',
+  CANCELLED: 'CANCELLED',
+  FAILED: 'FAILED',
+} as const;
+
+export interface ImportBatch {
+  id: number;
+  batchId: string;
+  importType: string;
+  fileName: string;
+  /** @nullable */
+  uploadedBy?: string | null;
+  uploadedAt: string;
+  rowCount: number;
+  rowsAccepted: number;
+  rowsRejected: number;
+  status: ImportBatchStatus;
+  /** @nullable */
+  errorSummary?: string | null;
+  rowErrors?: ImportRowError[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ImportBatchListResponse {
+  data: ImportBatch[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export type ExportRequestExportType = typeof ExportRequestExportType[keyof typeof ExportRequestExportType];
+
+
+export const ExportRequestExportType = {
+  AP_INVOICE_FILE: 'AP_INVOICE_FILE',
+  APPROVED: 'APPROVED',
+  POSTED: 'POSTED',
+  ALL_ACTIVE: 'ALL_ACTIVE',
+  EXCEPTIONS: 'EXCEPTIONS',
+  TIE_OUT_FAILURES: 'TIE_OUT_FAILURES',
+  VENDOR_SUMMARY: 'VENDOR_SUMMARY',
+  SOURCE_DOCUMENT_SUMMARY: 'SOURCE_DOCUMENT_SUMMARY',
+} as const;
+
+export type ExportRequestFormat = typeof ExportRequestFormat[keyof typeof ExportRequestFormat];
+
+
+export const ExportRequestFormat = {
+  CSV: 'CSV',
+} as const;
+
+export interface ExportRequest {
+  exportType: ExportRequestExportType;
+  format?: ExportRequestFormat;
+  /** @nullable */
+  status?: string | null;
+  /** @nullable */
+  dateFrom?: string | null;
+  /** @nullable */
+  dateTo?: string | null;
+  /** @nullable */
+  vendorId?: number | null;
+  /** @nullable */
+  exportedBy?: string | null;
+}
+
+export type ExportBatchFilterJson = { [key: string]: unknown };
+
+export type ExportBatchStatus = typeof ExportBatchStatus[keyof typeof ExportBatchStatus];
+
+
+export const ExportBatchStatus = {
+  SUCCESS: 'SUCCESS',
+  FAILED: 'FAILED',
+} as const;
+
+export interface ExportBatch {
+  id: number;
+  batchId: string;
+  exportType: string;
+  format: string;
+  filterJson?: ExportBatchFilterJson;
+  recordCount: number;
+  /** @nullable */
+  exportedBy?: string | null;
+  exportedAt: string;
+  /** @nullable */
+  fileName?: string | null;
+  /** @nullable */
+  fileObjectPath?: string | null;
+  status: ExportBatchStatus;
+  createdAt: string;
+}
+
+export interface ExportBatchListResponse {
+  data: ExportBatch[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export type AccuracyRunAccuracyByCategory = {[key: string]: number};
+
+export interface AccuracyRun {
+  id: number;
+  runDate: string;
+  testPackName: string;
+  invoicesTested: number;
+  fieldsTested: number;
+  correctFields: number;
+  incorrectFields: number;
+  missingFields: number;
+  /** @nullable */
+  overallAccuracy?: number | null;
+  accuracyByCategory?: AccuracyRunAccuracyByCategory;
+  /** @nullable */
+  threshold?: number | null;
+  /** @nullable */
+  passed?: boolean | null;
+  /** @nullable */
+  reportRef?: string | null;
+  createdAt: string;
+}
+
+export type AccuracyRunInputAccuracyByCategory = {[key: string]: number};
+
+export interface AccuracyRunInput {
+  /** @minLength 1 */
+  testPackName: string;
+  invoicesTested: number;
+  fieldsTested: number;
+  correctFields: number;
+  incorrectFields: number;
+  missingFields: number;
+  /** @nullable */
+  overallAccuracy?: number | null;
+  accuracyByCategory?: AccuracyRunInputAccuracyByCategory;
+  /** @nullable */
+  threshold?: number | null;
+  /** @nullable */
+  passed?: boolean | null;
+  /** @nullable */
+  reportRef?: string | null;
+}
+
+export interface AccuracyRunListResponse {
+  data: AccuracyRun[];
+  /** False when no labeled accuracy run has been recorded ("Not measured"). */
+  measured: boolean;
+}
+
+export interface Settings {
+  /** Percent (0-100). Safe default 85. */
+  extractionConfidenceThreshold: number;
+  /** Percent (0-100). Safe default 85. */
+  vendorMatchThreshold: number;
+  /** Absolute currency tolerance for a tie-out PASS. Safe default 0.01. */
+  tieOutPassTolerance: number;
+  /** Absolute currency tolerance for a tie-out WARNING. Safe default 0.05. */
+  tieOutWarningTolerance: number;
+  /** Default list page size. Safe default 20. */
+  defaultPageSize: number;
+  /** Default export format. Safe default CSV. */
+  defaultExportFormat: string;
+}
+
+export interface SettingsUpdate {
+  /** @nullable */
+  extractionConfidenceThreshold?: number | null;
+  /** @nullable */
+  vendorMatchThreshold?: number | null;
+  /** @nullable */
+  tieOutPassTolerance?: number | null;
+  /** @nullable */
+  tieOutWarningTolerance?: number | null;
+  /** @nullable */
+  defaultPageSize?: number | null;
+  /** @nullable */
+  defaultExportFormat?: string | null;
+  /** @nullable */
+  updatedBy?: string | null;
+}
+
 export type ListInvoicesParams = {
 status?: ListInvoicesStatus;
 /**
@@ -608,9 +1006,46 @@ includeRemoved?: boolean;
  */
 vendorId?: number | null;
 /**
- * Search by invoice number or vendor name
+ * Free-text search across invoice number, vendor name, vendor code, PO number, voucher ID, source file name, and business document ID
  */
 search?: string;
+tieOutStatus?: ListInvoicesTieOutStatus;
+validationStatus?: string;
+exportStatus?: ListInvoicesExportStatus;
+/**
+ * @nullable
+ */
+sourceDocumentId?: number | null;
+poNumber?: string;
+voucherId?: string;
+businessDocumentId?: string;
+exportBatchId?: string;
+/**
+ * Filter by invoiceDate on/after this date (YYYY-MM-DD)
+ */
+dateFrom?: string;
+/**
+ * Filter by invoiceDate on/before this date (YYYY-MM-DD)
+ */
+dateTo?: string;
+/**
+ * @nullable
+ */
+amountMin?: number | null;
+/**
+ * @nullable
+ */
+amountMax?: number | null;
+/**
+ * Minimum overall confidence as a percentage (0-100)
+ * @nullable
+ */
+confidenceMin?: number | null;
+/**
+ * Maximum overall confidence as a percentage (0-100)
+ * @nullable
+ */
+confidenceMax?: number | null;
 sortBy?: ListInvoicesSortBy;
 sortDir?: ListInvoicesSortDir;
 page?: number;
@@ -629,14 +1064,38 @@ export const ListInvoicesStatus = {
   VOIDED: 'VOIDED',
 } as const;
 
+export type ListInvoicesTieOutStatus = typeof ListInvoicesTieOutStatus[keyof typeof ListInvoicesTieOutStatus];
+
+
+export const ListInvoicesTieOutStatus = {
+  PASS: 'PASS',
+  WARNING: 'WARNING',
+  FAIL: 'FAIL',
+  SKIPPED: 'SKIPPED',
+} as const;
+
+export type ListInvoicesExportStatus = typeof ListInvoicesExportStatus[keyof typeof ListInvoicesExportStatus];
+
+
+export const ListInvoicesExportStatus = {
+  NOT_READY: 'NOT_READY',
+  READY: 'READY',
+  EXPORTED: 'EXPORTED',
+  FAILED: 'FAILED',
+  BLOCKED: 'BLOCKED',
+} as const;
+
 export type ListInvoicesSortBy = typeof ListInvoicesSortBy[keyof typeof ListInvoicesSortBy];
 
 
 export const ListInvoicesSortBy = {
   createdAt: 'createdAt',
   invoiceDate: 'invoiceDate',
+  dueDate: 'dueDate',
   totalAmount: 'totalAmount',
   vendorName: 'vendorName',
+  confidenceScore: 'confidenceScore',
+  status: 'status',
 } as const;
 
 export type ListInvoicesSortDir = typeof ListInvoicesSortDir[keyof typeof ListInvoicesSortDir];
@@ -664,6 +1123,134 @@ export type ListVendorsParams = {
  * @nullable
  */
 search?: string | null;
+page?: number;
+limit?: number;
+};
+
+export type ListSourceDocumentsParams = {
+processingStatus?: ListSourceDocumentsProcessingStatus;
+includeRemoved?: boolean;
+/**
+ * Match by original file name
+ */
+search?: string;
+page?: number;
+limit?: number;
+};
+
+export type ListSourceDocumentsProcessingStatus = typeof ListSourceDocumentsProcessingStatus[keyof typeof ListSourceDocumentsProcessingStatus];
+
+
+export const ListSourceDocumentsProcessingStatus = {
+  PENDING: 'PENDING',
+  DETECTING: 'DETECTING',
+  COMPLETED: 'COMPLETED',
+  EXCEPTION: 'EXCEPTION',
+} as const;
+
+export type GetDashboardMetricsParams = {
+dateFrom?: string;
+dateTo?: string;
+/**
+ * @nullable
+ */
+vendorId?: number | null;
+status?: GetDashboardMetricsStatus;
+exportStatus?: GetDashboardMetricsExportStatus;
+};
+
+export type GetDashboardMetricsStatus = typeof GetDashboardMetricsStatus[keyof typeof GetDashboardMetricsStatus];
+
+
+export const GetDashboardMetricsStatus = {
+  PENDING_EXTRACTION: 'PENDING_EXTRACTION',
+  EXCEPTION: 'EXCEPTION',
+  PENDING_APPROVAL: 'PENDING_APPROVAL',
+  APPROVED: 'APPROVED',
+  POSTED: 'POSTED',
+  VOIDED: 'VOIDED',
+} as const;
+
+export type GetDashboardMetricsExportStatus = typeof GetDashboardMetricsExportStatus[keyof typeof GetDashboardMetricsExportStatus];
+
+
+export const GetDashboardMetricsExportStatus = {
+  NOT_READY: 'NOT_READY',
+  READY: 'READY',
+  EXPORTED: 'EXPORTED',
+  FAILED: 'FAILED',
+  BLOCKED: 'BLOCKED',
+} as const;
+
+export type GetVendorAnalyticsParams = {
+dateFrom?: string;
+dateTo?: string;
+};
+
+export type ListExceptionsParams = {
+/**
+ * Filter by exception reason substring
+ */
+reason?: string;
+owner?: string;
+/**
+ * @nullable
+ */
+reviewed?: boolean | null;
+sortBy?: ListExceptionsSortBy;
+sortDir?: ListExceptionsSortDir;
+page?: number;
+limit?: number;
+};
+
+export type ListExceptionsSortBy = typeof ListExceptionsSortBy[keyof typeof ListExceptionsSortBy];
+
+
+export const ListExceptionsSortBy = {
+  age: 'age',
+  vendorName: 'vendorName',
+  totalAmount: 'totalAmount',
+  confidenceScore: 'confidenceScore',
+  status: 'status',
+} as const;
+
+export type ListExceptionsSortDir = typeof ListExceptionsSortDir[keyof typeof ListExceptionsSortDir];
+
+
+export const ListExceptionsSortDir = {
+  asc: 'asc',
+  desc: 'desc',
+} as const;
+
+export type ListImportsParams = {
+importType?: ListImportsImportType;
+page?: number;
+limit?: number;
+};
+
+export type ListImportsImportType = typeof ListImportsImportType[keyof typeof ListImportsImportType];
+
+
+export const ListImportsImportType = {
+  VENDOR_MASTER: 'VENDOR_MASTER',
+  PO_REFERENCE: 'PO_REFERENCE',
+  INVOICE_CORRECTION: 'INVOICE_CORRECTION',
+} as const;
+
+export type GetImportTemplateParams = {
+importType: GetImportTemplateImportType;
+};
+
+export type GetImportTemplateImportType = typeof GetImportTemplateImportType[keyof typeof GetImportTemplateImportType];
+
+
+export const GetImportTemplateImportType = {
+  VENDOR_MASTER: 'VENDOR_MASTER',
+  PO_REFERENCE: 'PO_REFERENCE',
+  INVOICE_CORRECTION: 'INVOICE_CORRECTION',
+} as const;
+
+export type ListExportsParams = {
 page?: number;
 limit?: number;
 };
