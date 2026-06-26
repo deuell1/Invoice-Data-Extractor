@@ -1,15 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from "react";
-import { Check, ChevronsUpDown } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import { Button } from "@/components/ui/button";
+import { Check, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Vendor } from "@workspace/api-client-react";
 
@@ -40,7 +30,6 @@ function scoreCandidate(query: string, candidate: string): number {
   if (q.includes(c)) return 0.7;
   const overlap = tokenOverlap(q, c);
   if (overlap > 0) return 0.5 + overlap * 0.2;
-  // partial word match
   const qTokens = q.split(" ").filter(Boolean);
   if (qTokens.some((t) => c.includes(t) && t.length > 2)) return 0.35;
   return 0;
@@ -54,15 +43,12 @@ function bestScore(query: string, vendor: Vendor): { score: number; matchedOn: M
     matchedOn: "name",
     alias: undefined,
   };
-
   const codeScore = scoreCandidate(query, vendor.vendorCode);
   if (codeScore > best.score) best = { score: codeScore, matchedOn: "code", alias: undefined };
-
   for (const alias of vendor.aliases ?? []) {
     const s = scoreCandidate(query, alias);
     if (s > best.score) best = { score: s, matchedOn: "alias", alias };
   }
-
   return best;
 }
 
@@ -80,6 +66,8 @@ interface VendorComboboxProps {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
+const MAX_UNFILTERED = 120;
+
 export function VendorCombobox({
   value,
   onSelect,
@@ -91,26 +79,46 @@ export function VendorCombobox({
 }: VendorComboboxProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
-  // Focus the search input when the popover opens
+  const selectedVendor = vendors.find((v) => v.id.toString() === value);
+
+  // Reset search query whenever the selected vendor changes externally.
   useEffect(() => {
-    if (open) {
-      setTimeout(() => inputRef.current?.focus(), 0);
-    } else {
-      setQuery("");
-    }
-  }, [open]);
+    setQuery("");
+  }, [value]);
 
-  // Derive sorted list of vendors for the current query (or pre-ranked by
-  // vendorRawName when the input is empty).
+  // Close on outside click.
+  useEffect(() => {
+    const handlePointerDown = (e: PointerEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setQuery("");
+      }
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, []);
+
+  // Scroll the highlighted item into view when keyboard navigating.
+  useEffect(() => {
+    if (!listRef.current) return;
+    const item = listRef.current.querySelector(`[data-idx="${activeIndex}"]`) as HTMLElement | null;
+    item?.scrollIntoView({ block: "nearest" });
+  }, [activeIndex]);
+
+  // Full ranked list for the current query (or pre-ranked by vendorRawName when
+  // the search box is empty, so the most likely match floats to the top).
   const ranked = useMemo(() => {
     const searchTerm = query.trim() || vendorRawName;
-
     if (!searchTerm) {
-      return vendors.map((v) => ({ vendor: v, score: 0, matchedOn: "name" as const, alias: undefined as string | undefined }));
+      return vendors
+        .slice(0, MAX_UNFILTERED)
+        .map((v) => ({ vendor: v, score: 0, matchedOn: "name" as const, alias: undefined as string | undefined }));
     }
-
     return vendors
       .map((v) => {
         const { score, matchedOn, alias } = bestScore(searchTerm, v);
@@ -119,106 +127,206 @@ export function VendorCombobox({
       .sort((a, b) => b.score - a.score);
   }, [query, vendors, vendorRawName]);
 
-  // Split into "good matches" (score ≥ 0.3) and "others" when there's a query.
+  // Split into "best matches" (score ≥ 0.3) and "all others" only when the
+  // user is actively typing; show a single pre-ranked group otherwise.
   const { suggested, rest } = useMemo(() => {
-    const term = query.trim();
-    if (!term) return { suggested: [], rest: ranked };
-    const suggested = ranked.filter((r) => r.score >= 0.3);
-    const rest = ranked.filter((r) => r.score < 0.3);
-    return { suggested, rest };
+    if (!query.trim()) return { suggested: [] as typeof ranked, rest: ranked };
+    return {
+      suggested: ranked.filter((r) => r.score >= 0.3),
+      rest: ranked.filter((r) => r.score < 0.3),
+    };
   }, [ranked, query]);
 
-  const selectedVendor = vendors.find((v) => v.id.toString() === value);
+  const flatList = useMemo(() => [...suggested, ...rest], [suggested, rest]);
 
   const handleSelect = (vendorId: string) => {
     onSelect(vendorId);
+    setQuery("");
     setOpen(false);
+    inputRef.current?.blur();
   };
 
-  const renderItem = ({ vendor, matchedOn, alias }: typeof ranked[number]) => {
+  const handleClear = () => {
+    onSelect("");
+    setQuery("");
+    setOpen(true);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!open) {
+      if (e.key === "ArrowDown" || e.key === "Enter") {
+        e.preventDefault();
+        setOpen(true);
+        setActiveIndex(0);
+      }
+      return;
+    }
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        setActiveIndex((i) => Math.min(i + 1, flatList.length - 1));
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        setActiveIndex((i) => Math.max(i - 1, 0));
+        break;
+      case "Enter":
+        e.preventDefault();
+        if (flatList[activeIndex]) handleSelect(flatList[activeIndex].vendor.id.toString());
+        break;
+      case "Escape":
+        e.preventDefault();
+        setOpen(false);
+        setQuery("");
+        inputRef.current?.blur();
+        break;
+      case "Tab":
+        setOpen(false);
+        setQuery("");
+        break;
+    }
+  };
+
+  // While the dropdown is open we show what the user is typing. When it's
+  // closed we always show the controlled vendor name so the field reads like a
+  // normal text field.
+  const displayValue = open ? query : (selectedVendor?.vendorName ?? "");
+
+  const renderItem = (item: typeof ranked[number], flatIdx: number) => {
+    const { vendor, matchedOn, alias } = item;
     const isSelected = vendor.id.toString() === value;
+    const isActive = flatIdx === activeIndex;
     return (
-      <CommandItem
+      <div
         key={vendor.id}
-        value={vendor.id.toString()}
-        onSelect={handleSelect}
-        className="flex items-center justify-between gap-2"
-        keywords={[vendor.vendorName, vendor.vendorCode, ...(vendor.aliases ?? [])]}
+        data-idx={flatIdx}
+        role="option"
+        aria-selected={isSelected}
+        onPointerDown={(e) => {
+          e.preventDefault();
+          handleSelect(vendor.id.toString());
+        }}
+        onMouseEnter={() => setActiveIndex(flatIdx)}
+        className={cn(
+          "flex items-center justify-between gap-3 px-3 py-2 cursor-pointer text-sm",
+          isActive && "bg-accent text-accent-foreground",
+          !isActive && "hover:bg-accent/50",
+        )}
       >
         <div className="flex items-center gap-2 min-w-0">
-          <Check className={cn("h-4 w-4 shrink-0", isSelected ? "opacity-100" : "opacity-0")} />
+          <Check
+            className={cn("h-3.5 w-3.5 shrink-0 text-primary", isSelected ? "opacity-100" : "opacity-0")}
+          />
           <div className="min-w-0">
-            <div className="truncate font-medium text-sm">{vendor.vendorName}</div>
+            <div className="truncate font-medium leading-tight">{vendor.vendorName}</div>
             {matchedOn === "alias" && alias && (
               <div className="text-xs text-muted-foreground truncate">alias: {alias}</div>
+            )}
+            {matchedOn === "code" && (
+              <div className="text-xs text-muted-foreground truncate">code match</div>
             )}
           </div>
         </div>
         <span className="text-xs text-muted-foreground shrink-0 font-mono">{vendor.vendorCode}</span>
-      </CommandItem>
+      </div>
     );
   };
 
+  const suggestedOffset = 0;
+  const restOffset = suggested.length;
+
   return (
-    <div className={className}>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            variant="outline"
-            role="combobox"
-            aria-expanded={open}
-            disabled={disabled}
-            data-testid="select-vendor"
-            className={cn(
-              "w-full justify-between font-normal",
-              !selectedVendor && "text-muted-foreground",
-              triggerClassName,
-            )}
+    <div ref={containerRef} className={cn("relative w-full", className)}>
+      {/* ── Inline input ─────────────────────────────────────────────── */}
+      <div className="relative">
+        <input
+          ref={inputRef}
+          type="text"
+          role="combobox"
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          aria-autocomplete="list"
+          data-testid="select-vendor"
+          disabled={disabled}
+          value={displayValue}
+          placeholder={open ? "Search vendor name, code, or alias…" : "Select vendor…"}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setActiveIndex(0);
+            if (!open) setOpen(true);
+          }}
+          onFocus={() => {
+            setOpen(true);
+            setActiveIndex(0);
+          }}
+          onKeyDown={handleKeyDown}
+          className={cn(
+            "flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 pr-8 text-sm shadow-sm transition-colors",
+            "placeholder:text-muted-foreground",
+            "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+            "disabled:cursor-not-allowed disabled:opacity-50",
+            triggerClassName,
+          )}
+        />
+        {/* Clear button — only shown when a vendor is selected */}
+        {selectedVendor && !disabled && (
+          <button
+            type="button"
+            tabIndex={-1}
+            onPointerDown={(e) => { e.preventDefault(); handleClear(); }}
+            aria-label="Clear vendor selection"
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded-sm text-muted-foreground hover:text-foreground focus:outline-none"
           >
-            <span className="truncate">
-              {selectedVendor ? selectedVendor.vendorName : "Select vendor…"}
-            </span>
-            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-          </Button>
-        </PopoverTrigger>
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
 
-        <PopoverContent
-          className="p-0 w-[--radix-popover-trigger-width]"
-          align="start"
-          sideOffset={4}
+      {/* ── Dropdown list ────────────────────────────────────────────── */}
+      {open && (
+        <div
+          ref={listRef}
+          role="listbox"
+          className="absolute z-50 mt-1 w-full rounded-md border bg-popover text-popover-foreground shadow-md overflow-y-auto max-h-72"
         >
-          <Command shouldFilter={false}>
-            <CommandInput
-              ref={inputRef}
-              placeholder="Search vendor name, code, or alias…"
-              value={query}
-              onValueChange={setQuery}
-            />
-            <CommandList>
-              <CommandEmpty>No vendors found.</CommandEmpty>
-
+          {flatList.length === 0 ? (
+            <div className="py-6 text-center text-sm text-muted-foreground select-none">
+              No vendors found.
+            </div>
+          ) : (
+            <>
               {query.trim() ? (
                 <>
                   {suggested.length > 0 && (
-                    <CommandGroup heading="Best matches">
-                      {suggested.map(renderItem)}
-                    </CommandGroup>
+                    <div>
+                      <div className="sticky top-0 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground bg-popover border-b select-none">
+                        Best matches
+                      </div>
+                      {suggested.map((item, i) => renderItem(item, suggestedOffset + i))}
+                    </div>
                   )}
                   {rest.length > 0 && (
-                    <CommandGroup heading="All vendors">
-                      {rest.map(renderItem)}
-                    </CommandGroup>
+                    <div>
+                      <div className="sticky top-0 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground bg-popover border-b border-t select-none">
+                        All vendors
+                      </div>
+                      {rest.map((item, i) => renderItem(item, restOffset + i))}
+                    </div>
                   )}
                 </>
               ) : (
-                <CommandGroup heading={vendorRawName ? "Suggested (based on extracted name)" : "All vendors"}>
-                  {ranked.map(renderItem)}
-                </CommandGroup>
+                <div>
+                  <div className="sticky top-0 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground bg-popover border-b select-none">
+                    {vendorRawName ? "Suggested — based on extracted name" : "All vendors"}
+                  </div>
+                  {ranked.map((item, i) => renderItem(item, i))}
+                </div>
               )}
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
