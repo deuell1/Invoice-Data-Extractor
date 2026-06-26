@@ -1,4 +1,5 @@
 - [Date serialization in Drizzle routes](date-serialization.md) — nullable timestamp columns return Date objects but Zod string schemas reject them; must serialize before parsing.
+- [Invoice numeric serializer cast drift](invoice-serializer-cast-drift.md) — new numeric invoice columns must be Number()-cast in BOTH serializeInvoice and serializeSourceInvoice or /source-documents/:id 500s.
 - [Approval hard-blocks vs exception override](approval-hard-blocks.md) — non-overridable approval blocks need their own early-return guard; `outcome.blocking` is bypassed by exception override.
 - [Vendor autocomplete reachability](vendor-autocomplete-reachability.md) — combobox ranks name/code/alias client-side but server search matches name only; must load the full vendor list or capped vendors become unreachable.
 - [Duplicate guard consistency (Invoice Capture)](duplicate-guard-consistency.md) — duplicate detection must hard-block at every entry point (create/patch/approve/voucher/check-duplicate/validation), exclude only VOIDED, and never persist OCR vendorId.

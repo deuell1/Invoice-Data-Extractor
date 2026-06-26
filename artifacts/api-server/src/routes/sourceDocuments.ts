@@ -29,6 +29,12 @@ function serializeSourceInvoice(
     confidenceScore: row.confidenceScore != null ? Number(row.confidenceScore) : null,
     subtotal: row.subtotal != null ? Number(row.subtotal) : null,
     freightAmount: row.freightAmount != null ? Number(row.freightAmount) : null,
+    discountAmount: row.discountAmount != null ? Number(row.discountAmount) : null,
+    otherChargesAmount:
+      row.otherChargesAmount != null ? Number(row.otherChargesAmount) : null,
+    tieOutExpectedTotal:
+      row.tieOutExpectedTotal != null ? Number(row.tieOutExpectedTotal) : null,
+    tieOutDifference: row.tieOutDifference != null ? Number(row.tieOutDifference) : null,
     vendorMatchScore: row.vendorMatchScore != null ? Number(row.vendorMatchScore) : null,
   };
 }
