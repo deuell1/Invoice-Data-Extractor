@@ -1,0 +1,72 @@
+Close the two remaining Phase 1 UAT exit conditions for the Invoice Data Extractor app.
+
+Do not build Phase 2 features. Do not change existing workflows unless a defect is found.
+
+Remaining open items:
+1. Extraction accuracy is not measured because no labeled ground-truth test pack was available.
+2. Microsoft Edge inline PDF rendering was not manually verified, although storage headers appear correct.
+
+Task 1 — Create labeled extraction accuracy test process:
+Add or document a repeatable UAT process for running a labeled invoice test pack.
+
+Requirements:
+- Support a labeled test pack of invoice files with expected ground-truth values.
+- Required fields to score:
+  - VendorRawName
+  - InvoiceNumber
+  - InvoiceDate
+  - DueDate or PaymentTerms
+  - PONumber, if present
+  - Subtotal, if present
+  - TaxAmount, if present
+  - FreightAmount, if present
+  - TotalAmount
+  - Currency
+- Produce a field-level accuracy table comparing expected vs actual extracted values.
+- Calculate:
+  - Total required fields tested
+  - Correct fields
+  - Incorrect fields
+  - Missing fields
+  - Manual corrections required
+  - Overall extraction accuracy percentage
+  - Vendor name accuracy
+  - Invoice number accuracy
+  - Date accuracy
+  - Amount accuracy
+  - PO accuracy, if applicable
+- Mark Phase 1 extraction accuracy as PASS only if the agreed threshold is met.
+- If no test pack is available, create a clear UAT template and leave the result as “Not measured — labeled test pack required.”
+
+Task 2 — Microsoft Edge inline rendering verification:
+Create a clear manual verification checklist for Microsoft Edge.
+
+Verify:
+- PDF invoice renders inline in the review screen.
+- JPG invoice renders inline.
+- PNG invoice renders inline.
+- Multi-invoice PDF opens or jumps to the correct page.
+- Document viewer remains beside extracted data.
+- Open/download buttons remain fallback options only.
+- Review can be completed without opening the document in a separate tab.
+
+If Edge inline rendering fails:
+- Fix the preview behavior or response headers.
+- Keep files private.
+- Do not expose signed URLs in the UI.
+- Preserve server-proxy access for private storage.
+
+Task 3 — Update Phase 1 UAT Exit Report:
+Produce a final updated report with:
+- Overall verdict: PASS, CONDITIONAL PASS, or FAIL
+- Extraction accuracy result
+- Edge rendering result
+- Updated risk list
+- Final pilot recommendation
+- Any defects found and fixed
+
+Acceptance criteria:
+- If extraction accuracy is measured and passes, mark the accuracy item closed.
+- If Edge rendering is manually confirmed, mark Edge runtime verification closed.
+- If both are closed and no critical/high defects are open, recommend full Phase 1 PASS.
+- If either item remains open, keep the result as CONDITIONAL PASS.

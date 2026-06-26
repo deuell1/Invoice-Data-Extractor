@@ -27,6 +27,10 @@
 1. Run the labeled extraction test pack and confirm accuracy meets the agreed threshold (currently unmeasured — this is the single hard gap).
 2. Perform a one-time manual confirmation of inline PDF rendering in Microsoft Edge (headers are correct; the browser could not be driven from this environment).
 
+Both exit conditions now have ready-to-run tooling so they can be closed without further engineering:
+- A repeatable extraction-accuracy harness + ground-truth template: `uat/extraction-accuracy/` (run `run-accuracy.mjs` against a labeled pack). The harness itself was smoke-tested against seeded data and correctly scores fields, normalization, and PASS/FAIL — but **no labeled pack exists yet**, so accuracy remains *Not measured*.
+- A manual Edge verification checklist: `uat/edge-rendering-checklist.md`.
+
 No critical or high-severity defects were found. The one Medium defect identified (vendor autocomplete could not reach the full vendor list) was fixed and re-verified during this cycle.
 
 ---
@@ -50,7 +54,7 @@ No critical or high-severity defects were found. The one Medium defect identifie
 | 13 | Void / soft-removal | PASS | Requires reason; excluded from lists, KPIs, export, duplicate checks. |
 | 14 | CSV export | PASS | 31 columns incl. all required; voided excluded; CSV-injection protection. |
 | 15 | KPI / stats dashboard | PASS | Stats match DB ground truth exactly; voided excluded. |
-| 16 | Inline document viewer (Edge) | **OPEN** | Storage headers correct (inline, nosniff, CSP, no X-Frame-Options); Edge browser runtime could not be driven here — needs manual confirm. |
+| 16 | Inline document viewer (Edge) | **OPEN** | Code + headers verified: PDFs render inline via `<iframe>` (with `#page=N` for splits), JPG/PNG via `<img>`, private server-proxy URLs (no signed URLs), Open/Download are fallback-only. Edge browser runtime could not be driven here — run `uat/edge-rendering-checklist.md` to confirm. |
 
 ---
 
@@ -105,7 +109,15 @@ No labeled test pack (documents with known correct field values) was available, 
 | Currency detected | 10 / 10 (USD) |
 | Self-reported confidence range | 0.95 – 1.00 |
 
-**Required to close:** supply a labeled test pack and re-run extraction to produce a measured per-field accuracy table (target threshold to be agreed with the business).
+**Required to close:** supply a labeled test pack and run the accuracy harness to produce a measured per-field accuracy table (target threshold to be agreed with the business).
+
+**How to close (tooling now in place):** `uat/extraction-accuracy/` contains a repeatable scorer (`run-accuracy.mjs`), a ground-truth template (`ground-truth.template.csv`), and a documented process (`README.md`). After uploading a labeled pack through the app and filling in the ground truth, run:
+
+```bash
+node uat/extraction-accuracy/run-accuracy.mjs ground-truth.csv 95 --out results/accuracy-$(date +%F).md
+```
+
+It emits the field-level table and the required metrics (total tested, correct, incorrect, missing, manual corrections, overall %, and per-category accuracy for vendor / invoice number / date / amount / PO / currency), with a PASS/FAIL verdict against the threshold. The harness was smoke-tested against seeded data (dates, amounts, vendor-name and currency normalization, multi-invoice disambiguation, and incorrect/missing detection all behaving correctly); only a labeled pack is missing.
 
 ---
 
@@ -123,8 +135,8 @@ No critical, high, or open defects.
 
 | # | Risk | Severity | Mitigation / Note |
 |---|---|---|---|
-| R-1 | **Extraction accuracy uncertified** — no labeled test pack, so accuracy is unmeasured. | High (gate) | Run labeled test pack before/early in pilot; treat measured accuracy as a hard exit condition. |
-| R-2 | **Edge inline rendering not driven** — headers are correct but the Edge browser runtime could not be exercised from this environment. | Medium | One-time manual confirmation of inline PDF view in Edge. |
+| R-1 | **Extraction accuracy uncertified** — no labeled test pack, so accuracy is unmeasured. | High (gate) | Tooling ready in `uat/extraction-accuracy/`; supply a labeled pack and run the scorer before/early in pilot. Treat measured accuracy as a hard exit condition. |
+| R-2 | **Edge inline rendering not driven** — code/headers are correct but the Edge browser runtime could not be exercised from this environment. | Medium | Run `uat/edge-rendering-checklist.md` for a one-time manual confirmation in Edge. |
 | R-3 | **PO matching is presence-only** — `po_header` reference table is empty (0 rows); PO check cannot validate against real POs. | Medium | Acceptable for Phase 1 if PO matching is out of scope; confirm with business. |
 | R-4 | **Fuzzy duplicates are non-blocking** (warning only, riskScore ~0.7). | Low | By design; reviewers must act on warnings. |
 | R-5 | **Inactive / on-hold vendors untested** — all 568 seeded vendors are active and not on hold. | Low | Add inactive/on-hold fixtures to confirm they are excluded from auto-match. |
@@ -142,10 +154,10 @@ All 16 functional areas were validated; 15 PASS and 1 (Edge browser runtime) OPE
 
 Two conditions must be satisfied to convert this to a full Phase 1 pass:
 
-1. **Measure extraction accuracy** using a labeled test pack and confirm it meets the agreed threshold (currently *Not measured*).
-2. **Manually confirm inline PDF rendering in Microsoft Edge** (storage headers are already correct).
+1. **Measure extraction accuracy** using a labeled test pack and confirm it meets the agreed threshold (currently *Not measured*). Tooling is ready: `uat/extraction-accuracy/`.
+2. **Manually confirm inline PDF rendering in Microsoft Edge** (code and storage headers are already correct). Checklist ready: `uat/edge-rendering-checklist.md`.
 
-Until both are closed, the recommendation is a limited, supervised pilot rather than unrestricted rollout.
+Both items remain **OPEN** in this report only because they require inputs/actions outside the automated environment (a labeled pack and a live Edge browser), not because of any unresolved defect. Per the acceptance criteria, while either item is open the verdict stays **CONDITIONAL PASS**; once both are closed and no critical/high defects are open, this converts to a full Phase 1 **PASS**. Until then, the recommendation is a limited, supervised pilot rather than unrestricted rollout.
 
 ---
 

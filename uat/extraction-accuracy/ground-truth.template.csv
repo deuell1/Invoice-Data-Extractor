@@ -1,0 +1,27 @@
+# Phase 1 UAT — Extraction Accuracy Ground-Truth Template
+#
+# One row per EXPECTED invoice. For multi-invoice PDFs, add one row per invoice
+# and keep sourceFileName identical (rows are disambiguated by invoiceNumber).
+#
+# Column meaning:
+#   testCaseId      Any unique label for the row (e.g. TP-001).
+#   sourceFileName  The uploaded file name EXACTLY as it appears in the app.
+#   invoiceNumber   Expected invoice number (also used to match multi-invoice PDFs).
+#   vendorRawName   Expected vendor name as printed on the document.
+#   invoiceDate     Expected invoice date (any common format; normalized on compare).
+#   dueDate         Expected due date. Provide dueDate OR paymentTerms (at least one).
+#   paymentTerms    Expected payment terms (e.g. "Net 30") if no explicit due date.
+#   poNumber        Expected PO number — leave blank if not present on the document.
+#   subtotal        Expected subtotal — leave blank if not present.
+#   taxAmount       Expected tax — leave blank if not present.
+#   freightAmount   Expected freight/shipping — leave blank if not present.
+#   totalAmount     Expected grand total (always required).
+#   currency        Expected ISO currency (e.g. USD).
+#
+# Leave a cell blank to skip scoring that optional field. Required-always fields:
+# vendorRawName, invoiceNumber, invoiceDate, totalAmount, currency, and one of
+# dueDate/paymentTerms.
+#
+# Delete these comment lines and the example row below, then add your real pack.
+testCaseId,sourceFileName,invoiceNumber,vendorRawName,invoiceDate,dueDate,paymentTerms,poNumber,subtotal,taxAmount,freightAmount,totalAmount,currency
+TP-001,acme_invoice_001.pdf,INV-1001,Acme Office Supplies Inc.,2026-01-15,2026-02-14,Net 30,PO-5567,900.00,72.00,28.00,1000.00,USD
