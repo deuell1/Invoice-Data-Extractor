@@ -32,6 +32,8 @@ export type FieldConfidence = {
   subtotal: number;
   taxAmount: number;
   freightAmount: number;
+  discountAmount: number;
+  otherChargesAmount: number;
   totalAmount: number;
   currency: number;
 };
@@ -45,6 +47,8 @@ export type ExtractedFields = {
   taxAmount: number | null;
   subtotal: number | null;
   freightAmount: number | null;
+  discountAmount: number | null;
+  otherChargesAmount: number | null;
   poNumber: string | null;
   currency: string | null;
   paymentTerms: string | null;
@@ -157,6 +161,8 @@ function mockExtract(invoiceId: number, fileName: string): ExtractedFields {
     subtotal: overall,
     taxAmount: overall,
     freightAmount: overall,
+    discountAmount: overall,
+    otherChargesAmount: overall,
     totalAmount: lowFields ? 62 : overall,
     currency: 99,
   };
@@ -172,6 +178,8 @@ function mockExtract(invoiceId: number, fileName: string): ExtractedFields {
     subtotal,
     taxAmount,
     freightAmount,
+    discountAmount: null,
+    otherChargesAmount: null,
     invoiceTotal: totalAmount,
     amountDue: totalAmount,
     currency: "USD",
@@ -189,6 +197,8 @@ function mockExtract(invoiceId: number, fileName: string): ExtractedFields {
     taxAmount,
     subtotal,
     freightAmount,
+    discountAmount: null,
+    otherChargesAmount: null,
     poNumber,
     currency: "USD",
     paymentTerms: "Net 30",
@@ -229,11 +239,27 @@ function inferContentType(fileName: string): string {
   }
 }
 
-/** Coerce a possibly-stringy numeric field into a number or null. */
+/**
+ * Coerce a possibly-stringy numeric field into a number or null. Strips currency
+ * symbols, thousands separators, and whitespace. Parentheses denote a negative
+ * value — "(1,234.56)" → -1234.56 — as do leading/embedded minus signs. Blank or
+ * unparseable input returns null (never 0) so "missing" stays distinct from "zero".
+ */
 function toNum(value: unknown): number | null {
-  if (value == null || value === "") return null;
-  const n = typeof value === "number" ? value : Number(String(value).replace(/[^0-9.\-]/g, ""));
-  return Number.isFinite(n) ? n : null;
+  if (value == null) return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  let s = String(value).trim();
+  if (s === "") return null;
+  // Accounting-style negatives: parentheses around the amount.
+  let negative = /^\(.*\)$/.test(s);
+  if (negative) s = s.slice(1, -1);
+  // A minus sign anywhere also marks the value negative.
+  if (s.includes("-")) negative = true;
+  const cleaned = s.replace(/[^0-9.]/g, "");
+  if (cleaned === "" || cleaned === ".") return null;
+  const n = Number(cleaned);
+  if (!Number.isFinite(n)) return null;
+  return negative ? -n : n;
 }
 
 /** Clamp a 0-100 confidence into that range; default to a neutral 50. */
@@ -309,6 +335,8 @@ const EXTRACTION_JSON_SCHEMA = {
     "subtotal",
     "taxAmount",
     "freightAmount",
+    "discountAmount",
+    "otherChargesAmount",
     "invoiceTotal",
     "amountDue",
     "currency",
@@ -327,6 +355,8 @@ const EXTRACTION_JSON_SCHEMA = {
     subtotal: { type: ["number", "null"] },
     taxAmount: { type: ["number", "null"] },
     freightAmount: { type: ["number", "null"] },
+    discountAmount: { type: ["number", "null"] },
+    otherChargesAmount: { type: ["number", "null"] },
     invoiceTotal: { type: ["number", "null"] },
     amountDue: { type: ["number", "null"] },
     currency: { type: "string" },
@@ -344,6 +374,8 @@ const EXTRACTION_JSON_SCHEMA = {
         "subtotal",
         "taxAmount",
         "freightAmount",
+        "discountAmount",
+        "otherChargesAmount",
         "invoiceTotal",
         "amountDue",
         "currency",
@@ -358,6 +390,8 @@ const EXTRACTION_JSON_SCHEMA = {
         subtotal: { type: "number" },
         taxAmount: { type: "number" },
         freightAmount: { type: "number" },
+        discountAmount: { type: "number" },
+        otherChargesAmount: { type: "number" },
         invoiceTotal: { type: "number" },
         amountDue: { type: "number" },
         currency: { type: "number" },
@@ -372,10 +406,16 @@ const SYSTEM_PROMPT =
   "You are an accounts-payable invoice extraction engine. Read the attached " +
   "invoice document and return ONLY the header data described by the JSON schema. " +
   "Rules: extract accounts-payable invoice header data only; do NOT invent missing " +
-  "values — use null when a field is not visible; NEVER assign a vendor id or GL " +
+  "values — use null when a field is not visible (never guess 0); NEVER assign a vendor id or GL " +
   "account; normalize dates to YYYY-MM-DD; normalize amounts as plain numbers with " +
-  "two decimals (no currency symbols or thousands separators); currency is USD unless " +
-  "the invoice clearly shows another currency; capture the PO number if visible; all " +
+  "two decimals (strip currency symbols and thousands separators; a value shown in " +
+  "parentheses or with a leading minus sign is negative); currency is USD unless " +
+  "the invoice clearly shows another currency; capture the PO number if visible; " +
+  "extract subtotal, tax amount, freight/shipping amount, discount amount, and other " +
+  "charges/fees/surcharges in addition to the invoice total; report discountAmount as a " +
+  "positive number representing the discount or credit reduction; report otherChargesAmount " +
+  "for miscellaneous charges, fees, or surcharges (use a negative value only for a credit); " +
+  "leave any amount null when it is not shown on the invoice; all " +
   "confidence scores are 0 to 100; the low-confidence threshold is 85; if multiple " +
   "totals appear, select the final amount due / total payable for amountDue and explain " +
   "briefly in extractionNotes.";
@@ -390,6 +430,8 @@ type RawModelOutput = {
   subtotal?: unknown;
   taxAmount?: unknown;
   freightAmount?: unknown;
+  discountAmount?: unknown;
+  otherChargesAmount?: unknown;
   invoiceTotal?: unknown;
   amountDue?: unknown;
   currency?: unknown;
@@ -409,6 +451,8 @@ const REQUIRED_MODEL_KEYS = [
   "subtotal",
   "taxAmount",
   "freightAmount",
+  "discountAmount",
+  "otherChargesAmount",
   "invoiceTotal",
   "amountDue",
   "currency",
@@ -466,6 +510,8 @@ function mapModelOutput(parsed: RawModelOutput, rawExtraction: string): Extracte
     subtotal: clampPct(fc.subtotal),
     taxAmount: clampPct(fc.taxAmount),
     freightAmount: clampPct(fc.freightAmount),
+    discountAmount: clampPct(fc.discountAmount),
+    otherChargesAmount: clampPct(fc.otherChargesAmount),
     totalAmount: totalConfidence,
     currency: clampPct(fc.currency),
   };
@@ -479,6 +525,8 @@ function mapModelOutput(parsed: RawModelOutput, rawExtraction: string): Extracte
     taxAmount: toNum(parsed.taxAmount),
     subtotal: toNum(parsed.subtotal),
     freightAmount: toNum(parsed.freightAmount),
+    discountAmount: toNum(parsed.discountAmount),
+    otherChargesAmount: toNum(parsed.otherChargesAmount),
     poNumber: parsed.poNumberRaw != null ? String(parsed.poNumberRaw) : null,
     currency: parsed.currency != null ? String(parsed.currency) : "USD",
     paymentTerms: parsed.paymentTerms != null ? String(parsed.paymentTerms) : null,
@@ -683,6 +731,9 @@ export async function runExtraction(invoiceId: number): Promise<void> {
         taxAmount: fields.taxAmount != null ? String(fields.taxAmount) : null,
         subtotal: fields.subtotal != null ? String(fields.subtotal) : null,
         freightAmount: fields.freightAmount != null ? String(fields.freightAmount) : null,
+        discountAmount: fields.discountAmount != null ? String(fields.discountAmount) : null,
+        otherChargesAmount:
+          fields.otherChargesAmount != null ? String(fields.otherChargesAmount) : null,
         poNumber: fields.poNumber,
         currency: fields.currency ?? "USD",
         paymentTerms: fields.paymentTerms,

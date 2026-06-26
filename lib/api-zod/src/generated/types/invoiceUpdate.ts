@@ -34,6 +34,10 @@ export interface InvoiceUpdate {
   /** @nullable */
   freightAmount?: number | null;
   /** @nullable */
+  discountAmount?: number | null;
+  /** @nullable */
+  otherChargesAmount?: number | null;
+  /** @nullable */
   paymentTerms?: string | null;
   editorRole?: string;
 }

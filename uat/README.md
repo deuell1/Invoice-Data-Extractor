@@ -9,5 +9,6 @@ Supporting material for the Phase 1 exit gate of the Invoice Data Extractor.
 | `extraction-accuracy/ground-truth.template.csv` | Template for the labeled ground-truth values. |
 | `extraction-accuracy/pack/` | Where the labeled invoice files go (empty until a pack is supplied). |
 | `edge-rendering-checklist.md` | Manual checklist for verifying inline PDF/JPG/PNG rendering in Microsoft Edge. |
+| `tie-out-test-cases.md` | Phase 1 header tie-out hardening test cases (PASS/WARNING/FAIL/SKIPPED), run commands, and cross-cutting checks. |
 
 The consolidated verdict lives in `../Phase1_UAT_Exit_Report.md`.

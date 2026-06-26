@@ -82,6 +82,36 @@ export interface Invoice {
   subtotal?: number | null;
   /** @nullable */
   freightAmount?: number | null;
+  /**
+     * Discount/credit reduction extracted from the invoice (stored as a positive magnitude; subtracted in the tie-out formula).
+     * @nullable
+     */
+  discountAmount?: number | null;
+  /**
+     * Other charges, fees, or surcharges extracted from the invoice (added in the tie-out formula; negative values represent credits).
+     * @nullable
+     */
+  otherChargesAmount?: number | null;
+  /**
+     * Computed expected total = subtotal + tax + freight + other charges − discount.
+     * @nullable
+     */
+  tieOutExpectedTotal?: number | null;
+  /**
+     * Extracted invoice total minus the expected total.
+     * @nullable
+     */
+  tieOutDifference?: number | null;
+  /**
+     * Header tie-out outcome — one of PASS, WARNING, FAIL, SKIPPED.
+     * @nullable
+     */
+  tieOutStatus?: string | null;
+  /**
+     * Human-readable explanation of how the tie-out was computed and why it passed, warned, failed, or was skipped.
+     * @nullable
+     */
+  tieOutExplanation?: string | null;
   /** @nullable */
   paymentTerms?: string | null;
   /** @nullable */
@@ -247,6 +277,10 @@ export interface InvoiceUpdate {
   subtotal?: number | null;
   /** @nullable */
   freightAmount?: number | null;
+  /** @nullable */
+  discountAmount?: number | null;
+  /** @nullable */
+  otherChargesAmount?: number | null;
   /** @nullable */
   paymentTerms?: string | null;
   editorRole?: string;

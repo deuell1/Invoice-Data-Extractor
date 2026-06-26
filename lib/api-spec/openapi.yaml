@@ -976,6 +976,24 @@ components:
           type: ["number", "null"]
         freightAmount:
           type: ["number", "null"]
+        discountAmount:
+          type: ["number", "null"]
+          description: Discount/credit reduction extracted from the invoice (stored as a positive magnitude; subtracted in the tie-out formula).
+        otherChargesAmount:
+          type: ["number", "null"]
+          description: Other charges, fees, or surcharges extracted from the invoice (added in the tie-out formula; negative values represent credits).
+        tieOutExpectedTotal:
+          type: ["number", "null"]
+          description: Computed expected total = subtotal + tax + freight + other charges − discount.
+        tieOutDifference:
+          type: ["number", "null"]
+          description: Extracted invoice total minus the expected total.
+        tieOutStatus:
+          type: ["string", "null"]
+          description: Header tie-out outcome — one of PASS, WARNING, FAIL, SKIPPED.
+        tieOutExplanation:
+          type: ["string", "null"]
+          description: Human-readable explanation of how the tie-out was computed and why it passed, warned, failed, or was skipped.
         paymentTerms:
           type: ["string", "null"]
         vendorMatchScore:
@@ -1125,6 +1143,10 @@ components:
         subtotal:
           type: ["number", "null"]
         freightAmount:
+          type: ["number", "null"]
+        discountAmount:
+          type: ["number", "null"]
+        otherChargesAmount:
           type: ["number", "null"]
         paymentTerms:
           type: ["string", "null"]

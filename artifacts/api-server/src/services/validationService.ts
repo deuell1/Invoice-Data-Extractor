@@ -174,6 +174,115 @@ function parseFieldConfidence(raw: string | null): Record<string, number> {
   }
 }
 
+// ─── Header tie-out ──────────────────────────────────────────────────────────
+const TIE_OUT_WARNING_TOLERANCE = 0.05; // dollars — minor rounding allowance
+
+export type TieOutStatus = "PASS" | "WARNING" | "FAIL" | "SKIPPED";
+
+export interface TieOutInput {
+  subtotal: number | null;
+  tax: number | null;
+  freight: number | null;
+  /** Discount magnitude (always subtracted); callers pass the absolute value. */
+  discount: number | null;
+  otherCharges: number | null;
+  total: number | null;
+}
+
+export interface TieOutResult {
+  status: TieOutStatus;
+  expectedTotal: number | null;
+  difference: number | null;
+  explanation: string;
+}
+
+function round2(n: number): number {
+  return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+function fmtMoney(n: number): string {
+  return `${n < 0 ? "-" : ""}$${Math.abs(n).toFixed(2)}`;
+}
+
+/**
+ * Reconcile header amounts. Expected total = subtotal + tax + freight +
+ * other charges − discount. The discount magnitude is always subtracted (callers
+ * pass its absolute value) so a discount shown as "(50)" or "-50" still reduces
+ * the expected total; a credit in other charges (negative) likewise reduces it.
+ * Returns an explainable status:
+ *   - SKIPPED  — subtotal or total missing (cannot reconcile)
+ *   - PASS     — |difference| ≤ $0.01
+ *   - WARNING  — |difference| ≤ $0.05 (minor rounding)
+ *   - FAIL     — |difference| > $0.05 (material; required amounts present)
+ * Optional components (tax/freight/discount/other) default to 0 when absent and
+ * never cause a false failure on their own.
+ */
+export function computeTieOut(input: TieOutInput): TieOutResult {
+  const { subtotal, tax, freight, discount, otherCharges, total } = input;
+
+  if (subtotal == null || total == null) {
+    const missing: string[] = [];
+    if (subtotal == null) missing.push("subtotal");
+    if (total == null) missing.push("invoice total");
+    return {
+      status: "SKIPPED",
+      expectedTotal: null,
+      difference: null,
+      explanation: `Tie-out skipped — ${missing.join(" and ")} ${
+        missing.length > 1 ? "are" : "is"
+      } missing. Provide the missing amount${
+        missing.length > 1 ? "s" : ""
+      } to reconcile the header.`,
+    };
+  }
+
+  const taxN = tax ?? 0;
+  const freightN = freight ?? 0;
+  const discountN = discount ?? 0;
+  const otherN = otherCharges ?? 0;
+
+  const expectedTotal = round2(subtotal + taxN + freightN + otherN - discountN);
+  const difference = round2(total - expectedTotal);
+  const absDiff = Math.abs(difference);
+
+  const formula =
+    `Expected ${fmtMoney(expectedTotal)} = subtotal ${fmtMoney(subtotal)}` +
+    ` + tax ${fmtMoney(taxN)} + freight ${fmtMoney(freightN)}` +
+    ` + other charges ${fmtMoney(otherN)} − discount ${fmtMoney(discountN)}.` +
+    ` Invoice total is ${fmtMoney(total)}`;
+
+  if (absDiff <= TIE_OUT_TOLERANCE) {
+    return {
+      status: "PASS",
+      expectedTotal,
+      difference,
+      explanation: `${formula} — matches within $${TIE_OUT_TOLERANCE.toFixed(2)}.`,
+    };
+  }
+  if (absDiff <= TIE_OUT_WARNING_TOLERANCE) {
+    return {
+      status: "WARNING",
+      expectedTotal,
+      difference,
+      explanation: `${formula}, a difference of ${fmtMoney(
+        difference,
+      )} — within the $${TIE_OUT_WARNING_TOLERANCE.toFixed(
+        2,
+      )} rounding tolerance. Confirm the amounts before approval.`,
+    };
+  }
+  return {
+    status: "FAIL",
+    expectedTotal,
+    difference,
+    explanation: `${formula}, a difference of ${fmtMoney(
+      difference,
+    )} — exceeds the $${TIE_OUT_WARNING_TOLERANCE.toFixed(
+      2,
+    )} tolerance. Review the amounts before approval.`,
+  };
+}
+
 // ─── Core engine ─────────────────────────────────────────────────────────────
 
 /**
@@ -201,6 +310,8 @@ export async function validateInvoice(invoiceId: number): Promise<ValidationOutc
       taxAmount: invoiceCaptureTable.taxAmount,
       subtotal: invoiceCaptureTable.subtotal,
       freightAmount: invoiceCaptureTable.freightAmount,
+      discountAmount: invoiceCaptureTable.discountAmount,
+      otherChargesAmount: invoiceCaptureTable.otherChargesAmount,
       poNumber: invoiceCaptureTable.poNumber,
       currency: invoiceCaptureTable.currency,
       confidenceScore: invoiceCaptureTable.confidenceScore,
@@ -359,21 +470,30 @@ export async function validateInvoice(invoiceId: number): Promise<ValidationOutc
     warnings.push("PO number not captured");
   }
 
-  // ── Header total tie-out: subtotal + tax + freight = total (within $0.01) ────
-  let totalTieOut: CheckResult = "SKIPPED";
+  // ── Header total tie-out ───────────────────────────────────────────────────
+  // Expected = subtotal + tax + freight + other charges − discount.
   const subtotal = row.subtotal != null ? Number(row.subtotal) : null;
-  if (subtotal != null && total != null) {
-    const tax = row.taxAmount != null ? Number(row.taxAmount) : 0;
-    const freight = row.freightAmount != null ? Number(row.freightAmount) : 0;
-    const computed = subtotal + tax + freight;
-    if (Math.abs(computed - total) <= TIE_OUT_TOLERANCE) {
-      totalTieOut = "PASS";
-    } else {
-      totalTieOut = "FAIL";
-      blocking.push(
-        `Header totals do not tie out: subtotal + tax + freight (${computed.toFixed(2)}) ≠ total (${total.toFixed(2)})`,
-      );
-    }
+  const tieOut = computeTieOut({
+    subtotal,
+    tax: row.taxAmount != null ? Number(row.taxAmount) : null,
+    freight: row.freightAmount != null ? Number(row.freightAmount) : null,
+    // Discounts reduce the total regardless of how the source shows the sign,
+    // so reconcile on the magnitude.
+    discount: row.discountAmount != null ? Math.abs(Number(row.discountAmount)) : null,
+    otherCharges: row.otherChargesAmount != null ? Number(row.otherChargesAmount) : null,
+    total,
+  });
+  const totalTieOut: CheckResult = tieOut.status;
+  if (tieOut.status === "FAIL") {
+    // Material mismatch with required amounts present → blocks approval.
+    blocking.push(tieOut.explanation);
+  } else if (tieOut.status === "WARNING") {
+    // Within rounding tolerance → visible, allows approval.
+    warnings.push(tieOut.explanation);
+  } else if (tieOut.status === "SKIPPED" && total != null) {
+    // Total is present but the subtotal is missing — surface for AP review
+    // without auto-blocking (business rules may allow a missing subtotal).
+    warnings.push(tieOut.explanation);
   }
 
   // ── Classify ───────────────────────────────────────────────────────────────
@@ -428,6 +548,10 @@ export async function validateInvoice(invoiceId: number): Promise<ValidationOutc
       poCheck,
       amountCheck,
       totalTieOut,
+      tieOutStatus: tieOut.status,
+      tieOutExpectedTotal: tieOut.expectedTotal != null ? String(tieOut.expectedTotal) : null,
+      tieOutDifference: tieOut.difference != null ? String(tieOut.difference) : null,
+      tieOutExplanation: tieOut.explanation,
       validationDetails: JSON.stringify(details),
     })
     .where(eq(invoiceCaptureTable.id, invoiceId));

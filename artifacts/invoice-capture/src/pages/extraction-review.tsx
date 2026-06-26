@@ -57,6 +57,8 @@ const FIELD_LABELS: Record<string, string> = {
   subtotal: "Subtotal",
   taxAmount: "Tax Amount",
   freightAmount: "Freight Amount",
+  discountAmount: "Discount Amount",
+  otherChargesAmount: "Other Charges",
   totalAmount: "Total Amount",
   currency: "Currency",
 };
@@ -70,6 +72,12 @@ const VALIDATION_CHECKS: { key: "vendorCheck" | "duplicateCheck" | "poCheck" | "
   { key: "totalTieOut", label: "Tie-out" },
   { key: "poCheck", label: "PO" },
 ];
+
+/** Format a signed money value for the tie-out summary; null/undefined → em dash. */
+function fmtTieOutMoney(v: number | null | undefined): string {
+  if (v == null) return "—";
+  return `${v < 0 ? "-" : ""}$${Math.abs(v).toFixed(2)}`;
+}
 
 const CHECK_RESULT_CLASS: Record<string, string> = {
   PASS: "border-emerald-500 text-emerald-600",
@@ -197,8 +205,12 @@ export function ExtractionReview() {
         invoiceNumber: invoice.invoiceNumber || "",
         invoiceDate: invoice.invoiceDate || "",
         dueDate: invoice.dueDate || "",
-        totalAmount: invoice.totalAmount?.toString() || "",
+        subtotal: invoice.subtotal?.toString() || "",
         taxAmount: invoice.taxAmount?.toString() || "",
+        freightAmount: invoice.freightAmount?.toString() || "",
+        discountAmount: invoice.discountAmount?.toString() || "",
+        otherChargesAmount: invoice.otherChargesAmount?.toString() || "",
+        totalAmount: invoice.totalAmount?.toString() || "",
         poNumber: invoice.poNumber || "",
         currency: invoice.currency || "USD",
         vendorRawName: invoice.vendorRawName || "",
@@ -238,8 +250,17 @@ export function ExtractionReview() {
     try {
       const payload: Record<string, unknown> = { editorRole: "AP_PROCESSOR" };
 
-      if (field === "totalAmount" || field === "taxAmount") {
-        payload[field] = value ? parseFloat(value) : null;
+      const AMOUNT_FIELDS = [
+        "totalAmount",
+        "taxAmount",
+        "subtotal",
+        "freightAmount",
+        "discountAmount",
+        "otherChargesAmount",
+      ];
+      if (AMOUNT_FIELDS.includes(field)) {
+        const n = value === "" ? null : parseFloat(value);
+        payload[field] = n != null && Number.isFinite(n) ? n : null;
       } else if (field === "vendorId") {
         payload[field] = value ? parseInt(value, 10) : null;
       } else {
@@ -911,39 +932,6 @@ export function ExtractionReview() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="flex items-center justify-between">
-                    Total Amount
-                    {renderConfidence("totalAmount")}
-                  </Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={formData.totalAmount}
-                    onChange={(e) => handleInputChange("totalAmount", e.target.value)}
-                    onBlur={(e) => handleSaveField("totalAmount", e.target.value)}
-                    data-testid="input-total-amount"
-                    className={lowConfidenceClass("totalAmount")}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label className="flex items-center justify-between">
-                    Tax Amount
-                    {renderConfidence("taxAmount")}
-                  </Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={formData.taxAmount}
-                    onChange={(e) => handleInputChange("taxAmount", e.target.value)}
-                    onBlur={(e) => handleSaveField("taxAmount", e.target.value)}
-                    data-testid="input-tax-amount"
-                    className={lowConfidenceClass("taxAmount")}
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="flex items-center justify-between">
                     PO Number
                     {renderConfidence("poNumber")}
                   </Label>
@@ -978,6 +966,75 @@ export function ExtractionReview() {
                     </SelectContent>
                   </Select>
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Header Tie-Out Panel */}
+          <Card className="shrink-0" data-testid="card-tie-out">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-medium flex items-center justify-between">
+                Header Tie-Out
+                {invoice.tieOutStatus && (
+                  <Badge
+                    variant="outline"
+                    className={CHECK_RESULT_CLASS[invoice.tieOutStatus] ?? ""}
+                    data-testid="badge-tie-out-status"
+                  >
+                    {invoice.tieOutStatus}
+                  </Badge>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                {([
+                  ["subtotal", "Subtotal"],
+                  ["taxAmount", "Tax Amount"],
+                  ["freightAmount", "Freight Amount"],
+                  ["discountAmount", "Discount Amount"],
+                  ["otherChargesAmount", "Other Charges"],
+                  ["totalAmount", "Total Amount"],
+                ] as const).map(([key, label]) => (
+                  <div className="space-y-2" key={key}>
+                    <Label className="flex items-center justify-between">
+                      {label}
+                      {renderConfidence(key)}
+                    </Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={formData[key] ?? ""}
+                      onChange={(e) => handleInputChange(key, e.target.value)}
+                      onBlur={(e) => handleSaveField(key, e.target.value)}
+                      data-testid={`input-${key.replace(/([A-Z])/g, "-$1").toLowerCase()}`}
+                      className={lowConfidenceClass(key)}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              <div className="rounded-md border bg-muted/30 p-3 space-y-2 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Expected Total</span>
+                  <span className="font-mono" data-testid="text-tie-out-expected">
+                    {fmtTieOutMoney(invoice.tieOutExpectedTotal)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Difference</span>
+                  <span className="font-mono" data-testid="text-tie-out-difference">
+                    {fmtTieOutMoney(invoice.tieOutDifference)}
+                  </span>
+                </div>
+                {invoice.tieOutExplanation && (
+                  <p
+                    className="text-xs text-muted-foreground pt-1 border-t"
+                    data-testid="text-tie-out-explanation"
+                  >
+                    {invoice.tieOutExplanation}
+                  </p>
+                )}
               </div>
             </CardContent>
           </Card>

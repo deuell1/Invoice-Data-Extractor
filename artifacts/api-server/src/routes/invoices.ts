@@ -75,6 +75,12 @@ async function getInvoiceById(id: number) {
       confidenceScore: invoiceCaptureTable.confidenceScore,
       subtotal: invoiceCaptureTable.subtotal,
       freightAmount: invoiceCaptureTable.freightAmount,
+      discountAmount: invoiceCaptureTable.discountAmount,
+      otherChargesAmount: invoiceCaptureTable.otherChargesAmount,
+      tieOutExpectedTotal: invoiceCaptureTable.tieOutExpectedTotal,
+      tieOutDifference: invoiceCaptureTable.tieOutDifference,
+      tieOutStatus: invoiceCaptureTable.tieOutStatus,
+      tieOutExplanation: invoiceCaptureTable.tieOutExplanation,
       paymentTerms: invoiceCaptureTable.paymentTerms,
       vendorMatchScore: invoiceCaptureTable.vendorMatchScore,
       validationStatus: invoiceCaptureTable.validationStatus,
@@ -222,6 +228,10 @@ function serializeInvoice(row: Awaited<ReturnType<typeof getInvoiceById>>) {
     confidenceScore: row.confidenceScore != null ? Number(row.confidenceScore) : null,
     subtotal: row.subtotal != null ? Number(row.subtotal) : null,
     freightAmount: row.freightAmount != null ? Number(row.freightAmount) : null,
+    discountAmount: row.discountAmount != null ? Number(row.discountAmount) : null,
+    otherChargesAmount: row.otherChargesAmount != null ? Number(row.otherChargesAmount) : null,
+    tieOutExpectedTotal: row.tieOutExpectedTotal != null ? Number(row.tieOutExpectedTotal) : null,
+    tieOutDifference: row.tieOutDifference != null ? Number(row.tieOutDifference) : null,
     vendorMatchScore: row.vendorMatchScore != null ? Number(row.vendorMatchScore) : null,
     lastExtractedAt:
       row.lastExtractedAt instanceof Date
@@ -298,6 +308,12 @@ router.get("/invoices", async (req, res): Promise<void> => {
       confidenceScore: invoiceCaptureTable.confidenceScore,
       subtotal: invoiceCaptureTable.subtotal,
       freightAmount: invoiceCaptureTable.freightAmount,
+      discountAmount: invoiceCaptureTable.discountAmount,
+      otherChargesAmount: invoiceCaptureTable.otherChargesAmount,
+      tieOutExpectedTotal: invoiceCaptureTable.tieOutExpectedTotal,
+      tieOutDifference: invoiceCaptureTable.tieOutDifference,
+      tieOutStatus: invoiceCaptureTable.tieOutStatus,
+      tieOutExplanation: invoiceCaptureTable.tieOutExplanation,
       paymentTerms: invoiceCaptureTable.paymentTerms,
       vendorMatchScore: invoiceCaptureTable.vendorMatchScore,
       validationStatus: invoiceCaptureTable.validationStatus,
@@ -514,7 +530,13 @@ router.get("/invoices/export", async (req, res): Promise<void> => {
       subtotal: invoiceCaptureTable.subtotal,
       taxAmount: invoiceCaptureTable.taxAmount,
       freightAmount: invoiceCaptureTable.freightAmount,
+      discountAmount: invoiceCaptureTable.discountAmount,
+      otherChargesAmount: invoiceCaptureTable.otherChargesAmount,
       totalAmount: invoiceCaptureTable.totalAmount,
+      tieOutExpectedTotal: invoiceCaptureTable.tieOutExpectedTotal,
+      tieOutDifference: invoiceCaptureTable.tieOutDifference,
+      tieOutStatus: invoiceCaptureTable.tieOutStatus,
+      tieOutExplanation: invoiceCaptureTable.tieOutExplanation,
       currency: invoiceCaptureTable.currency,
       confidenceScore: invoiceCaptureTable.confidenceScore,
       vendorMatchScore: invoiceCaptureTable.vendorMatchScore,
@@ -588,7 +610,13 @@ router.get("/invoices/export", async (req, res): Promise<void> => {
     "Subtotal",
     "TaxAmount",
     "FreightAmount",
+    "DiscountAmount",
+    "OtherChargesAmount",
     "TotalAmount",
+    "TieOutExpectedTotal",
+    "TieOutDifference",
+    "TieOutStatus",
+    "TieOutExplanation",
     "Currency",
     "ExtractionConfidence",
     "VendorMatchScore",
@@ -623,7 +651,13 @@ router.get("/invoices/export", async (req, res): Promise<void> => {
       fmtAmount(r.subtotal),
       fmtAmount(r.taxAmount),
       fmtAmount(r.freightAmount),
+      fmtAmount(r.discountAmount),
+      fmtAmount(r.otherChargesAmount),
       fmtAmount(r.totalAmount),
+      fmtAmount(r.tieOutExpectedTotal),
+      fmtAmount(r.tieOutDifference),
+      r.tieOutStatus,
+      r.tieOutExplanation,
       r.currency,
       fmtPct(r.confidenceScore),
       fmtPct(r.vendorMatchScore),
@@ -745,6 +779,15 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
   track("dueDate", existing.dueDate, parsed.data.dueDate, "dueDate");
   track("totalAmount", existing.totalAmount, parsed.data.totalAmount, "totalAmount");
   track("taxAmount", existing.taxAmount, parsed.data.taxAmount, "taxAmount");
+  track("subtotal", existing.subtotal, parsed.data.subtotal, "subtotal");
+  track("freightAmount", existing.freightAmount, parsed.data.freightAmount, "freightAmount");
+  track("discountAmount", existing.discountAmount, parsed.data.discountAmount, "discountAmount");
+  track(
+    "otherChargesAmount",
+    existing.otherChargesAmount,
+    parsed.data.otherChargesAmount,
+    "otherChargesAmount",
+  );
   track("poNumber", existing.poNumber, parsed.data.poNumber, "poNumber");
   track("currency", existing.currency, parsed.data.currency, "currency");
   track("vendorRawName", existing.vendorRawName, parsed.data.vendorRawName, "vendorRawName");
@@ -1051,6 +1094,19 @@ router.post("/invoices/:id/approve", async (req, res): Promise<void> => {
   // be posted or exported).
   if (outcome.checks.duplicateCheck === "FAIL") {
     res.status(409).json({ error: DUPLICATE_MESSAGE });
+    return;
+  }
+
+  // A header tie-out FAIL is a HARD block on approval — the amounts do not
+  // reconcile beyond tolerance, so the invoice can never be approved even with a
+  // documented exception override. The amounts must be corrected first (which
+  // re-runs validation). WARNING/SKIPPED remain approvable.
+  if (outcome.checks.totalTieOut === "FAIL") {
+    res.status(422).json({
+      error: `Cannot approve — header amounts do not tie out: ${
+        existing.tieOutExplanation ?? "subtotal + tax + freight + other charges − discount does not equal the invoice total."
+      }`,
+    });
     return;
   }
 

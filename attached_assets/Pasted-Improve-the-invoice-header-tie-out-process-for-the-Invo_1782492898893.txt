@@ -1,0 +1,132 @@
+Improve the invoice header tie-out process for the Invoice Data Extractor app before moving to Phase 2.
+
+Do not build Phase 2 features. Do not rebuild the app. Keep this within Phase 1 validation and AP review hardening.
+
+Current issue:
+The app currently performs a basic header tie-out check using subtotal + tax + freight = total. This needs to be more AP-friendly, more explainable, and safer for real invoices where some fields may be missing, rounded, discounted, or labeled differently.
+
+Goal:
+Improve the tie-out process so AP reviewers can clearly see whether invoice amounts reconcile, what fields were used, what is missing, and whether the invoice should pass, warn, or fail.
+
+Tie-out fields to support:
+- Subtotal
+- TaxAmount
+- FreightAmount
+- DiscountAmount, if available or extracted
+- OtherCharges, if available or extracted
+- TotalAmount
+
+Tie-out formula:
+Expected Total = Subtotal + TaxAmount + FreightAmount + OtherCharges - DiscountAmount
+
+Requirements:
+
+1. Add additional amount fields if not already present:
+   - discountAmount
+   - otherChargesAmount
+   - tieOutExpectedTotal
+   - tieOutDifference
+   - tieOutStatus
+   - tieOutExplanation
+
+2. Update extraction schema/prompt so the model attempts to extract:
+   - subtotal
+   - tax amount
+   - freight/shipping amount
+   - discount amount
+   - other charges/fees/surcharges
+   - invoice total
+
+3. Normalize amount extraction:
+   - Treat blank amount fields as null, not zero, unless the invoice clearly shows $0.00.
+   - Parse currency symbols, commas, parentheses, and negative discounts correctly.
+   - Store numeric values consistently.
+
+4. Improve tie-out validation logic:
+   - If subtotal and total are available, calculate expected total.
+   - If tax/freight/discount/other charges are missing, use 0 only when the field is not present on the invoice or clearly not applicable.
+   - If a field appears present but cannot be extracted confidently, mark tie-out as NEEDS_REVIEW instead of PASS.
+   - Use a tolerance of $0.01 for exact tie-out.
+   - Use a tolerance of $0.05 for minor rounding warning.
+   - Fail tie-out when the difference is greater than $0.05 and required amount components are available.
+   - If subtotal is missing but total is present, do not fail automatically; mark tie-out as SKIPPED or NEEDS_REVIEW with explanation.
+
+5. Tie-out statuses:
+   - PASS: Expected total matches invoice total within $0.01.
+   - WARNING: Difference is within rounding tolerance, or optional amount components are missing.
+   - FAIL: Difference is material and required values are available.
+   - SKIPPED: Not enough amount data to calculate tie-out.
+
+6. Show tie-out details in Extraction Review:
+   Add a clear tie-out panel or validation section showing:
+   - Subtotal
+   - Tax
+   - Freight
+   - Discount
+   - Other charges
+   - Expected total
+   - Extracted invoice total
+   - Difference
+   - Tie-out status
+   - Explanation
+
+7. Make fields editable:
+   AP reviewer must be able to edit subtotal, tax, freight, discount, other charges, and total.
+   After any amount field is edited, rerun validation and refresh the tie-out result.
+
+8. Highlight tie-out issues:
+   - PASS should be visually clear.
+   - WARNING should show amber/review message.
+   - FAIL should show red/blocking message.
+   - SKIPPED should show neutral message explaining what is missing.
+
+9. Approval behavior:
+   - FAIL tie-out must block approval.
+   - WARNING tie-out may allow submission but should remain visible.
+   - SKIPPED should require AP review but should not automatically block if business rules allow missing subtotal.
+   - Preserve all existing approval, duplicate, vendor, and VoucherID rules.
+
+10. CSV export:
+   Add tie-out fields to export if not already included:
+   - Subtotal
+   - TaxAmount
+   - FreightAmount
+   - DiscountAmount
+   - OtherChargesAmount
+   - TotalAmount
+   - TieOutExpectedTotal
+   - TieOutDifference
+   - TieOutStatus
+   - TieOutExplanation
+
+11. Audit logging:
+   When an AP reviewer manually changes any amount component used in tie-out, write audit log entries.
+
+12. KPI/dashboard:
+   Do not add new Phase 2 dashboards.
+   If current KPIs include exceptions or needs-review counts, make sure tie-out FAIL and WARNING route correctly into existing counts.
+
+13. UAT tests:
+   Add or document Phase 1 tie-out test cases:
+   - Subtotal + tax = total
+   - Subtotal + tax + freight = total
+   - Subtotal + tax + freight - discount = total
+   - Subtotal + other charges = total
+   - Minor rounding difference within $0.05
+   - Material mismatch greater than $0.05
+   - Missing subtotal but total present
+   - Missing tax/freight but no evidence those charges exist
+   - Discount shown as negative amount
+   - Parentheses used for discount or credit
+
+Acceptance criteria:
+- Tie-out calculation is transparent and explainable.
+- AP reviewer can see exactly how expected total was calculated.
+- Tie-out PASS/WARNING/FAIL/SKIPPED status is visible in Extraction Review.
+- Editing amount fields reruns tie-out validation.
+- Material tie-out mismatch blocks approval.
+- Minor rounding differences warn but do not incorrectly fail.
+- Missing optional components do not create false failures.
+- CSV export includes tie-out detail fields.
+- Existing upload, extraction, vendor matching, duplicate detection, exception routing, approval, cleanup, VoucherID, and export workflows still work.
+- No Phase 2 functionality is added.

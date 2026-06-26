@@ -46,13 +46,14 @@ No critical or high-severity defects were found. The one Medium defect identifie
 | 5 | Vendor matching (auto) | PASS | Threshold 0.85; high-confidence auto-assign, low-confidence routed to review. |
 | 6 | Vendor autocomplete (name/code/alias) | PASS | Searches name, code, and aliases; full list now loaded (defect D-01 fixed). |
 | 7 | Validation engine | PASS | Amount, vendor, duplicate, tie-out, due-date/terms checks enforced. |
+| 7a | Header tie-out (hardened) | PASS | Expected = Subtotal+Tax+Freight+Other−Discount; PASS ±$0.01 / WARNING ±$0.05 / FAIL >$0.05 / SKIPPED on missing subtotal\|total. FAIL blocks (→EXCEPTION), WARNING visible+approvable. Editable panel, audited amount edits, CSV columns. See `uat/tie-out-test-cases.md`. |
 | 8 | Duplicate detection guard | PASS | Exact-block + fuzzy-warn; voided peers ignored; see §3 / D2. |
 | 9 | Exception queue & resolution | PASS | Exceptions surfaced; vendor edit modal loads full vendor list. |
 | 10 | Approval workflow | PASS | No-vendor approval blocked (422, non-overridable). |
 | 11 | Voucher assignment & posting | PASS | `V-12345` accepted; voucher moves invoice to POSTED. |
 | 12 | Posted-invoice immutability | PASS | Status change and hard-delete both blocked on POSTED (422). |
 | 13 | Void / soft-removal | PASS | Requires reason; excluded from lists, KPIs, export, duplicate checks. |
-| 14 | CSV export | PASS | 31 columns incl. all required; voided excluded; CSV-injection protection. |
+| 14 | CSV export | PASS | 37 columns incl. all required + 6 tie-out columns (Discount, OtherCharges, TieOutExpectedTotal/Difference/Status/Explanation); voided excluded; CSV-injection protection. |
 | 15 | KPI / stats dashboard | PASS | Stats match DB ground truth exactly; voided excluded. |
 | 16 | Inline document viewer (Edge) | **OPEN** | Code + headers verified: PDFs render inline via `<iframe>` (with `#page=N` for splits), JPG/PNG via `<img>`, private server-proxy URLs (no signed URLs), Open/Download are fallback-only. Edge browser runtime could not be driven here — run `uat/edge-rendering-checklist.md` to confirm. |
 
@@ -77,7 +78,7 @@ No critical or high-severity defects were found. The one Medium defect identifie
 | IM-3 | Hard-delete POSTED + confirm:true (id4) | 422 (posted cannot be deleted) | 422 | PASS |
 | IM-4 | Hard-delete POSTED + confirm:true (fresh) | 422 | 422 | PASS |
 | IM-5 | Hard-delete without confirm | 422 (must confirm) | 422 | PASS |
-| EX-1 | CSV export column set | 31 cols incl. all required | 31 cols, all present | PASS |
+| EX-1 | CSV export column set | 37 cols incl. all required + tie-out | 37 cols, all present | PASS |
 | EX-2 | CSV posted-only count | 1 row (id4) | 1 row | PASS |
 | EX-3 | Voided excluded from export | excluded | excluded | PASS |
 | EX-4 | Export disposition | attachment | attachment | PASS |
@@ -90,6 +91,13 @@ No critical or high-severity defects were found. The one Medium defect identifie
 | ST-1 | Edge storage headers (inline) | inline, nosniff, CSP, no XFO | all present | PASS |
 | ST-2 | Edge storage headers (download=1) | attachment | attachment | PASS |
 | TD-1 | Teardown | DB restored to 14-row baseline | restored, stats match | PASS |
+| TO-1 | Tie-out exact match (Sub 2400, all 0, Total 2400) | `PASS`, expected 2400.00, diff 0.00 | PASS, 2400.00, 0.00 | PASS |
+| TO-2 | Tie-out minor rounding (Other 0.03) | `WARNING`, `NEEDS_REVIEW`, approval allowed | WARNING, diff -0.03 | PASS |
+| TO-3 | Tie-out material mismatch (Other 100) | `FAIL`, routed to `EXCEPTION`, approval blocked | FAIL, status EXCEPTION | PASS |
+| TO-4 | FAIL non-overridable: exception-approve with reason | 422, cannot approve (amounts don't tie out) | 422, blocked with explanation | PASS |
+| TO-5 | Revert to baseline | `PASS`, diff 0.00, approvable | PASS, restored | PASS |
+
+The remaining tie-out cases (discount sign handling, WARNING/FAIL edges, SKIPPED on missing subtotal/total) are documented and runnable in `uat/tie-out-test-cases.md`.
 
 ---
 
