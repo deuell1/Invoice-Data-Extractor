@@ -49,7 +49,7 @@ router.post("/imports/validate", async (req, res): Promise<void> => {
     parsed.data.importType,
     parsed.data.fileName,
     parsed.data.content,
-    { updateExisting: false },
+    { updateExisting: parsed.data.updateExisting ?? false },
   );
 
   res.json(

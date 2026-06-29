@@ -141,7 +141,7 @@ export function ImportsPage() {
     }
     setCommittedBatch(null);
     try {
-      const res = await validate.mutateAsync({ data: { importType, fileName, content } });
+      const res = await validate.mutateAsync({ data: { importType, fileName, content, updateExisting } });
       setResult(res);
       toast({
         title: "Validation complete",

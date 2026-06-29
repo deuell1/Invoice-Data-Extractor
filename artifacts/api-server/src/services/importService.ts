@@ -96,8 +96,9 @@ const COLUMN_SPECS: Record<ImportType, ColumnSpec[]> = {
 export function getTemplateCsv(importType: ImportType): string {
   const specs = COLUMN_SPECS[importType];
   const headers = specs.map((s) => s.name);
-  const example = specs.map((s) => s.example ?? "");
-  return toCsv(headers, [example]);
+  const expandedRow = specs.map((s) => s.example ?? "");
+  const minimalRow = specs.map((s) => (s.required ? (s.example ?? "") : ""));
+  return toCsv(headers, [expandedRow, minimalRow]);
 }
 
 export function templateFileName(importType: ImportType): string {
@@ -206,8 +207,26 @@ export async function analyzeImport(
   const columns = grid.length > 0 ? grid[0].map((h) => h.trim()) : [];
   const dataRows = grid.slice(1);
 
+  // ── Column-name aliases: map common alternate names to canonical spec names ──
+  // Keys and values are both lowercase (matching how headerIndex is keyed).
+  const COLUMN_ALIASES: Record<string, string> = {
+    vendorid: "vendorcode",
+    tradename: "dba",
+    mainphone: "contactphone",
+    tin: "taxid",
+    ein: "taxid",
+    defaultporequired: "requirespo",
+    province: "state",
+    zip: "postalcode",
+    zipcode: "postalcode",
+  };
+
   const headerIndex = new Map<string, number>();
-  columns.forEach((c, idx) => headerIndex.set(c.toLowerCase(), idx));
+  columns.forEach((c, idx) => {
+    const lower = c.toLowerCase().replace(/\s+/g, "");
+    const canonical = COLUMN_ALIASES[lower] ?? lower;
+    headerIndex.set(canonical, idx);
+  });
   const cellAt = (cells: string[], specName: string): string => {
     const idx = headerIndex.get(specName.toLowerCase());
     if (idx == null) return "";
@@ -321,14 +340,15 @@ export async function analyzeImport(
       const isActiveRaw = cellAt(cells, "isActive").toLowerCase();
       const onHoldRaw = cellAt(cells, "onHold").toLowerCase();
       const requiresPORaw = cellAt(cells, "requiresPO").toLowerCase();
-      const BOOL_VALUES = ["true", "false", "yes", "no", "1", "0", ""];
+      const BOOL_TRUTHY = ["true", "yes", "y", "1"];
+      const BOOL_VALUES = [...BOOL_TRUTHY, "false", "no", "n", "0", ""];
       if (!BOOL_VALUES.includes(isActiveRaw))
-        errors.push("isActive must be true/false (or leave blank)");
+        errors.push("isActive must be true/false/yes/no/y/n/1/0 (or leave blank)");
       if (!BOOL_VALUES.includes(onHoldRaw))
-        errors.push("onHold must be true/false (or leave blank)");
+        errors.push("onHold must be true/false/yes/no/y/n/1/0 (or leave blank)");
       if (!BOOL_VALUES.includes(requiresPORaw))
-        errors.push("requiresPO must be true/false (or leave blank)");
-      const parsedOnHold = ["true", "yes", "1"].includes(onHoldRaw);
+        errors.push("requiresPO must be true/false/yes/no/y/n/1/0 (or leave blank)");
+      const parsedOnHold = BOOL_TRUTHY.includes(onHoldRaw);
       const holdReasonRaw = cellAt(cells, "holdReason");
       if (parsedOnHold && !holdReasonRaw)
         errors.push("holdReason is required when onHold is true");
@@ -337,10 +357,30 @@ export async function analyzeImport(
       if (termsDaysNum != null && termsDaysNum < 0)
         errors.push("termsDays must be >= 0");
 
+      // ── Email format validation ──────────────────────────────────────────
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      for (const emailField of ["apEmail", "contactEmail", "remittanceEmail"] as const) {
+        const emailVal = cellAt(cells, emailField);
+        if (emailVal && !emailRegex.test(emailVal)) {
+          errors.push(`${emailField} must be a valid email address`);
+        }
+      }
+
+      // ── Website URL validation ───────────────────────────────────────────
+      const websiteVal = cellAt(cells, "website");
+      if (websiteVal) {
+        try {
+          const url = new URL(websiteVal);
+          if (!["http:", "https:"].includes(url.protocol)) throw new Error();
+        } catch {
+          errors.push("website must be a valid https:// URL");
+        }
+      }
+
       const aliasRaw = cellAt(cells, "aliases");
       const parsedAliases = aliasRaw
         ? aliasRaw
-            .split("|")
+            .split(/[|;]/)
             .map((a) => a.trim())
             .filter((a) => a.length > 0)
         : [];
@@ -370,10 +410,10 @@ export async function analyzeImport(
         currency: cellAt(cells, "currency") || null,
         isActive: isActiveRaw === ""
           ? true
-          : ["true", "yes", "1"].includes(isActiveRaw),
+          : BOOL_TRUTHY.includes(isActiveRaw),
         onHold: parsedOnHold,
         holdReason: holdReasonRaw || null,
-        requiresPO: requiresPORaw !== "" && ["true", "yes", "1"].includes(requiresPORaw),
+        requiresPO: requiresPORaw !== "" && BOOL_TRUTHY.includes(requiresPORaw),
         notes: cellAt(cells, "notes") || null,
         aliases: parsedAliases,
       };

@@ -2401,10 +2401,13 @@ export const CommitImportBody = zod.object({
 
 
 
+export const validateImportBodyUpdateExistingDefault = false;
+
 export const ValidateImportBody = zod.object({
   "importType": zod.enum(['VENDOR_MASTER', 'PO_REFERENCE', 'INVOICE_CORRECTION']),
   "fileName": zod.string().min(1),
-  "content": zod.string().describe('Raw CSV file content.')
+  "content": zod.string().describe('Raw CSV file content.'),
+  "updateExisting": zod.boolean().default(validateImportBodyUpdateExistingDefault).describe('When true, existing rows (by natural key) are treated as updates during validation preview — mirrors commit behaviour so the preview accurately reflects what will happen on commit.')
 })
 
 export const ValidateImportResponse = zod.object({

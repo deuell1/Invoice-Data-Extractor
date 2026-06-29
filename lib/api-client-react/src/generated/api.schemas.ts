@@ -940,6 +940,12 @@ export interface ImportValidationInput {
   fileName: string;
   /** Raw CSV file content. */
   content: string;
+  /**
+   * When true, existing rows (by natural key) are treated as updates during
+   * validation preview — mirrors commit behaviour so the preview accurately
+   * reflects what will happen on commit.
+   */
+  updateExisting?: boolean;
 }
 
 export interface ImportValidationResult {

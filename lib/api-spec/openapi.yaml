@@ -2951,6 +2951,13 @@ components:
         content:
           type: string
           description: Raw CSV file content.
+        updateExisting:
+          type: boolean
+          default: false
+          description: >
+            When true, existing rows (by natural key) are treated as updates
+            during validation preview — mirrors commit behaviour so the preview
+            accurately reflects what will happen on commit.
 
     ImportValidationResult:
       type: object
