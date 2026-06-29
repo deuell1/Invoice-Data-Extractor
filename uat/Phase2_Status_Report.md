@@ -217,8 +217,11 @@ are carried forward (unchanged by Phase 2):
 **Phase 2 risks / follow-ups:**
 
 - Import/export and exception flows were verified via API and representative UI
-  states; a broader UI end-to-end pass (full import→commit→export cycle through
-  the browser with file uploads) is recommended before pilot sign-off.
+  states. The full UI end-to-end pass (import→validate→commit and
+  export→generate→download through the browser with real CSV file uploads) has
+  now been completed and **passed** — see `uat/Phase2_ImportExport_UAT.md`
+  (21/21 checks, database restored to baseline). A browser pass of the exception
+  and settings-persistence flows remains a nice-to-have before sign-off.
 - Settings are read with safe defaults until an admin saves; persistence is
   available via `PUT /settings` and was exercised at the contract level.
 - **Admin-only enforcement is self-asserted (no auth system).** Vendor master

@@ -12,3 +12,11 @@ Supporting material for the Phase 1 exit gate of the Invoice Data Extractor.
 | `tie-out-test-cases.md` | Phase 1 header tie-out hardening test cases (PASS/WARNING/FAIL/SKIPPED), run commands, and cross-cutting checks. |
 
 The consolidated verdict lives in `../Phase1_UAT_Exit_Report.md`.
+
+## Phase 2 UAT Artifacts
+
+| Path | Purpose |
+|---|---|
+| `Phase2_Status_Report.md` | Phase 2 status report (scope, feature status, DB reconciliation, open gates). |
+| `Phase2_ImportExport_UAT.md` | Browser-based UAT of the full import→validate→commit and export→generate→download workflow (21/21 PASS; DB restored to baseline). |
+| `Phase3_Future_ERP_Integration.md` | Placeholder documenting future ERP scope (no live action in Phase 2). |
