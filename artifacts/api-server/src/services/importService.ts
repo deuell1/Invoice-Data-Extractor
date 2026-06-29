@@ -40,12 +40,32 @@ const COLUMN_SPECS: Record<ImportType, ColumnSpec[]> = {
   VENDOR_MASTER: [
     { name: "vendorCode", required: true, example: "V-1001" },
     { name: "vendorName", required: true, example: "Acme Supplies Inc." },
+    { name: "legalName", example: "Acme Supplies Incorporated" },
+    { name: "dba", example: "Acme" },
     { name: "taxId", example: "12-3456789" },
-    { name: "address", example: "123 Main St, Springfield" },
-    { name: "contactEmail", example: "ap@acme.example" },
+    { name: "vendorCategory", example: "Supplies" },
+    { name: "vendorType", example: "GOODS" },
+    { name: "address", example: "123 Main St, Springfield, IL 62701" },
+    { name: "addressLine1", example: "123 Main St" },
+    { name: "addressLine2", example: "Suite 400" },
+    { name: "city", example: "Springfield" },
+    { name: "state", example: "IL" },
+    { name: "postalCode", example: "62701" },
+    { name: "country", example: "US" },
+    { name: "contactEmail", example: "contact@acme.example" },
+    { name: "apEmail", example: "ap@acme.example" },
+    { name: "remittanceEmail", example: "remit@acme.example" },
     { name: "contactPhone", example: "+1-555-0100" },
+    { name: "website", example: "https://acme.example" },
     { name: "paymentTerms", example: "NET30" },
     { name: "termsDays", type: "int", example: "30" },
+    { name: "currency", example: "USD" },
+    { name: "isActive", example: "true" },
+    { name: "onHold", example: "false" },
+    { name: "holdReason", example: "" },
+    { name: "requiresPO", example: "false" },
+    { name: "notes", example: "" },
+    { name: "aliases", example: "Acme|ACME Corp" },
   ],
   PO_REFERENCE: [
     { name: "poNumber", required: true, example: "PO-5001" },
@@ -296,15 +316,66 @@ export async function analyzeImport(
         }
       }
       const termsDays = cellAt(cells, "termsDays");
+
+      // Extra VENDOR_MASTER validations
+      const isActiveRaw = cellAt(cells, "isActive").toLowerCase();
+      const onHoldRaw = cellAt(cells, "onHold").toLowerCase();
+      const requiresPORaw = cellAt(cells, "requiresPO").toLowerCase();
+      const BOOL_VALUES = ["true", "false", "yes", "no", "1", "0", ""];
+      if (!BOOL_VALUES.includes(isActiveRaw))
+        errors.push("isActive must be true/false (or leave blank)");
+      if (!BOOL_VALUES.includes(onHoldRaw))
+        errors.push("onHold must be true/false (or leave blank)");
+      if (!BOOL_VALUES.includes(requiresPORaw))
+        errors.push("requiresPO must be true/false (or leave blank)");
+      const parsedOnHold = ["true", "yes", "1"].includes(onHoldRaw);
+      const holdReasonRaw = cellAt(cells, "holdReason");
+      if (parsedOnHold && !holdReasonRaw)
+        errors.push("holdReason is required when onHold is true");
+      const termsDaysNum =
+        termsDays !== "" ? Math.trunc(Number(termsDays)) : null;
+      if (termsDaysNum != null && termsDaysNum < 0)
+        errors.push("termsDays must be >= 0");
+
+      const aliasRaw = cellAt(cells, "aliases");
+      const parsedAliases = aliasRaw
+        ? aliasRaw
+            .split("|")
+            .map((a) => a.trim())
+            .filter((a) => a.length > 0)
+        : [];
+
       entity = {
         vendorCode: code,
         vendorName: cellAt(cells, "vendorName"),
+        legalName: cellAt(cells, "legalName") || null,
+        dba: cellAt(cells, "dba") || null,
         taxId: cellAt(cells, "taxId") || null,
+        vendorCategory: cellAt(cells, "vendorCategory") || null,
+        vendorType: cellAt(cells, "vendorType") || null,
         address: cellAt(cells, "address") || null,
+        addressLine1: cellAt(cells, "addressLine1") || null,
+        addressLine2: cellAt(cells, "addressLine2") || null,
+        city: cellAt(cells, "city") || null,
+        state: cellAt(cells, "state") || null,
+        postalCode: cellAt(cells, "postalCode") || null,
+        country: cellAt(cells, "country") || null,
         contactEmail: cellAt(cells, "contactEmail") || null,
+        apEmail: cellAt(cells, "apEmail") || null,
+        remittanceEmail: cellAt(cells, "remittanceEmail") || null,
         contactPhone: cellAt(cells, "contactPhone") || null,
+        website: cellAt(cells, "website") || null,
         paymentTerms: cellAt(cells, "paymentTerms") || null,
-        termsDays: termsDays !== "" ? Math.trunc(Number(termsDays)) : null,
+        termsDays: termsDaysNum,
+        currency: cellAt(cells, "currency") || null,
+        isActive: isActiveRaw === ""
+          ? true
+          : ["true", "yes", "1"].includes(isActiveRaw),
+        onHold: parsedOnHold,
+        holdReason: holdReasonRaw || null,
+        requiresPO: requiresPORaw !== "" && ["true", "yes", "1"].includes(requiresPORaw),
+        notes: cellAt(cells, "notes") || null,
+        aliases: parsedAliases,
       };
     } else if (importType === "PO_REFERENCE") {
       const po = cellAt(cells, "poNumber");
@@ -485,38 +556,75 @@ export async function commitImportData(
       const e = row.entity as {
         vendorCode: string;
         vendorName: string;
+        legalName: string | null;
+        dba: string | null;
         taxId: string | null;
+        vendorCategory: string | null;
+        vendorType: string | null;
         address: string | null;
+        addressLine1: string | null;
+        addressLine2: string | null;
+        city: string | null;
+        state: string | null;
+        postalCode: string | null;
+        country: string | null;
         contactEmail: string | null;
+        apEmail: string | null;
+        remittanceEmail: string | null;
         contactPhone: string | null;
+        website: string | null;
         paymentTerms: string | null;
         termsDays: number | null;
+        currency: string | null;
+        isActive: boolean;
+        onHold: boolean;
+        holdReason: string | null;
+        requiresPO: boolean;
+        notes: string | null;
+        aliases: string[];
+      };
+      const sharedFields = {
+        vendorName: e.vendorName,
+        legalName: e.legalName,
+        dba: e.dba,
+        taxId: e.taxId,
+        vendorCategory: e.vendorCategory,
+        vendorType: e.vendorType,
+        address: e.address,
+        addressLine1: e.addressLine1,
+        addressLine2: e.addressLine2,
+        city: e.city,
+        state: e.state,
+        postalCode: e.postalCode,
+        country: e.country,
+        contactEmail: e.contactEmail,
+        apEmail: e.apEmail,
+        remittanceEmail: e.remittanceEmail,
+        contactPhone: e.contactPhone,
+        website: e.website,
+        paymentTerms: e.paymentTerms,
+        termsDays: e.termsDays,
+        currency: e.currency,
+        isActive: e.isActive,
+        onHold: e.onHold,
+        holdReason: e.holdReason,
+        requiresPO: e.requiresPO,
+        notes: e.notes,
+        aliases: e.aliases,
+        importBatchId: importBatchRef,
+        lastImportedAt: new Date(),
+        updatedBy: input.uploadedBy ?? null,
       };
       if (row.dbExists && (input.updateExisting ?? false)) {
         await db
           .update(vendorIdTable)
-          .set({
-            vendorName: e.vendorName,
-            taxId: e.taxId,
-            address: e.address,
-            contactEmail: e.contactEmail,
-            contactPhone: e.contactPhone,
-            paymentTerms: e.paymentTerms,
-            termsDays: e.termsDays,
-            importBatchId: importBatchRef,
-          })
+          .set(sharedFields)
           .where(eq(vendorIdTable.vendorCode, e.vendorCode));
       } else {
         await db.insert(vendorIdTable).values({
           vendorCode: e.vendorCode,
-          vendorName: e.vendorName,
-          taxId: e.taxId,
-          address: e.address,
-          contactEmail: e.contactEmail,
-          contactPhone: e.contactPhone,
-          paymentTerms: e.paymentTerms,
-          termsDays: e.termsDays,
-          importBatchId: importBatchRef,
+          ...sharedFields,
+          createdBy: input.uploadedBy ?? null,
         });
       }
     }

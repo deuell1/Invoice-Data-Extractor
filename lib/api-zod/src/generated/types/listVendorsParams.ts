@@ -5,6 +5,8 @@
  * Invoice Capture MVP API
  * OpenAPI spec version: 0.1.0
  */
+import type { ListVendorsSortBy } from './listVendorsSortBy';
+import type { ListVendorsSortDir } from './listVendorsSortDir';
 
 export type ListVendorsParams = {
 /**
@@ -13,4 +15,44 @@ export type ListVendorsParams = {
 search?: string | null;
 page?: number;
 limit?: number;
+/**
+ * @nullable
+ */
+isActive?: boolean | null;
+/**
+ * @nullable
+ */
+onHold?: boolean | null;
+/**
+ * @nullable
+ */
+requiresPO?: boolean | null;
+/**
+ * @nullable
+ */
+missingApEmail?: boolean | null;
+/**
+ * @nullable
+ */
+missingPaymentTerms?: boolean | null;
+/**
+ * @nullable
+ */
+vendorCategory?: string | null;
+/**
+ * @nullable
+ */
+vendorType?: string | null;
+/**
+ * @nullable
+ */
+updatedSince?: Date | null;
+/**
+ * @nullable
+ */
+sortBy?: ListVendorsSortBy;
+/**
+ * @nullable
+ */
+sortDir?: ListVendorsSortDir;
 };

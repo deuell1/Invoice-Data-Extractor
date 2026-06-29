@@ -587,7 +587,7 @@ paths:
     get:
       operationId: listVendors
       tags: [vendors]
-      summary: List vendors
+      summary: List vendors with search, filters, sort, and pagination
       parameters:
         - name: search
           in: query
@@ -603,6 +603,49 @@ paths:
           schema:
             type: integer
             default: 50
+        - name: isActive
+          in: query
+          schema:
+            type: ["boolean", "null"]
+        - name: onHold
+          in: query
+          schema:
+            type: ["boolean", "null"]
+        - name: requiresPO
+          in: query
+          schema:
+            type: ["boolean", "null"]
+        - name: missingApEmail
+          in: query
+          schema:
+            type: ["boolean", "null"]
+        - name: missingPaymentTerms
+          in: query
+          schema:
+            type: ["boolean", "null"]
+        - name: vendorCategory
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: vendorType
+          in: query
+          schema:
+            type: ["string", "null"]
+        - name: updatedSince
+          in: query
+          schema:
+            type: ["string", "null"]
+            format: date-time
+        - name: sortBy
+          in: query
+          schema:
+            type: ["string", "null"]
+            enum: [vendorName, vendorCode, updatedAt, createdAt]
+        - name: sortDir
+          in: query
+          schema:
+            type: ["string", "null"]
+            enum: [asc, desc]
       responses:
         "200":
           description: Vendor list
@@ -700,6 +743,80 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Vendor"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /vendors/profile-export:
+    get:
+      operationId: exportVendorProfiles
+      tags: [vendors]
+      summary: Export vendor profiles as a CSV download
+      parameters:
+        - name: isActive
+          in: query
+          schema:
+            type: ["boolean", "null"]
+        - name: onHold
+          in: query
+          schema:
+            type: ["boolean", "null"]
+      responses:
+        "200":
+          description: CSV file download
+          content:
+            text/csv:
+              schema:
+                type: string
+
+  /vendors/{id}/activity:
+    get:
+      operationId: getVendorActivity
+      tags: [vendors]
+      summary: Invoice activity summary for a vendor
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Activity summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VendorActivityResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /vendors/{id}/audit:
+    get:
+      operationId: getVendorAuditLog
+      tags: [vendors]
+      summary: Audit log for a vendor
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Audit entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/VendorAuditEntry"
         "404":
           description: Not found
           content:
@@ -2092,6 +2209,8 @@ components:
         - vendorCode
         - vendorName
         - isActive
+        - onHold
+        - requiresPO
         - createdAt
       properties:
         id:
@@ -2100,18 +2219,46 @@ components:
           type: string
         vendorName:
           type: string
+        legalName:
+          type: ["string", "null"]
+        dba:
+          type: ["string", "null"]
         taxId:
           type: ["string", "null"]
         address:
           type: ["string", "null"]
+        addressLine1:
+          type: ["string", "null"]
+        addressLine2:
+          type: ["string", "null"]
+        city:
+          type: ["string", "null"]
+        state:
+          type: ["string", "null"]
+        postalCode:
+          type: ["string", "null"]
+        country:
+          type: ["string", "null"]
         contactEmail:
           type: ["string", "null"]
+        apEmail:
+          type: ["string", "null"]
+        remittanceEmail:
+          type: ["string", "null"]
         contactPhone:
+          type: ["string", "null"]
+        website:
           type: ["string", "null"]
         paymentTerms:
           type: ["string", "null"]
         termsDays:
           type: ["integer", "null"]
+        currency:
+          type: ["string", "null"]
+        vendorCategory:
+          type: ["string", "null"]
+        vendorType:
+          type: ["string", "null"]
         aliases:
           type: array
           items:
@@ -2120,8 +2267,24 @@ components:
         onHold:
           type: boolean
           default: false
+        holdReason:
+          type: ["string", "null"]
         isActive:
           type: boolean
+        requiresPO:
+          type: boolean
+          default: false
+        notes:
+          type: ["string", "null"]
+        importBatchId:
+          type: ["string", "null"]
+        lastImportedAt:
+          type: ["string", "null"]
+          format: date-time
+        createdBy:
+          type: ["string", "null"]
+        updatedBy:
+          type: ["string", "null"]
         createdAt:
           type: string
           format: date-time
@@ -2140,18 +2303,49 @@ components:
         vendorName:
           type: string
           minLength: 1
+        actor:
+          type: ["string", "null"]
+          description: Identified actor performing the creation (required by the API route; no auth system in pilot)
+        legalName:
+          type: ["string", "null"]
+        dba:
+          type: ["string", "null"]
         taxId:
           type: ["string", "null"]
         address:
           type: ["string", "null"]
+        addressLine1:
+          type: ["string", "null"]
+        addressLine2:
+          type: ["string", "null"]
+        city:
+          type: ["string", "null"]
+        state:
+          type: ["string", "null"]
+        postalCode:
+          type: ["string", "null"]
+        country:
+          type: ["string", "null"]
         contactEmail:
           type: ["string", "null"]
+        apEmail:
+          type: ["string", "null"]
+        remittanceEmail:
+          type: ["string", "null"]
         contactPhone:
+          type: ["string", "null"]
+        website:
           type: ["string", "null"]
         paymentTerms:
           type: ["string", "null"]
         termsDays:
           type: ["integer", "null"]
+        currency:
+          type: ["string", "null"]
+        vendorCategory:
+          type: ["string", "null"]
+        vendorType:
+          type: ["string", "null"]
         aliases:
           type: array
           items:
@@ -2159,32 +2353,84 @@ components:
           default: []
         onHold:
           type: ["boolean", "null"]
+        holdReason:
+          type: ["string", "null"]
+        requiresPO:
+          type: ["boolean", "null"]
+        notes:
+          type: ["string", "null"]
 
     VendorUpdate:
       type: object
+      required:
+        - actor
       properties:
+        actor:
+          type: string
+          minLength: 1
+          description: Identified actor performing the update (required)
+        reason:
+          type: ["string", "null"]
+          description: Reason for the update (required for sensitive changes)
         vendorName:
+          type: ["string", "null"]
+        legalName:
+          type: ["string", "null"]
+        dba:
           type: ["string", "null"]
         taxId:
           type: ["string", "null"]
         address:
           type: ["string", "null"]
+        addressLine1:
+          type: ["string", "null"]
+        addressLine2:
+          type: ["string", "null"]
+        city:
+          type: ["string", "null"]
+        state:
+          type: ["string", "null"]
+        postalCode:
+          type: ["string", "null"]
+        country:
+          type: ["string", "null"]
         contactEmail:
           type: ["string", "null"]
+        apEmail:
+          type: ["string", "null"]
+        remittanceEmail:
+          type: ["string", "null"]
         contactPhone:
+          type: ["string", "null"]
+        website:
           type: ["string", "null"]
         paymentTerms:
           type: ["string", "null"]
         termsDays:
           type: ["integer", "null"]
+        currency:
+          type: ["string", "null"]
+        vendorCategory:
+          type: ["string", "null"]
+        vendorType:
+          type: ["string", "null"]
         aliases:
           type: array
           items:
             type: string
         onHold:
           type: ["boolean", "null"]
+        holdReason:
+          type: ["string", "null"]
         isActive:
           type: ["boolean", "null"]
+        requiresPO:
+          type: ["boolean", "null"]
+        notes:
+          type: ["string", "null"]
+        adminOverride:
+          type: ["boolean", "null"]
+          description: Allow editing protected fields (vendorCode) when vendor is referenced by invoices
 
     VendorListResponse:
       type: object
@@ -2210,6 +2456,9 @@ components:
       required:
         - vendors
       properties:
+        uploadedBy:
+          type: ["string", "null"]
+          description: Actor performing the import
         vendors:
           type: array
           items:
@@ -2230,6 +2479,66 @@ components:
           type: array
           items:
             type: string
+
+    VendorActivityResponse:
+      type: object
+      required:
+        - vendorId
+        - invoiceCount
+        - totalInvoiceAmount
+        - exceptionCount
+        - pendingApprovalCount
+        - approvedCount
+        - postedOrExportedCount
+      properties:
+        vendorId:
+          type: integer
+        invoiceCount:
+          type: integer
+        totalInvoiceAmount:
+          type: number
+        latestInvoiceDate:
+          type: ["string", "null"]
+          format: date-time
+        exceptionCount:
+          type: integer
+        pendingApprovalCount:
+          type: integer
+        approvedCount:
+          type: integer
+        postedOrExportedCount:
+          type: integer
+        avgVendorMatchConfidence:
+          type: ["number", "null"]
+
+    VendorAuditEntry:
+      type: object
+      required:
+        - id
+        - vendorId
+        - action
+        - actor
+        - createdAt
+      properties:
+        id:
+          type: integer
+        vendorId:
+          type: integer
+        action:
+          type: string
+        fieldName:
+          type: ["string", "null"]
+        oldValue:
+          type: ["string", "null"]
+        newValue:
+          type: ["string", "null"]
+        actor:
+          type: string
+        reason:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
 
     # ─── Audit ──────────────────────────────────────────────────────────────────
     AuditLogEntry:

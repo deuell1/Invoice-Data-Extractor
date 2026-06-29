@@ -7,6 +7,7 @@ import { SourceBatch } from "@/pages/source-batch";
 import { ExceptionQueue } from "@/pages/exception-queue";
 import { ApprovalQueue } from "@/pages/approval-queue";
 import { VendorAdmin } from "@/pages/vendor-admin";
+import { VendorDetail } from "@/pages/vendor-detail";
 import { DashboardPage } from "@/pages/dashboard";
 import { VendorAnalytics } from "@/pages/vendor-analytics";
 import { ExceptionManagement } from "@/pages/exception-management";
@@ -39,6 +40,7 @@ export function AppRouter() {
         <Route path="/exception-management" component={ExceptionManagement} />
         <Route path="/approvals" component={ApprovalQueue} />
         <Route path="/vendors" component={VendorAdmin} />
+        <Route path="/vendors/:id" component={VendorDetail} />
         <Route path="/analytics" component={VendorAnalytics} />
 
         <Route path="/imports" component={ImportsPage} />

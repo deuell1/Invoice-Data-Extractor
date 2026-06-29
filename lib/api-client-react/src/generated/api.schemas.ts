@@ -510,20 +510,61 @@ export interface Vendor {
   vendorCode: string;
   vendorName: string;
   /** @nullable */
+  legalName?: string | null;
+  /** @nullable */
+  dba?: string | null;
+  /** @nullable */
   taxId?: string | null;
   /** @nullable */
   address?: string | null;
   /** @nullable */
+  addressLine1?: string | null;
+  /** @nullable */
+  addressLine2?: string | null;
+  /** @nullable */
+  city?: string | null;
+  /** @nullable */
+  state?: string | null;
+  /** @nullable */
+  postalCode?: string | null;
+  /** @nullable */
+  country?: string | null;
+  /** @nullable */
   contactEmail?: string | null;
   /** @nullable */
+  apEmail?: string | null;
+  /** @nullable */
+  remittanceEmail?: string | null;
+  /** @nullable */
   contactPhone?: string | null;
+  /** @nullable */
+  website?: string | null;
   /** @nullable */
   paymentTerms?: string | null;
   /** @nullable */
   termsDays?: number | null;
+  /** @nullable */
+  currency?: string | null;
+  /** @nullable */
+  vendorCategory?: string | null;
+  /** @nullable */
+  vendorType?: string | null;
   aliases?: string[];
-  onHold?: boolean;
+  onHold: boolean;
+  /** @nullable */
+  holdReason?: string | null;
   isActive: boolean;
+  requiresPO: boolean;
+  /** @nullable */
+  notes?: string | null;
+  /** @nullable */
+  importBatchId?: string | null;
+  /** @nullable */
+  lastImportedAt?: string | null;
+  /** @nullable */
+  createdBy?: string | null;
+  /** @nullable */
+  updatedBy?: string | null;
   createdAt: string;
   /** @nullable */
   updatedAt?: string | null;
@@ -534,43 +575,131 @@ export interface VendorInput {
   vendorCode: string;
   /** @minLength 1 */
   vendorName: string;
+  /**
+     * Identified actor performing the creation (required by the API route; no auth system in pilot)
+     * @nullable
+     */
+  actor?: string | null;
+  /** @nullable */
+  legalName?: string | null;
+  /** @nullable */
+  dba?: string | null;
   /** @nullable */
   taxId?: string | null;
   /** @nullable */
   address?: string | null;
   /** @nullable */
+  addressLine1?: string | null;
+  /** @nullable */
+  addressLine2?: string | null;
+  /** @nullable */
+  city?: string | null;
+  /** @nullable */
+  state?: string | null;
+  /** @nullable */
+  postalCode?: string | null;
+  /** @nullable */
+  country?: string | null;
+  /** @nullable */
   contactEmail?: string | null;
   /** @nullable */
+  apEmail?: string | null;
+  /** @nullable */
+  remittanceEmail?: string | null;
+  /** @nullable */
   contactPhone?: string | null;
+  /** @nullable */
+  website?: string | null;
   /** @nullable */
   paymentTerms?: string | null;
   /** @nullable */
   termsDays?: number | null;
+  /** @nullable */
+  currency?: string | null;
+  /** @nullable */
+  vendorCategory?: string | null;
+  /** @nullable */
+  vendorType?: string | null;
   aliases?: string[];
   /** @nullable */
   onHold?: boolean | null;
+  /** @nullable */
+  holdReason?: string | null;
+  /** @nullable */
+  requiresPO?: boolean | null;
+  /** @nullable */
+  notes?: string | null;
 }
 
 export interface VendorUpdate {
+  /**
+     * Identified actor performing the update (required)
+     * @minLength 1
+     */
+  actor: string;
+  /**
+     * Reason for the update (required for sensitive changes)
+     * @nullable
+     */
+  reason?: string | null;
   /** @nullable */
   vendorName?: string | null;
+  /** @nullable */
+  legalName?: string | null;
+  /** @nullable */
+  dba?: string | null;
   /** @nullable */
   taxId?: string | null;
   /** @nullable */
   address?: string | null;
   /** @nullable */
+  addressLine1?: string | null;
+  /** @nullable */
+  addressLine2?: string | null;
+  /** @nullable */
+  city?: string | null;
+  /** @nullable */
+  state?: string | null;
+  /** @nullable */
+  postalCode?: string | null;
+  /** @nullable */
+  country?: string | null;
+  /** @nullable */
   contactEmail?: string | null;
   /** @nullable */
+  apEmail?: string | null;
+  /** @nullable */
+  remittanceEmail?: string | null;
+  /** @nullable */
   contactPhone?: string | null;
+  /** @nullable */
+  website?: string | null;
   /** @nullable */
   paymentTerms?: string | null;
   /** @nullable */
   termsDays?: number | null;
+  /** @nullable */
+  currency?: string | null;
+  /** @nullable */
+  vendorCategory?: string | null;
+  /** @nullable */
+  vendorType?: string | null;
   aliases?: string[];
   /** @nullable */
   onHold?: boolean | null;
   /** @nullable */
+  holdReason?: string | null;
+  /** @nullable */
   isActive?: boolean | null;
+  /** @nullable */
+  requiresPO?: boolean | null;
+  /** @nullable */
+  notes?: string | null;
+  /**
+     * Allow editing protected fields (vendorCode) when vendor is referenced by invoices
+     * @nullable
+     */
+  adminOverride?: boolean | null;
 }
 
 export interface VendorListResponse {
@@ -581,6 +710,11 @@ export interface VendorListResponse {
 }
 
 export interface VendorImportInput {
+  /**
+     * Actor performing the import
+     * @nullable
+     */
+  uploadedBy?: string | null;
   vendors: VendorInput[];
 }
 
@@ -588,6 +722,36 @@ export interface VendorImportResult {
   inserted: number;
   skipped: number;
   errors: string[];
+}
+
+export interface VendorActivityResponse {
+  vendorId: number;
+  invoiceCount: number;
+  totalInvoiceAmount: number;
+  /** @nullable */
+  latestInvoiceDate?: string | null;
+  exceptionCount: number;
+  pendingApprovalCount: number;
+  approvedCount: number;
+  postedOrExportedCount: number;
+  /** @nullable */
+  avgVendorMatchConfidence?: number | null;
+}
+
+export interface VendorAuditEntry {
+  id: number;
+  vendorId: number;
+  action: string;
+  /** @nullable */
+  fieldName?: string | null;
+  /** @nullable */
+  oldValue?: string | null;
+  /** @nullable */
+  newValue?: string | null;
+  actor: string;
+  /** @nullable */
+  reason?: string | null;
+  createdAt: string;
 }
 
 export interface AuditLogEntry {
@@ -1125,6 +1289,75 @@ export type ListVendorsParams = {
 search?: string | null;
 page?: number;
 limit?: number;
+/**
+ * @nullable
+ */
+isActive?: boolean | null;
+/**
+ * @nullable
+ */
+onHold?: boolean | null;
+/**
+ * @nullable
+ */
+requiresPO?: boolean | null;
+/**
+ * @nullable
+ */
+missingApEmail?: boolean | null;
+/**
+ * @nullable
+ */
+missingPaymentTerms?: boolean | null;
+/**
+ * @nullable
+ */
+vendorCategory?: string | null;
+/**
+ * @nullable
+ */
+vendorType?: string | null;
+/**
+ * @nullable
+ */
+updatedSince?: string | null;
+/**
+ * @nullable
+ */
+sortBy?: ListVendorsSortBy;
+/**
+ * @nullable
+ */
+sortDir?: ListVendorsSortDir;
+};
+
+export type ListVendorsSortBy = typeof ListVendorsSortBy[keyof typeof ListVendorsSortBy] | null;
+
+
+export const ListVendorsSortBy = {
+  vendorName: 'vendorName',
+  vendorCode: 'vendorCode',
+  updatedAt: 'updatedAt',
+  createdAt: 'createdAt',
+} as const;
+
+export type ListVendorsSortDir = typeof ListVendorsSortDir[keyof typeof ListVendorsSortDir] | null;
+
+
+export const ListVendorsSortDir = {
+  asc: 'asc',
+  desc: 'desc',
+} as const;
+
+export type ExportVendorProfilesParams = {
+/**
+ * @nullable
+ */
+isActive?: boolean | null;
+/**
+ * @nullable
+ */
+onHold?: boolean | null;
 };
 
 export type ListSourceDocumentsParams = {

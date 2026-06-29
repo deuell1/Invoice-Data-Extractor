@@ -1113,7 +1113,7 @@ export const BulkApproveInvoicesResponse = zod.object({
 
 
 /**
- * @summary List vendors
+ * @summary List vendors with search, filters, sort, and pagination
  */
 export const listVendorsQueryPageDefault = 1;
 export const listVendorsQueryLimitDefault = 50;
@@ -1121,26 +1121,58 @@ export const listVendorsQueryLimitDefault = 50;
 export const ListVendorsQueryParams = zod.object({
   "search": zod.coerce.string().nullish(),
   "page": zod.coerce.number().default(listVendorsQueryPageDefault),
-  "limit": zod.coerce.number().default(listVendorsQueryLimitDefault)
+  "limit": zod.coerce.number().default(listVendorsQueryLimitDefault),
+  "isActive": zod.coerce.boolean().nullish(),
+  "onHold": zod.coerce.boolean().nullish(),
+  "requiresPO": zod.coerce.boolean().nullish(),
+  "missingApEmail": zod.coerce.boolean().nullish(),
+  "missingPaymentTerms": zod.coerce.boolean().nullish(),
+  "vendorCategory": zod.coerce.string().nullish(),
+  "vendorType": zod.coerce.string().nullish(),
+  "updatedSince": zod.date().nullish(),
+  "sortBy": zod.enum(['vendorName', 'vendorCode', 'updatedAt', 'createdAt']).nullish(),
+  "sortDir": zod.enum(['asc', 'desc']).nullish()
 })
 
 export const listVendorsResponseDataItemAliasesDefault = [];
 export const listVendorsResponseDataItemOnHoldDefault = false;
+export const listVendorsResponseDataItemRequiresPODefault = false;
 
 export const ListVendorsResponse = zod.object({
   "data": zod.array(zod.object({
   "id": zod.number(),
   "vendorCode": zod.string(),
   "vendorName": zod.string(),
+  "legalName": zod.string().nullish(),
+  "dba": zod.string().nullish(),
   "taxId": zod.string().nullish(),
   "address": zod.string().nullish(),
+  "addressLine1": zod.string().nullish(),
+  "addressLine2": zod.string().nullish(),
+  "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
+  "postalCode": zod.string().nullish(),
+  "country": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
+  "apEmail": zod.string().nullish(),
+  "remittanceEmail": zod.string().nullish(),
   "contactPhone": zod.string().nullish(),
+  "website": zod.string().nullish(),
   "paymentTerms": zod.string().nullish(),
   "termsDays": zod.number().nullish(),
+  "currency": zod.string().nullish(),
+  "vendorCategory": zod.string().nullish(),
+  "vendorType": zod.string().nullish(),
   "aliases": zod.array(zod.string()).default(listVendorsResponseDataItemAliasesDefault),
   "onHold": zod.boolean().default(listVendorsResponseDataItemOnHoldDefault),
+  "holdReason": zod.string().nullish(),
   "isActive": zod.boolean(),
+  "requiresPO": zod.boolean().default(listVendorsResponseDataItemRequiresPODefault),
+  "notes": zod.string().nullish(),
+  "importBatchId": zod.string().nullish(),
+  "lastImportedAt": zod.coerce.date().nullish(),
+  "createdBy": zod.string().nullish(),
+  "updatedBy": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.string().nullish()
 })),
@@ -1160,14 +1192,32 @@ export const createVendorBodyAliasesDefault = [];
 export const CreateVendorBody = zod.object({
   "vendorCode": zod.string().min(1),
   "vendorName": zod.string().min(1),
+  "actor": zod.string().nullish().describe('Identified actor performing the creation (required by the API route; no auth system in pilot)'),
+  "legalName": zod.string().nullish(),
+  "dba": zod.string().nullish(),
   "taxId": zod.string().nullish(),
   "address": zod.string().nullish(),
+  "addressLine1": zod.string().nullish(),
+  "addressLine2": zod.string().nullish(),
+  "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
+  "postalCode": zod.string().nullish(),
+  "country": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
+  "apEmail": zod.string().nullish(),
+  "remittanceEmail": zod.string().nullish(),
   "contactPhone": zod.string().nullish(),
+  "website": zod.string().nullish(),
   "paymentTerms": zod.string().nullish(),
   "termsDays": zod.number().nullish(),
+  "currency": zod.string().nullish(),
+  "vendorCategory": zod.string().nullish(),
+  "vendorType": zod.string().nullish(),
   "aliases": zod.array(zod.string()).default(createVendorBodyAliasesDefault),
-  "onHold": zod.boolean().nullish()
+  "onHold": zod.boolean().nullish(),
+  "holdReason": zod.string().nullish(),
+  "requiresPO": zod.boolean().nullish(),
+  "notes": zod.string().nullish()
 })
 
 
@@ -1179,17 +1229,36 @@ export const CreateVendorBody = zod.object({
 export const importVendorsBodyVendorsItemAliasesDefault = [];
 
 export const ImportVendorsBody = zod.object({
+  "uploadedBy": zod.string().nullish().describe('Actor performing the import'),
   "vendors": zod.array(zod.object({
   "vendorCode": zod.string().min(1),
   "vendorName": zod.string().min(1),
+  "actor": zod.string().nullish().describe('Identified actor performing the creation (required by the API route; no auth system in pilot)'),
+  "legalName": zod.string().nullish(),
+  "dba": zod.string().nullish(),
   "taxId": zod.string().nullish(),
   "address": zod.string().nullish(),
+  "addressLine1": zod.string().nullish(),
+  "addressLine2": zod.string().nullish(),
+  "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
+  "postalCode": zod.string().nullish(),
+  "country": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
+  "apEmail": zod.string().nullish(),
+  "remittanceEmail": zod.string().nullish(),
   "contactPhone": zod.string().nullish(),
+  "website": zod.string().nullish(),
   "paymentTerms": zod.string().nullish(),
   "termsDays": zod.number().nullish(),
+  "currency": zod.string().nullish(),
+  "vendorCategory": zod.string().nullish(),
+  "vendorType": zod.string().nullish(),
   "aliases": zod.array(zod.string()).default(importVendorsBodyVendorsItemAliasesDefault),
-  "onHold": zod.boolean().nullish()
+  "onHold": zod.boolean().nullish(),
+  "holdReason": zod.string().nullish(),
+  "requiresPO": zod.boolean().nullish(),
+  "notes": zod.string().nullish()
 }))
 })
 
@@ -1209,20 +1278,42 @@ export const GetVendorParams = zod.object({
 
 export const getVendorResponseAliasesDefault = [];
 export const getVendorResponseOnHoldDefault = false;
+export const getVendorResponseRequiresPODefault = false;
 
 export const GetVendorResponse = zod.object({
   "id": zod.number(),
   "vendorCode": zod.string(),
   "vendorName": zod.string(),
+  "legalName": zod.string().nullish(),
+  "dba": zod.string().nullish(),
   "taxId": zod.string().nullish(),
   "address": zod.string().nullish(),
+  "addressLine1": zod.string().nullish(),
+  "addressLine2": zod.string().nullish(),
+  "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
+  "postalCode": zod.string().nullish(),
+  "country": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
+  "apEmail": zod.string().nullish(),
+  "remittanceEmail": zod.string().nullish(),
   "contactPhone": zod.string().nullish(),
+  "website": zod.string().nullish(),
   "paymentTerms": zod.string().nullish(),
   "termsDays": zod.number().nullish(),
+  "currency": zod.string().nullish(),
+  "vendorCategory": zod.string().nullish(),
+  "vendorType": zod.string().nullish(),
   "aliases": zod.array(zod.string()).default(getVendorResponseAliasesDefault),
   "onHold": zod.boolean().default(getVendorResponseOnHoldDefault),
+  "holdReason": zod.string().nullish(),
   "isActive": zod.boolean(),
+  "requiresPO": zod.boolean().default(getVendorResponseRequiresPODefault),
+  "notes": zod.string().nullish(),
+  "importBatchId": zod.string().nullish(),
+  "lastImportedAt": zod.coerce.date().nullish(),
+  "createdBy": zod.string().nullish(),
+  "updatedBy": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.string().nullish()
 })
@@ -1235,38 +1326,133 @@ export const UpdateVendorParams = zod.object({
   "id": zod.coerce.number()
 })
 
+
+
+
 export const UpdateVendorBody = zod.object({
+  "actor": zod.string().min(1).describe('Identified actor performing the update (required)'),
+  "reason": zod.string().nullish().describe('Reason for the update (required for sensitive changes)'),
   "vendorName": zod.string().nullish(),
+  "legalName": zod.string().nullish(),
+  "dba": zod.string().nullish(),
   "taxId": zod.string().nullish(),
   "address": zod.string().nullish(),
+  "addressLine1": zod.string().nullish(),
+  "addressLine2": zod.string().nullish(),
+  "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
+  "postalCode": zod.string().nullish(),
+  "country": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
+  "apEmail": zod.string().nullish(),
+  "remittanceEmail": zod.string().nullish(),
   "contactPhone": zod.string().nullish(),
+  "website": zod.string().nullish(),
   "paymentTerms": zod.string().nullish(),
   "termsDays": zod.number().nullish(),
+  "currency": zod.string().nullish(),
+  "vendorCategory": zod.string().nullish(),
+  "vendorType": zod.string().nullish(),
   "aliases": zod.array(zod.string()).optional(),
   "onHold": zod.boolean().nullish(),
-  "isActive": zod.boolean().nullish()
+  "holdReason": zod.string().nullish(),
+  "isActive": zod.boolean().nullish(),
+  "requiresPO": zod.boolean().nullish(),
+  "notes": zod.string().nullish(),
+  "adminOverride": zod.boolean().nullish().describe('Allow editing protected fields (vendorCode) when vendor is referenced by invoices')
 })
 
 export const updateVendorResponseAliasesDefault = [];
 export const updateVendorResponseOnHoldDefault = false;
+export const updateVendorResponseRequiresPODefault = false;
 
 export const UpdateVendorResponse = zod.object({
   "id": zod.number(),
   "vendorCode": zod.string(),
   "vendorName": zod.string(),
+  "legalName": zod.string().nullish(),
+  "dba": zod.string().nullish(),
   "taxId": zod.string().nullish(),
   "address": zod.string().nullish(),
+  "addressLine1": zod.string().nullish(),
+  "addressLine2": zod.string().nullish(),
+  "city": zod.string().nullish(),
+  "state": zod.string().nullish(),
+  "postalCode": zod.string().nullish(),
+  "country": zod.string().nullish(),
   "contactEmail": zod.string().nullish(),
+  "apEmail": zod.string().nullish(),
+  "remittanceEmail": zod.string().nullish(),
   "contactPhone": zod.string().nullish(),
+  "website": zod.string().nullish(),
   "paymentTerms": zod.string().nullish(),
   "termsDays": zod.number().nullish(),
+  "currency": zod.string().nullish(),
+  "vendorCategory": zod.string().nullish(),
+  "vendorType": zod.string().nullish(),
   "aliases": zod.array(zod.string()).default(updateVendorResponseAliasesDefault),
   "onHold": zod.boolean().default(updateVendorResponseOnHoldDefault),
+  "holdReason": zod.string().nullish(),
   "isActive": zod.boolean(),
+  "requiresPO": zod.boolean().default(updateVendorResponseRequiresPODefault),
+  "notes": zod.string().nullish(),
+  "importBatchId": zod.string().nullish(),
+  "lastImportedAt": zod.coerce.date().nullish(),
+  "createdBy": zod.string().nullish(),
+  "updatedBy": zod.string().nullish(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.string().nullish()
 })
+
+
+/**
+ * @summary Export vendor profiles as a CSV download
+ */
+export const ExportVendorProfilesQueryParams = zod.object({
+  "isActive": zod.coerce.boolean().nullish(),
+  "onHold": zod.coerce.boolean().nullish()
+})
+
+
+/**
+ * @summary Invoice activity summary for a vendor
+ */
+export const GetVendorActivityParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetVendorActivityResponse = zod.object({
+  "vendorId": zod.number(),
+  "invoiceCount": zod.number(),
+  "totalInvoiceAmount": zod.number(),
+  "latestInvoiceDate": zod.coerce.date().nullish(),
+  "exceptionCount": zod.number(),
+  "pendingApprovalCount": zod.number(),
+  "approvedCount": zod.number(),
+  "postedOrExportedCount": zod.number(),
+  "avgVendorMatchConfidence": zod.number().nullish()
+})
+
+
+/**
+ * @summary Audit log for a vendor
+ */
+export const GetVendorAuditLogParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetVendorAuditLogResponseItem = zod.object({
+  "id": zod.number(),
+  "vendorId": zod.number(),
+  "action": zod.string(),
+  "fieldName": zod.string().nullish(),
+  "oldValue": zod.string().nullish(),
+  "newValue": zod.string().nullish(),
+  "actor": zod.string(),
+  "reason": zod.string().nullish(),
+  "createdAt": zod.coerce.date()
+})
+export const GetVendorAuditLogResponse = zod.array(GetVendorAuditLogResponseItem)
 
 
 /**

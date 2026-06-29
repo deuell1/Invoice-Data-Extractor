@@ -7,23 +7,72 @@
  */
 
 export interface VendorUpdate {
+  /**
+     * Identified actor performing the update (required)
+     * @minLength 1
+     */
+  actor: string;
+  /**
+     * Reason for the update (required for sensitive changes)
+     * @nullable
+     */
+  reason?: string | null;
   /** @nullable */
   vendorName?: string | null;
+  /** @nullable */
+  legalName?: string | null;
+  /** @nullable */
+  dba?: string | null;
   /** @nullable */
   taxId?: string | null;
   /** @nullable */
   address?: string | null;
   /** @nullable */
+  addressLine1?: string | null;
+  /** @nullable */
+  addressLine2?: string | null;
+  /** @nullable */
+  city?: string | null;
+  /** @nullable */
+  state?: string | null;
+  /** @nullable */
+  postalCode?: string | null;
+  /** @nullable */
+  country?: string | null;
+  /** @nullable */
   contactEmail?: string | null;
   /** @nullable */
+  apEmail?: string | null;
+  /** @nullable */
+  remittanceEmail?: string | null;
+  /** @nullable */
   contactPhone?: string | null;
+  /** @nullable */
+  website?: string | null;
   /** @nullable */
   paymentTerms?: string | null;
   /** @nullable */
   termsDays?: number | null;
+  /** @nullable */
+  currency?: string | null;
+  /** @nullable */
+  vendorCategory?: string | null;
+  /** @nullable */
+  vendorType?: string | null;
   aliases?: string[];
   /** @nullable */
   onHold?: boolean | null;
   /** @nullable */
+  holdReason?: string | null;
+  /** @nullable */
   isActive?: boolean | null;
+  /** @nullable */
+  requiresPO?: boolean | null;
+  /** @nullable */
+  notes?: string | null;
+  /**
+     * Allow editing protected fields (vendorCode) when vendor is referenced by invoices
+     * @nullable
+     */
+  adminOverride?: boolean | null;
 }

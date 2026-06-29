@@ -127,6 +127,26 @@ export async function findBestVendorMatch(
       bestAlias = null;
     }
 
+    // Score against legalName (if set)
+    if (vendor.legalName) {
+      const legalScore = scoreMatch(vendorRawName, vendor.legalName);
+      if (legalScore > bestScore) {
+        bestScore = legalScore;
+        bestVendor = vendor;
+        bestAlias = vendor.legalName;
+      }
+    }
+
+    // Score against DBA / TradeName (if set)
+    if (vendor.dba) {
+      const dbaScore = scoreMatch(vendorRawName, vendor.dba);
+      if (dbaScore > bestScore) {
+        bestScore = dbaScore;
+        bestVendor = vendor;
+        bestAlias = vendor.dba;
+      }
+    }
+
     // Score against each alias
     const aliases = (vendor.aliases as string[] | null) ?? [];
     for (const alias of aliases) {

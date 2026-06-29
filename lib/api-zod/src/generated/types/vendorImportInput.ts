@@ -8,5 +8,10 @@
 import type { VendorInput } from './vendorInput';
 
 export interface VendorImportInput {
+  /**
+     * Actor performing the import
+     * @nullable
+     */
+  uploadedBy?: string | null;
   vendors: VendorInput[];
 }

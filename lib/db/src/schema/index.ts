@@ -1,4 +1,5 @@
 export * from "./vendors";
+export * from "./vendor_audit";
 export * from "./source_documents";
 export * from "./invoices";
 export * from "./audit";

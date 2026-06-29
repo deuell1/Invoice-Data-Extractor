@@ -40,6 +40,7 @@ import type {
   ExportBatchListResponse,
   ExportInvoicesCsvParams,
   ExportRequest,
+  ExportVendorProfilesParams,
   GetDashboardMetricsParams,
   GetImportTemplateParams,
   GetVendorAnalyticsParams,
@@ -72,7 +73,9 @@ import type {
   UploadUrlRequest,
   UploadUrlResponse,
   Vendor,
+  VendorActivityResponse,
   VendorAnalyticsResponse,
+  VendorAuditEntry,
   VendorImportInput,
   VendorImportResult,
   VendorInput,
@@ -1369,7 +1372,7 @@ export const getListVendorsUrl = (params?: ListVendorsParams,) => {
 }
 
 /**
- * @summary List vendors
+ * @summary List vendors with search, filters, sort, and pagination
  */
 export const listVendors = async (params?: ListVendorsParams, options?: RequestInit): Promise<VendorListResponse> => {
 
@@ -1416,7 +1419,7 @@ export type ListVendorsQueryError = ErrorType<unknown>
 
 
 /**
- * @summary List vendors
+ * @summary List vendors with search, filters, sort, and pagination
  */
 
 export function useListVendors<TData = Awaited<ReturnType<typeof listVendors>>, TError = ErrorType<unknown>>(
@@ -1727,6 +1730,244 @@ export const useUpdateVendor = <TError = ErrorType<ErrorEnvelope>,
       > => {
       return useMutation(getUpdateVendorMutationOptions(options));
     }
+
+export const getExportVendorProfilesUrl = (params?: ExportVendorProfilesParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/vendors/profile-export?${stringifiedParams}` : `/api/vendors/profile-export`
+}
+
+/**
+ * @summary Export vendor profiles as a CSV download
+ */
+export const exportVendorProfiles = async (params?: ExportVendorProfilesParams, options?: RequestInit): Promise<string> => {
+
+  return customFetch<string>(getExportVendorProfilesUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getExportVendorProfilesQueryKey = (params?: ExportVendorProfilesParams,) => {
+    return [
+    `/api/vendors/profile-export`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getExportVendorProfilesQueryOptions = <TData = Awaited<ReturnType<typeof exportVendorProfiles>>, TError = ErrorType<unknown>>(params?: ExportVendorProfilesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportVendorProfiles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getExportVendorProfilesQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof exportVendorProfiles>>> = ({ signal }) => exportVendorProfiles(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof exportVendorProfiles>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ExportVendorProfilesQueryResult = NonNullable<Awaited<ReturnType<typeof exportVendorProfiles>>>
+export type ExportVendorProfilesQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Export vendor profiles as a CSV download
+ */
+
+export function useExportVendorProfiles<TData = Awaited<ReturnType<typeof exportVendorProfiles>>, TError = ErrorType<unknown>>(
+ params?: ExportVendorProfilesParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof exportVendorProfiles>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getExportVendorProfilesQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetVendorActivityUrl = (id: number,) => {
+
+
+
+
+  return `/api/vendors/${id}/activity`
+}
+
+/**
+ * @summary Invoice activity summary for a vendor
+ */
+export const getVendorActivity = async (id: number, options?: RequestInit): Promise<VendorActivityResponse> => {
+
+  return customFetch<VendorActivityResponse>(getGetVendorActivityUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetVendorActivityQueryKey = (id: number,) => {
+    return [
+    `/api/vendors/${id}/activity`
+    ] as const;
+    }
+
+
+export const getGetVendorActivityQueryOptions = <TData = Awaited<ReturnType<typeof getVendorActivity>>, TError = ErrorType<ErrorEnvelope>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVendorActivity>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetVendorActivityQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getVendorActivity>>> = ({ signal }) => getVendorActivity(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getVendorActivity>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetVendorActivityQueryResult = NonNullable<Awaited<ReturnType<typeof getVendorActivity>>>
+export type GetVendorActivityQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Invoice activity summary for a vendor
+ */
+
+export function useGetVendorActivity<TData = Awaited<ReturnType<typeof getVendorActivity>>, TError = ErrorType<ErrorEnvelope>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVendorActivity>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetVendorActivityQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetVendorAuditLogUrl = (id: number,) => {
+
+
+
+
+  return `/api/vendors/${id}/audit`
+}
+
+/**
+ * @summary Audit log for a vendor
+ */
+export const getVendorAuditLog = async (id: number, options?: RequestInit): Promise<VendorAuditEntry[]> => {
+
+  return customFetch<VendorAuditEntry[]>(getGetVendorAuditLogUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetVendorAuditLogQueryKey = (id: number,) => {
+    return [
+    `/api/vendors/${id}/audit`
+    ] as const;
+    }
+
+
+export const getGetVendorAuditLogQueryOptions = <TData = Awaited<ReturnType<typeof getVendorAuditLog>>, TError = ErrorType<ErrorEnvelope>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVendorAuditLog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetVendorAuditLogQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getVendorAuditLog>>> = ({ signal }) => getVendorAuditLog(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getVendorAuditLog>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetVendorAuditLogQueryResult = NonNullable<Awaited<ReturnType<typeof getVendorAuditLog>>>
+export type GetVendorAuditLogQueryError = ErrorType<ErrorEnvelope>
+
+
+/**
+ * @summary Audit log for a vendor
+ */
+
+export function useGetVendorAuditLog<TData = Awaited<ReturnType<typeof getVendorAuditLog>>, TError = ErrorType<ErrorEnvelope>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getVendorAuditLog>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetVendorAuditLogQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getCheckDuplicateUrl = (id: number,) => {
 

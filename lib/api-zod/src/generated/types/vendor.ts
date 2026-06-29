@@ -11,20 +11,61 @@ export interface Vendor {
   vendorCode: string;
   vendorName: string;
   /** @nullable */
+  legalName?: string | null;
+  /** @nullable */
+  dba?: string | null;
+  /** @nullable */
   taxId?: string | null;
   /** @nullable */
   address?: string | null;
   /** @nullable */
+  addressLine1?: string | null;
+  /** @nullable */
+  addressLine2?: string | null;
+  /** @nullable */
+  city?: string | null;
+  /** @nullable */
+  state?: string | null;
+  /** @nullable */
+  postalCode?: string | null;
+  /** @nullable */
+  country?: string | null;
+  /** @nullable */
   contactEmail?: string | null;
   /** @nullable */
+  apEmail?: string | null;
+  /** @nullable */
+  remittanceEmail?: string | null;
+  /** @nullable */
   contactPhone?: string | null;
+  /** @nullable */
+  website?: string | null;
   /** @nullable */
   paymentTerms?: string | null;
   /** @nullable */
   termsDays?: number | null;
+  /** @nullable */
+  currency?: string | null;
+  /** @nullable */
+  vendorCategory?: string | null;
+  /** @nullable */
+  vendorType?: string | null;
   aliases?: string[];
-  onHold?: boolean;
+  onHold: boolean;
+  /** @nullable */
+  holdReason?: string | null;
   isActive: boolean;
+  requiresPO: boolean;
+  /** @nullable */
+  notes?: string | null;
+  /** @nullable */
+  importBatchId?: string | null;
+  /** @nullable */
+  lastImportedAt?: Date | null;
+  /** @nullable */
+  createdBy?: string | null;
+  /** @nullable */
+  updatedBy?: string | null;
   createdAt: Date;
   /** @nullable */
   updatedAt?: string | null;
