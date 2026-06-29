@@ -17,7 +17,8 @@ import {
   Target,
   History,
   Settings,
-  Construction
+  Construction,
+  RotateCcw
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,7 @@ export function Layout({ children }: LayoutProps) {
     { name: "Exception Mgmt", href: "/exception-management", icon: ShieldAlert },
     { name: "Approvals", href: "/approvals", icon: CheckSquare },
     { name: "Vendors", href: "/vendors", icon: Users },
+    { name: "Vendor Cleanup", href: "/vendors/cleanup", icon: RotateCcw },
     { name: "Analytics", href: "/analytics", icon: BarChart3 },
     { name: "Imports", href: "/imports", icon: Upload },
     { name: "Exports", href: "/exports", icon: Download },

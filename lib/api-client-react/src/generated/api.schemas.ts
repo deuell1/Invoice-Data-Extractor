@@ -1006,6 +1006,162 @@ export interface ImportBatchListResponse {
   limit: number;
 }
 
+/**
+ * Optional filters for the cleanup preview. Defaults to all imported vendors.
+ */
+export interface VendorCleanupPreviewInput {
+  /**
+     * When set, restrict preview to vendors from this import batch.
+     * @nullable
+     */
+  importBatchId?: string | null;
+}
+
+export type VendorCleanupItemRecommendedAction = typeof VendorCleanupItemRecommendedAction[keyof typeof VendorCleanupItemRecommendedAction];
+
+
+export const VendorCleanupItemRecommendedAction = {
+  DELETE: 'DELETE',
+  DEACTIVATE: 'DEACTIVATE',
+  KEEP: 'KEEP',
+} as const;
+
+export interface VendorCleanupItem {
+  vendorId: number;
+  vendorCode: string;
+  vendorName: string;
+  /** @nullable */
+  importBatchId?: string | null;
+  /** @nullable */
+  lastImportedAt?: string | null;
+  isActive: boolean;
+  onHold: boolean;
+  imported: boolean;
+  invoiceRefCount: number;
+  poRefCount: number;
+  canDelete: boolean;
+  mustRetain: boolean;
+  recommendedAction: VendorCleanupItemRecommendedAction;
+}
+
+export type VendorCleanupBatchStatusCleanupStatus = typeof VendorCleanupBatchStatusCleanupStatus[keyof typeof VendorCleanupBatchStatusCleanupStatus];
+
+
+export const VendorCleanupBatchStatusCleanupStatus = {
+  ACTIVE: 'ACTIVE',
+  FULLY_CLEANED: 'FULLY_CLEANED',
+  PARTIALLY_CLEANED: 'PARTIALLY_CLEANED',
+  RETAINED: 'RETAINED',
+} as const;
+
+export interface VendorCleanupBatchStatus {
+  batchId: string;
+  fileName: string;
+  cleanupStatus: VendorCleanupBatchStatusCleanupStatus;
+  importedVendorsRemaining: number;
+}
+
+export interface VendorCleanupPreview {
+  totalImported: number;
+  safeToDelete: number;
+  referencedRetained: number;
+  toDeactivate: number;
+  fullResetAllowed: boolean;
+  /** @nullable */
+  fullResetBlockReason?: string | null;
+  items: VendorCleanupItem[];
+  batchStatuses: VendorCleanupBatchStatus[];
+}
+
+/**
+ * DELETE_SAFE deletes unreferenced imported vendors only. DELETE_AND_DEACTIVATE also deactivates referenced imported vendors. FULL_RESET deletes all imported vendors but is blocked if any are referenced.
+
+ */
+export type VendorCleanupCommitInputMode = typeof VendorCleanupCommitInputMode[keyof typeof VendorCleanupCommitInputMode];
+
+
+export const VendorCleanupCommitInputMode = {
+  DELETE_SAFE: 'DELETE_SAFE',
+  DELETE_AND_DEACTIVATE: 'DELETE_AND_DEACTIVATE',
+  FULL_RESET: 'FULL_RESET',
+} as const;
+
+export interface VendorCleanupCommitInput {
+  /** DELETE_SAFE deletes unreferenced imported vendors only. DELETE_AND_DEACTIVATE also deactivates referenced imported vendors. FULL_RESET deletes all imported vendors but is blocked if any are referenced.
+   */
+  mode: VendorCleanupCommitInputMode;
+  /**
+     * Identified actor performing the cleanup.
+     * @minLength 1
+     */
+  actor: string;
+  /**
+     * Reason for the cleanup.
+     * @minLength 1
+     */
+  reason: string;
+  /** Must be true to commit. Defaults to no-op preview behavior otherwise. */
+  confirm: boolean;
+  /**
+     * When set, restrict cleanup to vendors from this import batch.
+     * @nullable
+     */
+  importBatchId?: string | null;
+}
+
+export type VendorCleanupActionDetailAction = typeof VendorCleanupActionDetailAction[keyof typeof VendorCleanupActionDetailAction];
+
+
+export const VendorCleanupActionDetailAction = {
+  DELETED: 'DELETED',
+  DEACTIVATED: 'DEACTIVATED',
+  SKIPPED: 'SKIPPED',
+} as const;
+
+export interface VendorCleanupActionDetail {
+  vendorId: number;
+  vendorCode: string;
+  vendorName: string;
+  oldStatus: string;
+  newStatus: string;
+  action: VendorCleanupActionDetailAction;
+  reason: string;
+}
+
+export interface VendorCleanupResult {
+  cleanupId: string;
+  mode: string;
+  actor: string;
+  reason: string;
+  vendorsReviewed: number;
+  vendorsDeleted: number;
+  vendorsDeactivated: number;
+  vendorsSkipped: number;
+  details: VendorCleanupActionDetail[];
+  createdAt: string;
+}
+
+export interface VendorCleanupLogEntry {
+  id: number;
+  cleanupId: string;
+  mode: string;
+  actor: string;
+  reason: string;
+  vendorsReviewed: number;
+  vendorsDeleted: number;
+  vendorsDeactivated: number;
+  vendorsSkipped: number;
+  details?: VendorCleanupActionDetail[];
+  createdAt: string;
+}
+
+export interface VendorCleanupListResponse {
+  data: VendorCleanupLogEntry[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
 export type ExportRequestExportType = typeof ExportRequestExportType[keyof typeof ExportRequestExportType];
 
 
@@ -1482,6 +1638,11 @@ export const GetImportTemplateImportType = {
   PO_REFERENCE: 'PO_REFERENCE',
   INVOICE_CORRECTION: 'INVOICE_CORRECTION',
 } as const;
+
+export type ListVendorCleanupsParams = {
+page?: number;
+limit?: number;
+};
 
 export type ListExportsParams = {
 page?: number;

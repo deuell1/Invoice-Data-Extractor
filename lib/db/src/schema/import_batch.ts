@@ -28,6 +28,7 @@ export const importBatchTable = pgTable("import_batch", {
   rowsAccepted: integer("rows_accepted").notNull().default(0),
   rowsRejected: integer("rows_rejected").notNull().default(0),
   status: text("status").notNull().default("PENDING"),
+  cleanupStatus: text("cleanup_status").notNull().default("ACTIVE"),
   errorSummary: text("error_summary"),
   rowErrors: json("row_errors").$type<ImportRowError[]>().default([]),
   createdAt: timestamp("created_at", { withTimezone: true })

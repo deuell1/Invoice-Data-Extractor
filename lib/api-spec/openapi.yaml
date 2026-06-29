@@ -1499,6 +1499,81 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorEnvelope"
 
+  # ─── Phase 2: Vendor Cleanup (safe, controlled imported-vendor reset) ────────
+  /vendors/cleanup/preview:
+    post:
+      tags: [vendors]
+      operationId: previewVendorCleanup
+      summary: Preview imported-vendor cleanup plan (no data changes)
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VendorCleanupPreviewInput"
+      responses:
+        "200":
+          description: Cleanup plan preview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VendorCleanupPreview"
+
+  /vendors/cleanup/commit:
+    post:
+      tags: [vendors]
+      operationId: commitVendorCleanup
+      summary: Commit an imported-vendor cleanup (requires actor, reason, confirmation)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VendorCleanupCommitInput"
+      responses:
+        "200":
+          description: Cleanup committed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VendorCleanupResult"
+        "400":
+          description: Missing actor, reason, or confirmation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+        "409":
+          description: Full reset blocked because referenced imported vendors exist
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorEnvelope"
+
+  /vendors/cleanup/history:
+    get:
+      tags: [vendors]
+      operationId: listVendorCleanups
+      summary: List vendor cleanup history
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Cleanup history
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VendorCleanupListResponse"
+
   # ─── Phase 2: Exports (file-based; NOT ERP integration) ──────────────────────
   /exports:
     get:
@@ -2985,6 +3060,244 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ImportBatch"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+
+    # ─── Phase 2: Vendor Cleanup ─────────────────────────────────────────────
+    VendorCleanupPreviewInput:
+      type: object
+      description: Optional filters for the cleanup preview. Defaults to all imported vendors.
+      properties:
+        importBatchId:
+          type: ["string", "null"]
+          description: When set, restrict preview to vendors from this import batch.
+
+    VendorCleanupItem:
+      type: object
+      required:
+        - vendorId
+        - vendorCode
+        - vendorName
+        - isActive
+        - onHold
+        - imported
+        - invoiceRefCount
+        - poRefCount
+        - canDelete
+        - mustRetain
+        - recommendedAction
+      properties:
+        vendorId:
+          type: integer
+        vendorCode:
+          type: string
+        vendorName:
+          type: string
+        importBatchId:
+          type: ["string", "null"]
+        lastImportedAt:
+          type: ["string", "null"]
+          format: date-time
+        isActive:
+          type: boolean
+        onHold:
+          type: boolean
+        imported:
+          type: boolean
+        invoiceRefCount:
+          type: integer
+        poRefCount:
+          type: integer
+        canDelete:
+          type: boolean
+        mustRetain:
+          type: boolean
+        recommendedAction:
+          type: string
+          enum: [DELETE, DEACTIVATE, KEEP]
+
+    VendorCleanupBatchStatus:
+      type: object
+      required: [batchId, fileName, cleanupStatus, importedVendorsRemaining]
+      properties:
+        batchId:
+          type: string
+        fileName:
+          type: string
+        cleanupStatus:
+          type: string
+          enum: [ACTIVE, FULLY_CLEANED, PARTIALLY_CLEANED, RETAINED]
+        importedVendorsRemaining:
+          type: integer
+
+    VendorCleanupPreview:
+      type: object
+      required:
+        - totalImported
+        - safeToDelete
+        - referencedRetained
+        - toDeactivate
+        - fullResetAllowed
+        - items
+        - batchStatuses
+      properties:
+        totalImported:
+          type: integer
+        safeToDelete:
+          type: integer
+        referencedRetained:
+          type: integer
+        toDeactivate:
+          type: integer
+        fullResetAllowed:
+          type: boolean
+        fullResetBlockReason:
+          type: ["string", "null"]
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/VendorCleanupItem"
+        batchStatuses:
+          type: array
+          items:
+            $ref: "#/components/schemas/VendorCleanupBatchStatus"
+
+    VendorCleanupCommitInput:
+      type: object
+      required: [mode, actor, reason, confirm]
+      properties:
+        mode:
+          type: string
+          enum: [DELETE_SAFE, DELETE_AND_DEACTIVATE, FULL_RESET]
+          description: >
+            DELETE_SAFE deletes unreferenced imported vendors only.
+            DELETE_AND_DEACTIVATE also deactivates referenced imported vendors.
+            FULL_RESET deletes all imported vendors but is blocked if any are referenced.
+        actor:
+          type: string
+          minLength: 1
+          description: Identified actor performing the cleanup.
+        reason:
+          type: string
+          minLength: 1
+          description: Reason for the cleanup.
+        confirm:
+          type: boolean
+          description: Must be true to commit. Defaults to no-op preview behavior otherwise.
+        importBatchId:
+          type: ["string", "null"]
+          description: When set, restrict cleanup to vendors from this import batch.
+
+    VendorCleanupActionDetail:
+      type: object
+      required: [vendorId, vendorCode, vendorName, oldStatus, newStatus, action, reason]
+      properties:
+        vendorId:
+          type: integer
+        vendorCode:
+          type: string
+        vendorName:
+          type: string
+        oldStatus:
+          type: string
+        newStatus:
+          type: string
+        action:
+          type: string
+          enum: [DELETED, DEACTIVATED, SKIPPED]
+        reason:
+          type: string
+
+    VendorCleanupResult:
+      type: object
+      required:
+        - cleanupId
+        - mode
+        - actor
+        - reason
+        - vendorsReviewed
+        - vendorsDeleted
+        - vendorsDeactivated
+        - vendorsSkipped
+        - details
+        - createdAt
+      properties:
+        cleanupId:
+          type: string
+        mode:
+          type: string
+        actor:
+          type: string
+        reason:
+          type: string
+        vendorsReviewed:
+          type: integer
+        vendorsDeleted:
+          type: integer
+        vendorsDeactivated:
+          type: integer
+        vendorsSkipped:
+          type: integer
+        details:
+          type: array
+          items:
+            $ref: "#/components/schemas/VendorCleanupActionDetail"
+        createdAt:
+          type: string
+          format: date-time
+
+    VendorCleanupLogEntry:
+      type: object
+      required:
+        - id
+        - cleanupId
+        - mode
+        - actor
+        - reason
+        - vendorsReviewed
+        - vendorsDeleted
+        - vendorsDeactivated
+        - vendorsSkipped
+        - createdAt
+      properties:
+        id:
+          type: integer
+        cleanupId:
+          type: string
+        mode:
+          type: string
+        actor:
+          type: string
+        reason:
+          type: string
+        vendorsReviewed:
+          type: integer
+        vendorsDeleted:
+          type: integer
+        vendorsDeactivated:
+          type: integer
+        vendorsSkipped:
+          type: integer
+        details:
+          type: array
+          items:
+            $ref: "#/components/schemas/VendorCleanupActionDetail"
+        createdAt:
+          type: string
+          format: date-time
+
+    VendorCleanupListResponse:
+      type: object
+      required: [data, total, page, limit]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/VendorCleanupLogEntry"
         total:
           type: integer
         page:
