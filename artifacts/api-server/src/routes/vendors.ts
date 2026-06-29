@@ -7,6 +7,7 @@ import {
   vendorAuditLogTable,
   invoiceCaptureTable,
   importBatchTable,
+  poHeaderTable,
 } from "@workspace/db";
 import { toCsv } from "../lib/csv";
 import {
@@ -689,6 +690,85 @@ router.patch("/vendors/:id", async (req, res): Promise<void> => {
     }
   }
 
+  // ── Field format validation ───────────────────────────────────────────────
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  for (const [field, val] of [
+    ["apEmail", parsed.data.apEmail],
+    ["contactEmail", parsed.data.contactEmail],
+    ["remittanceEmail", parsed.data.remittanceEmail],
+  ] as const) {
+    if (val != null && val.trim() !== "" && !emailRegex.test(val.trim())) {
+      res.status(400).json({ error: `${field} must be a valid email address` });
+      return;
+    }
+  }
+
+  if (parsed.data.website != null && parsed.data.website.trim() !== "") {
+    try {
+      const url = new URL(parsed.data.website.trim());
+      if (!["http:", "https:"].includes(url.protocol)) throw new Error("bad protocol");
+    } catch {
+      res.status(400).json({ error: "website must be a valid https:// URL" });
+      return;
+    }
+  }
+
+  if (parsed.data.termsDays != null && parsed.data.termsDays < 0) {
+    res.status(400).json({ error: "termsDays must be 0 or greater" });
+    return;
+  }
+
+  // ── vendorCode change: uniqueness + reference guard + PO cascade ─────────
+  if (parsed.data.vendorCode != null) {
+    const newCode = parsed.data.vendorCode.trim();
+    if (newCode !== current.vendorCode) {
+      const [existing] = await db
+        .select({ id: vendorIdTable.id })
+        .from(vendorIdTable)
+        .where(and(eq(vendorIdTable.vendorCode, newCode), ne(vendorIdTable.id, params.data.id)))
+        .limit(1);
+      if (existing) {
+        res.status(409).json({ error: `Vendor code "${newCode}" is already in use by another vendor` });
+        return;
+      }
+
+      const [[invRow], [poRow]] = await Promise.all([
+        db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(invoiceCaptureTable)
+          .where(eq(invoiceCaptureTable.vendorId, params.data.id)),
+        db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(poHeaderTable)
+          .where(eq(poHeaderTable.vendorCode, current.vendorCode)),
+      ]);
+
+      const invCount = invRow?.count ?? 0;
+      const poCount = poRow?.count ?? 0;
+      const totalRefs = invCount + poCount;
+
+      if (totalRefs > 0 && !parsed.data.adminOverride) {
+        res.status(409).json({
+          error: `Vendor code cannot be changed: referenced by ${invCount} invoice(s) and ${poCount} PO(s). Set adminOverride=true with a reason to proceed.`,
+        });
+        return;
+      }
+
+      if (totalRefs > 0 && parsed.data.adminOverride) {
+        if (!parsed.data.reason?.trim()) {
+          res.status(400).json({ error: "reason is required when using adminOverride to change a referenced vendor code" });
+          return;
+        }
+        if (poCount > 0) {
+          await db
+            .update(poHeaderTable)
+            .set({ vendorCode: newCode })
+            .where(eq(poHeaderTable.vendorCode, current.vendorCode));
+        }
+      }
+    }
+  }
+
   // Build the updates object — only include explicitly provided fields
   const updates: Record<string, unknown> = { updatedBy: actor };
 
@@ -711,6 +791,7 @@ router.patch("/vendors/:id", async (req, res): Promise<void> => {
     if (val !== undefined) updates[key] = val;
   };
 
+  if (parsed.data.vendorCode != null) updates.vendorCode = parsed.data.vendorCode.trim();
   if (parsed.data.vendorName != null)
     updates.vendorName = parsed.data.vendorName.trim();
   textField("legalName", parsed.data.legalName);
@@ -740,13 +821,16 @@ router.patch("/vendors/:id", async (req, res): Promise<void> => {
   boolField("requiresPO", parsed.data.requiresPO);
 
   if (parsed.data.aliases !== undefined) {
-    const cleaned = Array.from(
-      new Set(
-        parsed.data.aliases
-          .map((a) => a.trim())
-          .filter((a) => a.length > 0),
-      ),
-    );
+    const seen = new Set<string>();
+    const cleaned = parsed.data.aliases
+      .map((a) => a.trim())
+      .filter((a) => {
+        if (a.length === 0) return false;
+        const key = a.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
     updates.aliases = cleaned;
   }
 
@@ -840,6 +924,18 @@ router.patch("/vendors/:id", async (req, res): Promise<void> => {
   }
   if (updates.holdReason !== undefined && current.holdReason !== updates.holdReason) {
     trackField("holdReason", current.holdReason, updates.holdReason);
+  }
+
+  if (updates.vendorCode !== undefined && String(updates.vendorCode) !== current.vendorCode) {
+    auditEntries.push({
+      vendorId: vendor.id,
+      action: "VENDOR_CODE_CHANGED",
+      fieldName: "vendorCode",
+      oldValue: current.vendorCode,
+      newValue: String(updates.vendorCode),
+      actor,
+      reason,
+    });
   }
 
   if (updates.aliases !== undefined) {

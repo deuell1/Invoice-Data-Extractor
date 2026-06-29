@@ -1329,9 +1329,11 @@ export const UpdateVendorParams = zod.object({
 
 
 
+
 export const UpdateVendorBody = zod.object({
   "actor": zod.string().min(1).describe('Identified actor performing the update (required)'),
   "reason": zod.string().nullish().describe('Reason for the update (required for sensitive changes)'),
+  "vendorCode": zod.string().min(1).nullish().describe('Change vendor code; blocked if vendor is referenced by invoices or POs unless adminOverride is true'),
   "vendorName": zod.string().nullish(),
   "legalName": zod.string().nullish(),
   "dba": zod.string().nullish(),
@@ -1359,7 +1361,7 @@ export const UpdateVendorBody = zod.object({
   "isActive": zod.boolean().nullish(),
   "requiresPO": zod.boolean().nullish(),
   "notes": zod.string().nullish(),
-  "adminOverride": zod.boolean().nullish().describe('Allow editing protected fields (vendorCode) when vendor is referenced by invoices')
+  "adminOverride": zod.boolean().nullish().describe('Allow editing protected fields (vendorCode) when vendor is referenced by invoices or POs')
 })
 
 export const updateVendorResponseAliasesDefault = [];

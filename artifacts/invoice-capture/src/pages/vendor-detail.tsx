@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 
 type EditForm = {
+  vendorCode: string;
   vendorName: string;
   legalName: string;
   dba: string;
@@ -60,6 +61,7 @@ type EditForm = {
 
 function buildEditForm(vendor: Vendor): EditForm {
   return {
+    vendorCode: vendor.vendorCode,
     vendorName: vendor.vendorName ?? "",
     legalName: vendor.legalName ?? "",
     dba: vendor.dba ?? "",
@@ -148,6 +150,7 @@ export function VendorDetail() {
   const [form, setForm] = useState<EditForm | null>(null);
   const [aliasDraft, setAliasDraft] = useState("");
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [showTaxId, setShowTaxId] = useState(false);
 
   const openEdit = () => {
@@ -155,6 +158,7 @@ export function VendorDetail() {
     setForm(buildEditForm(vendor));
     setAliasDraft("");
     setSaveError(null);
+    setFieldErrors({});
     setIsEditing(true);
   };
 
@@ -162,11 +166,13 @@ export function VendorDetail() {
     setIsEditing(false);
     setForm(null);
     setSaveError(null);
+    setFieldErrors({});
   };
 
   const handleSave = async () => {
     if (!form || !vendor) return;
     setSaveError(null);
+    setFieldErrors({});
 
     if (!form.actor.trim()) {
       setSaveError("Your name (actor) is required to save changes");
@@ -181,9 +187,41 @@ export function VendorDetail() {
       return;
     }
 
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const nextErrors: Record<string, string> = {};
+
+    for (const [field, val] of [
+      ["apEmail", form.apEmail],
+      ["contactEmail", form.contactEmail],
+      ["remittanceEmail", form.remittanceEmail],
+    ] as const) {
+      if (val.trim() && !emailRegex.test(val.trim())) {
+        nextErrors[field] = "Must be a valid email address";
+      }
+    }
+    if (form.website.trim()) {
+      try {
+        const url = new URL(form.website.trim());
+        if (!["http:", "https:"].includes(url.protocol)) throw new Error();
+      } catch {
+        nextErrors.website = "Must be a valid https:// URL";
+      }
+    }
+    const termsDaysNum = form.termsDays.trim() ? parseInt(form.termsDays.trim(), 10) : null;
+    if (form.termsDays.trim() && (termsDaysNum === null || isNaN(termsDaysNum) || termsDaysNum < 0)) {
+      nextErrors.termsDays = "Must be a whole number ≥ 0";
+    }
+    if (Object.keys(nextErrors).length > 0) {
+      setFieldErrors(nextErrors);
+      setSaveError("Please fix the highlighted fields before saving");
+      return;
+    }
+
+    const codeChanged = form.vendorCode.trim() !== vendor.vendorCode;
     const payload: VendorUpdate = {
       actor: form.actor.trim(),
       reason: form.reason.trim() || null,
+      ...(codeChanged ? { vendorCode: form.vendorCode.trim() } : {}),
       vendorName: form.vendorName.trim(),
       legalName: form.legalName.trim() || null,
       dba: form.dba.trim() || null,
@@ -202,7 +240,7 @@ export function VendorDetail() {
       contactPhone: form.contactPhone.trim() || null,
       website: form.website.trim() || null,
       paymentTerms: form.paymentTerms.trim() || null,
-      termsDays: form.termsDays.trim() ? parseInt(form.termsDays.trim(), 10) : null,
+      termsDays: termsDaysNum,
       currency: form.currency.trim() || null,
       notes: form.notes.trim() || null,
       isActive: form.isActive,
@@ -220,6 +258,7 @@ export function VendorDetail() {
       queryClient.invalidateQueries({ queryKey: getListVendorsQueryKey() });
       setIsEditing(false);
       setForm(null);
+      setFieldErrors({});
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : "Failed to save");
     }
@@ -228,7 +267,7 @@ export function VendorDetail() {
   const addAlias = () => {
     const val = aliasDraft.trim();
     if (!val || !form) return;
-    if (!form.aliases.includes(val)) {
+    if (!form.aliases.some((a) => a.toLowerCase() === val.toLowerCase())) {
       setForm((f) => f ? { ...f, aliases: [...f.aliases, val] } : f);
     }
     setAliasDraft("");
@@ -384,13 +423,42 @@ export function VendorDetail() {
           <Section title="Profile">
             {isEditing && form ? (
               <div className="space-y-3">
+                {/* Vendor Code — editable only when no invoices reference this vendor */}
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Vendor Code</Label>
+                  {(activity?.invoiceCount ?? 0) === 0 ? (
+                    <div>
+                      <Input
+                        value={form.vendorCode}
+                        placeholder="V-1001"
+                        onChange={(e) => { set("vendorCode", e.target.value); if (fieldErrors.vendorCode) setFieldErrors((fe) => ({ ...fe, vendorCode: "" })); }}
+                        className={fieldErrors.vendorCode ? "border-destructive" : ""}
+                      />
+                      {fieldErrors.vendorCode && <p className="text-xs text-destructive mt-0.5">{fieldErrors.vendorCode}</p>}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <code className="bg-muted px-2 py-1 rounded text-xs">{vendor.vendorCode}</code>
+                      <span className="text-xs text-muted-foreground">Locked — {activity?.invoiceCount} invoice(s) reference this vendor.</span>
+                    </div>
+                  )}
+                </div>
                 <div className="grid grid-cols-2 gap-3">
                   <EditableText label="Vendor Name *" value={form.vendorName} onChange={(v) => set("vendorName", v)} />
                   <EditableText label="Legal Name" value={form.legalName} onChange={(v) => set("legalName", v)} placeholder="Full registered name" />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <EditableText label="DBA / Trade Name" value={form.dba} onChange={(v) => set("dba", v)} placeholder="Doing business as" />
-                  <EditableText label="Website" value={form.website} onChange={(v) => set("website", v)} placeholder="https://…" />
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Website</Label>
+                    <Input
+                      value={form.website}
+                      placeholder="https://…"
+                      onChange={(e) => { set("website", e.target.value); if (fieldErrors.website) setFieldErrors((fe) => ({ ...fe, website: "" })); }}
+                      className={fieldErrors.website ? "border-destructive" : ""}
+                    />
+                    {fieldErrors.website && <p className="text-xs text-destructive mt-0.5">{fieldErrors.website}</p>}
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <EditableText label="Category" value={form.vendorCategory} onChange={(v) => set("vendorCategory", v)} placeholder="e.g. Supplies" />
@@ -478,11 +546,23 @@ export function VendorDetail() {
             {isEditing && form ? (
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-3">
-                  <EditableText label="AP / Accounts Payable Email" value={form.apEmail} onChange={(v) => set("apEmail", v)} type="email" placeholder="ap@vendor.com" />
-                  <EditableText label="Remittance Email" value={form.remittanceEmail} onChange={(v) => set("remittanceEmail", v)} type="email" placeholder="remit@vendor.com" />
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">AP / Accounts Payable Email</Label>
+                    <Input type="email" value={form.apEmail} placeholder="ap@vendor.com" onChange={(e) => { set("apEmail", e.target.value); if (fieldErrors.apEmail) setFieldErrors((fe) => ({ ...fe, apEmail: "" })); }} className={fieldErrors.apEmail ? "border-destructive" : ""} />
+                    {fieldErrors.apEmail && <p className="text-xs text-destructive mt-0.5">{fieldErrors.apEmail}</p>}
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Remittance Email</Label>
+                    <Input type="email" value={form.remittanceEmail} placeholder="remit@vendor.com" onChange={(e) => { set("remittanceEmail", e.target.value); if (fieldErrors.remittanceEmail) setFieldErrors((fe) => ({ ...fe, remittanceEmail: "" })); }} className={fieldErrors.remittanceEmail ? "border-destructive" : ""} />
+                    {fieldErrors.remittanceEmail && <p className="text-xs text-destructive mt-0.5">{fieldErrors.remittanceEmail}</p>}
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <EditableText label="General Contact Email" value={form.contactEmail} onChange={(v) => set("contactEmail", v)} type="email" />
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">General Contact Email</Label>
+                    <Input type="email" value={form.contactEmail} onChange={(e) => { set("contactEmail", e.target.value); if (fieldErrors.contactEmail) setFieldErrors((fe) => ({ ...fe, contactEmail: "" })); }} className={fieldErrors.contactEmail ? "border-destructive" : ""} />
+                    {fieldErrors.contactEmail && <p className="text-xs text-destructive mt-0.5">{fieldErrors.contactEmail}</p>}
+                  </div>
                   <EditableText label="Phone" value={form.contactPhone} onChange={(v) => set("contactPhone", v)} placeholder="+1-555-0100" />
                 </div>
               </div>
@@ -548,7 +628,17 @@ export function VendorDetail() {
             {isEditing && form ? (
               <div className="grid grid-cols-3 gap-3">
                 <EditableText label="Terms Code" value={form.paymentTerms} onChange={(v) => set("paymentTerms", v)} placeholder="NET30" />
-                <EditableText label="Days" value={form.termsDays} onChange={(v) => set("termsDays", v)} type="number" placeholder="30" />
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Days</Label>
+                  <Input
+                    type="number"
+                    value={form.termsDays}
+                    placeholder="30"
+                    onChange={(e) => { set("termsDays", e.target.value); if (fieldErrors.termsDays) setFieldErrors((fe) => ({ ...fe, termsDays: "" })); }}
+                    className={fieldErrors.termsDays ? "border-destructive" : ""}
+                  />
+                  {fieldErrors.termsDays && <p className="text-xs text-destructive mt-0.5">{fieldErrors.termsDays}</p>}
+                </div>
                 <EditableText label="Currency" value={form.currency} onChange={(v) => set("currency", v)} placeholder="USD" />
               </div>
             ) : (

@@ -2447,6 +2447,10 @@ components:
         reason:
           type: ["string", "null"]
           description: Reason for the update (required for sensitive changes)
+        vendorCode:
+          type: ["string", "null"]
+          minLength: 1
+          description: Change vendor code; blocked if vendor is referenced by invoices or POs unless adminOverride is true
         vendorName:
           type: ["string", "null"]
         legalName:
@@ -2505,7 +2509,7 @@ components:
           type: ["string", "null"]
         adminOverride:
           type: ["boolean", "null"]
-          description: Allow editing protected fields (vendorCode) when vendor is referenced by invoices
+          description: Allow editing protected fields (vendorCode) when vendor is referenced by invoices or POs
 
     VendorListResponse:
       type: object

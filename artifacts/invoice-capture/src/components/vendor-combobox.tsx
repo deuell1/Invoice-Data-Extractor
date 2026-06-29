@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from "react";
-import { Check, X } from "lucide-react";
+import { Check, X, AlertTriangle, Ban } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Vendor } from "@workspace/api-client-react";
 
@@ -35,7 +35,7 @@ function scoreCandidate(query: string, candidate: string): number {
   return 0;
 }
 
-type MatchedOn = "name" | "code" | "alias";
+type MatchedOn = "name" | "code" | "alias" | "legalName" | "dba";
 
 function bestScore(query: string, vendor: Vendor): { score: number; matchedOn: MatchedOn; alias?: string } {
   let best: { score: number; matchedOn: MatchedOn; alias?: string } = {
@@ -45,6 +45,15 @@ function bestScore(query: string, vendor: Vendor): { score: number; matchedOn: M
   };
   const codeScore = scoreCandidate(query, vendor.vendorCode);
   if (codeScore > best.score) best = { score: codeScore, matchedOn: "code", alias: undefined };
+
+  if (vendor.legalName) {
+    const s = scoreCandidate(query, vendor.legalName);
+    if (s > best.score) best = { score: s, matchedOn: "legalName", alias: undefined };
+  }
+  if (vendor.dba) {
+    const s = scoreCandidate(query, vendor.dba);
+    if (s > best.score) best = { score: s, matchedOn: "dba", alias: undefined };
+  }
   for (const alias of vendor.aliases ?? []) {
     const s = scoreCandidate(query, alias);
     if (s > best.score) best = { score: s, matchedOn: "alias", alias };
@@ -197,6 +206,8 @@ export function VendorCombobox({
     const { vendor, matchedOn, alias } = item;
     const isSelected = vendor.id.toString() === value;
     const isActive = flatIdx === activeIndex;
+    const isOnHold = vendor.onHold;
+    const isInactive = !vendor.isActive;
     return (
       <div
         key={vendor.id}
@@ -212,6 +223,7 @@ export function VendorCombobox({
           "flex items-center justify-between gap-3 px-3 py-2 cursor-pointer text-sm",
           isActive && "bg-accent text-accent-foreground",
           !isActive && "hover:bg-accent/50",
+          (isOnHold || isInactive) && "opacity-75",
         )}
       >
         <div className="flex items-center gap-2 min-w-0">
@@ -219,12 +231,30 @@ export function VendorCombobox({
             className={cn("h-3.5 w-3.5 shrink-0 text-primary", isSelected ? "opacity-100" : "opacity-0")}
           />
           <div className="min-w-0">
-            <div className="truncate font-medium leading-tight">{vendor.vendorName}</div>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="truncate font-medium leading-tight">{vendor.vendorName}</span>
+              {isOnHold && (
+                <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1 py-0 rounded bg-destructive/10 text-destructive border border-destructive/20 shrink-0">
+                  <AlertTriangle className="h-2.5 w-2.5" />ON HOLD
+                </span>
+              )}
+              {isInactive && !isOnHold && (
+                <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1 py-0 rounded bg-muted text-muted-foreground border shrink-0">
+                  <Ban className="h-2.5 w-2.5" />INACTIVE
+                </span>
+              )}
+            </div>
             {matchedOn === "alias" && alias && (
               <div className="text-xs text-muted-foreground truncate">alias: {alias}</div>
             )}
             {matchedOn === "code" && (
               <div className="text-xs text-muted-foreground truncate">code match</div>
+            )}
+            {matchedOn === "legalName" && vendor.legalName && (
+              <div className="text-xs text-muted-foreground truncate">legal: {vendor.legalName}</div>
+            )}
+            {matchedOn === "dba" && vendor.dba && (
+              <div className="text-xs text-muted-foreground truncate">dba: {vendor.dba}</div>
             )}
           </div>
         </div>
@@ -250,7 +280,7 @@ export function VendorCombobox({
           data-testid="select-vendor"
           disabled={disabled}
           value={displayValue}
-          placeholder={open ? "Search vendor name, code, or alias…" : "Select vendor…"}
+          placeholder={open ? "Search vendor name, code, alias, or legal name…" : "Select vendor…"}
           onChange={(e) => {
             setQuery(e.target.value);
             setActiveIndex(0);

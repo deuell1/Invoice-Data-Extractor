@@ -64,7 +64,10 @@ export function VendorAdmin() {
   // ── Add Vendor dialog ──────────────────────────────────────────────────────
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [newVendor, setNewVendor] = useState({
-    vendorCode: "", vendorName: "", taxId: "", contactEmail: "", actor: "",
+    vendorCode: "", vendorName: "", legalName: "", dba: "",
+    taxId: "", apEmail: "", contactEmail: "",
+    paymentTerms: "", termsDays: "", currency: "",
+    vendorCategory: "", vendorType: "", notes: "", actor: "",
   });
   const [addError, setAddError] = useState<string | null>(null);
 
@@ -78,19 +81,38 @@ export function VendorAdmin() {
       setAddError("Your name (actor) is required to create a vendor");
       return;
     }
+    const termsDaysNum = newVendor.termsDays.trim() ? parseInt(newVendor.termsDays.trim(), 10) : undefined;
+    if (newVendor.termsDays.trim() && (isNaN(termsDaysNum!) || termsDaysNum! < 0)) {
+      setAddError("Terms days must be a non-negative number");
+      return;
+    }
     try {
       await createVendor.mutateAsync({
         data: {
           vendorCode: newVendor.vendorCode.trim(),
           vendorName: newVendor.vendorName.trim(),
+          legalName: newVendor.legalName.trim() || undefined,
+          dba: newVendor.dba.trim() || undefined,
           taxId: newVendor.taxId.trim() || undefined,
+          apEmail: newVendor.apEmail.trim() || undefined,
           contactEmail: newVendor.contactEmail.trim() || undefined,
+          paymentTerms: newVendor.paymentTerms.trim() || undefined,
+          termsDays: termsDaysNum,
+          currency: newVendor.currency.trim() || undefined,
+          vendorCategory: newVendor.vendorCategory.trim() || undefined,
+          vendorType: newVendor.vendorType.trim() || undefined,
+          notes: newVendor.notes.trim() || undefined,
           actor: newVendor.actor.trim(),
         },
       });
       toast({ title: "Vendor created", description: newVendor.vendorCode });
       setIsAddOpen(false);
-      setNewVendor({ vendorCode: "", vendorName: "", taxId: "", contactEmail: "", actor: "" });
+      setNewVendor({
+        vendorCode: "", vendorName: "", legalName: "", dba: "",
+        taxId: "", apEmail: "", contactEmail: "",
+        paymentTerms: "", termsDays: "", currency: "",
+        vendorCategory: "", vendorType: "", notes: "", actor: "",
+      });
       queryClient.invalidateQueries({ queryKey: getListVendorsQueryKey() });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Failed to create vendor";
@@ -124,12 +146,30 @@ export function VendorAdmin() {
       return;
     }
 
+    const getCell = (cells: string[], name: string): string | undefined => {
+      const i = headers.indexOf(name);
+      return i >= 0 ? (cells[i]?.trim() || undefined) : undefined;
+    };
+
     const vendorRows: Array<{
       vendorCode: string;
       vendorName: string;
+      legalName?: string;
+      dba?: string;
       taxId?: string;
+      apEmail?: string;
       contactEmail?: string;
+      remittanceEmail?: string;
+      contactPhone?: string;
+      website?: string;
       paymentTerms?: string;
+      termsDays?: number;
+      currency?: string;
+      vendorCategory?: string;
+      vendorType?: string;
+      notes?: string;
+      requiresPO?: boolean;
+      aliases?: string[];
     }> = [];
 
     for (let i = 1; i < lines.length; i++) {
@@ -137,12 +177,28 @@ export function VendorAdmin() {
       const code = cells[codeIdx]?.trim();
       const name = cells[nameIdx]?.trim();
       if (!code || !name) continue;
+      const termsDaysRaw = getCell(cells, "termsDays");
+      const termsDaysParsed = termsDaysRaw ? parseInt(termsDaysRaw, 10) : undefined;
+      const aliasesRaw = getCell(cells, "aliases");
       vendorRows.push({
         vendorCode: code,
         vendorName: name,
-        taxId: headers.includes("taxId") ? (cells[headers.indexOf("taxId")]?.trim() || undefined) : undefined,
-        contactEmail: headers.includes("contactEmail") ? (cells[headers.indexOf("contactEmail")]?.trim() || undefined) : undefined,
-        paymentTerms: headers.includes("paymentTerms") ? (cells[headers.indexOf("paymentTerms")]?.trim() || undefined) : undefined,
+        legalName: getCell(cells, "legalName"),
+        dba: getCell(cells, "dba"),
+        taxId: getCell(cells, "taxId"),
+        apEmail: getCell(cells, "apEmail"),
+        contactEmail: getCell(cells, "contactEmail"),
+        remittanceEmail: getCell(cells, "remittanceEmail"),
+        contactPhone: getCell(cells, "contactPhone"),
+        website: getCell(cells, "website"),
+        paymentTerms: getCell(cells, "paymentTerms"),
+        termsDays: termsDaysParsed != null && !isNaN(termsDaysParsed) ? termsDaysParsed : undefined,
+        currency: getCell(cells, "currency"),
+        vendorCategory: getCell(cells, "vendorCategory"),
+        vendorType: getCell(cells, "vendorType"),
+        notes: getCell(cells, "notes"),
+        requiresPO: getCell(cells, "requiresPO") === "true" ? true : undefined,
+        aliases: aliasesRaw ? aliasesRaw.split(";").map((a) => a.trim()).filter(Boolean) : undefined,
       });
     }
 
@@ -365,11 +421,11 @@ export function VendorAdmin() {
 
       {/* Add Vendor Dialog */}
       <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>New Vendor</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2">
+          <div className="space-y-3 py-2 max-h-[70vh] overflow-y-auto pr-1">
             {addError && (
               <div className="text-sm text-destructive flex items-center gap-1">
                 <AlertCircle className="h-4 w-4" />{addError}
@@ -378,45 +434,54 @@ export function VendorAdmin() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label>Vendor Code *</Label>
-                <Input
-                  placeholder="V-1001"
-                  value={newVendor.vendorCode}
-                  onChange={(e) => setNewVendor(v => ({ ...v, vendorCode: e.target.value }))}
-                />
+                <Input placeholder="V-1001" value={newVendor.vendorCode} onChange={(e) => setNewVendor(v => ({ ...v, vendorCode: e.target.value }))} />
               </div>
               <div className="space-y-1">
                 <Label>Vendor Name *</Label>
-                <Input
-                  placeholder="Acme Supplies Inc."
-                  value={newVendor.vendorName}
-                  onChange={(e) => setNewVendor(v => ({ ...v, vendorName: e.target.value }))}
-                />
+                <Input placeholder="Acme Supplies Inc." value={newVendor.vendorName} onChange={(e) => setNewVendor(v => ({ ...v, vendorName: e.target.value }))} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>Legal Name</Label>
+                <Input placeholder="Full registered name" value={newVendor.legalName} onChange={(e) => setNewVendor(v => ({ ...v, legalName: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label>DBA / Trade Name</Label>
+                <Input placeholder="Doing business as" value={newVendor.dba} onChange={(e) => setNewVendor(v => ({ ...v, dba: e.target.value }))} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label>AP Email</Label>
+                <Input type="email" placeholder="ap@vendor.com" value={newVendor.apEmail} onChange={(e) => setNewVendor(v => ({ ...v, apEmail: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label>Contact Email</Label>
+                <Input type="email" placeholder="contact@vendor.com" value={newVendor.contactEmail} onChange={(e) => setNewVendor(v => ({ ...v, contactEmail: e.target.value }))} />
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1">
+                <Label>Payment Terms</Label>
+                <Input placeholder="NET30" value={newVendor.paymentTerms} onChange={(e) => setNewVendor(v => ({ ...v, paymentTerms: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label>Terms Days</Label>
+                <Input type="number" placeholder="30" value={newVendor.termsDays} onChange={(e) => setNewVendor(v => ({ ...v, termsDays: e.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label>Currency</Label>
+                <Input placeholder="USD" value={newVendor.currency} onChange={(e) => setNewVendor(v => ({ ...v, currency: e.target.value }))} />
               </div>
             </div>
             <div className="space-y-1">
               <Label>Tax ID</Label>
-              <Input
-                placeholder="12-3456789"
-                value={newVendor.taxId}
-                onChange={(e) => setNewVendor(v => ({ ...v, taxId: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label>Contact Email</Label>
-              <Input
-                type="email"
-                placeholder="ap@vendor.com"
-                value={newVendor.contactEmail}
-                onChange={(e) => setNewVendor(v => ({ ...v, contactEmail: e.target.value }))}
-              />
+              <Input placeholder="12-3456789" value={newVendor.taxId} onChange={(e) => setNewVendor(v => ({ ...v, taxId: e.target.value }))} />
             </div>
             <div className="space-y-1">
               <Label>Your Name (actor) *</Label>
-              <Input
-                placeholder="e.g. Jane Smith"
-                value={newVendor.actor}
-                onChange={(e) => setNewVendor(v => ({ ...v, actor: e.target.value }))}
-              />
+              <Input placeholder="e.g. Jane Smith" value={newVendor.actor} onChange={(e) => setNewVendor(v => ({ ...v, actor: e.target.value }))} />
               <p className="text-xs text-muted-foreground">Required for audit trail — no authentication in pilot.</p>
             </div>
           </div>
@@ -444,7 +509,7 @@ export function VendorAdmin() {
             )}
             <p className="text-sm text-muted-foreground">
               CSV must have <code className="bg-muted px-1 rounded">vendorCode</code> and <code className="bg-muted px-1 rounded">vendorName</code> columns.
-              Optional: taxId, contactEmail, paymentTerms. Existing vendor codes are skipped.
+              Optional: legalName, dba, taxId, apEmail, contactEmail, remittanceEmail, contactPhone, website, paymentTerms, termsDays, currency, vendorCategory, vendorType, notes, requiresPO (true/false), aliases (semicolon-separated). Existing vendor codes are skipped.
             </p>
             <div className="space-y-1">
               <Label>CSV File *</Label>

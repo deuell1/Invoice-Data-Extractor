@@ -17,6 +17,12 @@ export interface VendorUpdate {
      * @nullable
      */
   reason?: string | null;
+  /**
+     * Change vendor code; blocked if vendor is referenced by invoices or POs unless adminOverride is true
+     * @minLength 1
+     * @nullable
+     */
+  vendorCode?: string | null;
   /** @nullable */
   vendorName?: string | null;
   /** @nullable */
@@ -71,7 +77,7 @@ export interface VendorUpdate {
   /** @nullable */
   notes?: string | null;
   /**
-     * Allow editing protected fields (vendorCode) when vendor is referenced by invoices
+     * Allow editing protected fields (vendorCode) when vendor is referenced by invoices or POs
      * @nullable
      */
   adminOverride?: boolean | null;
