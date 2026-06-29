@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Router, type IRouter } from "express";
 import { eq, ilike, sql, and, asc, desc, isNull, or, gte, ne } from "drizzle-orm";
 import {
@@ -5,6 +6,7 @@ import {
   vendorIdTable,
   vendorAuditLogTable,
   invoiceCaptureTable,
+  importBatchTable,
 } from "@workspace/db";
 import { toCsv } from "../lib/csv";
 import {
@@ -275,6 +277,20 @@ router.post("/vendors/import", async (req, res): Promise<void> => {
 
   const uploadedBy = (parsed.data.uploadedBy ?? "").trim() || null;
 
+  // Generate a stable batch ID for this import run so cleanup can scope to it.
+  const batchId = `VND-${randomUUID()}`;
+  const importedAt = new Date();
+
+  // Create the import_batch tracking record upfront.
+  await db.insert(importBatchTable).values({
+    batchId,
+    importType: "VENDOR_MASTER",
+    fileName: `vendor-import-${batchId}.csv`,
+    uploadedBy: uploadedBy ?? null,
+    rowCount: parsed.data.vendors.length,
+    status: "PROCESSING",
+  });
+
   let inserted = 0;
   let skipped = 0;
   const errors: string[] = [];
@@ -345,14 +361,17 @@ router.post("/vendors/import", async (req, res): Promise<void> => {
             requiresPO: vendor.requiresPO ?? false,
             notes: vendor.notes ?? null,
             createdBy: uploadedBy ?? null,
+            // Stamp as imported so vendor cleanup can detect and manage this vendor.
+            importBatchId: batchId,
+            lastImportedAt: importedAt,
           })
           .returning();
-        if (inserted_vendor && uploadedBy) {
+        if (inserted_vendor) {
           await db.insert(vendorAuditLogTable).values({
             vendorId: inserted_vendor.id,
             action: "VENDOR_CREATED",
-            actor: uploadedBy,
-            newValue: `${inserted_vendor.vendorCode} — ${inserted_vendor.vendorName} (bulk import)`,
+            actor: uploadedBy ?? "system",
+            newValue: `${inserted_vendor.vendorCode} — ${inserted_vendor.vendorName} (bulk import, batch ${batchId})`,
           });
         }
         inserted++;
@@ -363,6 +382,16 @@ router.post("/vendors/import", async (req, res): Promise<void> => {
       );
     }
   }
+
+  // Update the batch record with final counts.
+  await db
+    .update(importBatchTable)
+    .set({
+      rowsAccepted: inserted,
+      rowsRejected: skipped + errors.length,
+      status: errors.length > 0 && inserted === 0 ? "FAILED" : "COMPLETED",
+    })
+    .where(eq(importBatchTable.batchId, batchId));
 
   res.json(ImportVendorsResponse.parse({ inserted, skipped, errors }));
 });
