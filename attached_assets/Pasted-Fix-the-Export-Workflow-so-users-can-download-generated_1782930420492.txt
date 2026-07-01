@@ -1,0 +1,149 @@
+Fix the Export Workflow so users can download generated export files.
+
+Do not rebuild the app. Do not remove existing Phase 1 or Phase 2 functionality. Do not add ERP integration. Preserve invoice upload, extraction, review, vendor matching, duplicate detection, tie-out, approval, VoucherID posting, vendor profiles, vendor import, vendor cleanup, dashboard, audit, reports, and existing export generation behavior.
+
+Problem:
+The export workflow creates or tracks export files, but there is no visible button or action for the user to download the exported file from the UI.
+
+Goal:
+Add a clear, working “Download” button or action for each successful export batch so AP users can download generated CSV export files.
+
+Required behavior:
+
+1. Export History UI
+   On the exports page, each export batch should show:
+
+* Export batch ID
+* Export type
+* Export status
+* Record count
+* Export file name
+* Created/exported timestamp
+* Exported by / actor if available
+* Filters used, if available
+* Download button for successful exports
+
+2. Download Button Rules
+   Show a Download button only when:
+
+* export status is SUCCESS, EXPORTED, or equivalent successful state
+* record count is greater than zero, unless zero-row exports are intentionally allowed
+* export file is available or can be regenerated safely from saved export metadata
+
+Disable or hide the Download button when:
+
+* export failed
+* export is pending
+* export was blocked
+* export file is unavailable and cannot be regenerated
+* user does not have enough required context to download
+
+3. Download Action
+   The Download button must call the correct backend endpoint, such as:
+
+* GET /exports/:id/download
+
+or the existing equivalent endpoint.
+
+The button should:
+
+* trigger a CSV file download in the browser
+* preserve the backend-provided filename
+* handle loading state
+* show a clear error if download fails
+* not navigate away from the page unexpectedly
+
+4. Backend Verification
+   Inspect and fix the backend download endpoint if needed.
+
+Confirm:
+
+* download endpoint exists
+* endpoint accepts export batch ID
+* endpoint returns the correct CSV content
+* response includes Content-Type for CSV
+* response includes Content-Disposition attachment with a filename
+* endpoint returns a clear 404 or validation error if export batch is missing
+* endpoint returns a clear error if the export failed or is not downloadable
+* endpoint does not expose files outside the export workflow
+
+5. Export File Storage / Regeneration
+   If export file content is stored:
+
+* download the stored file safely.
+
+If export file content is not stored:
+
+* regenerate the CSV from saved export metadata and filters.
+* ensure regenerated data matches the original export intent.
+* do not accidentally include voided/removed invoices if they were excluded originally.
+* do not change invoice export status just because a file is downloaded again.
+
+6. CSV Requirements
+   Downloaded CSV must:
+
+* include the same columns shown in the export workflow specification
+* preserve CSV formula-injection protection
+* use consistent date/amount formatting
+* include tie-out fields
+* include export readiness/status fields where applicable
+* exclude voided/removed invoices by default unless the export type intentionally includes them
+
+7. UI Placement
+   Add the Download button in all appropriate locations:
+
+* Export History table row action
+* Export detail view, if one exists
+* Success state immediately after creating an export
+
+If an export is created successfully, the user should immediately see:
+
+* export success message
+* record count
+* file name
+* Download button
+
+8. Error Handling
+   If download fails, show a visible error message such as:
+
+* “Export file could not be downloaded.”
+* “Export batch was not found.”
+* “This export is not available for download.”
+* “Export failed and cannot be downloaded.”
+
+Do not silently fail.
+
+9. Regression Checks
+   After the fix, verify:
+
+* Creating an approved-invoices export works.
+* The new Download button appears for successful exports.
+* Clicking Download downloads a CSV file.
+* CSV filename is correct.
+* CSV content matches the export batch record count.
+* Failed/blocked exports do not show an active download button.
+* Existing export history still loads.
+* Existing invoice exports still preserve formula-injection protection.
+* Existing dashboard metrics still work.
+* Existing vendor import/export workflows still work.
+* No invoices are deleted or modified during download.
+* No ERP functionality is added.
+
+10. Deliverable
+    Provide a concise fix report covering:
+
+* Root cause of missing download button
+* UI changes made
+* Backend/download endpoint changes, if any
+* How successful exports are downloaded
+* How unavailable/failed exports are handled
+* Regression checks performed
+* Any remaining risks or manual UAT steps
+
+Acceptance criteria:
+
+* A user can create an export and immediately download the generated CSV file.
+* A user can return to Export History later and download a successful export.
+* Download action works from the browser.
+* Failed or unavailable exports are handled clearly.
+* No ERP integration is introduced.

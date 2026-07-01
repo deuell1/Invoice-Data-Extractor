@@ -4,7 +4,7 @@ import {
   useListExports,
   useListVendors,
   getListExportsQueryKey,
-  getDownloadExportUrl,
+  downloadExport,
   type ExportBatch,
 } from "@workspace/api-client-react";
 import { ExportRequestExportType, ExportRequestFormat } from "@workspace/api-client-react";
@@ -72,6 +72,7 @@ export function ExportsPage() {
   const [vendorId, setVendorId] = useState<string>("ANY");
   const [exportedBy, setExportedBy] = useState("");
   const [createdBatch, setCreatedBatch] = useState<ExportBatch | null>(null);
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
 
   const [page, setPage] = useState(1);
 
@@ -110,7 +111,33 @@ export function ExportsPage() {
     }
   };
 
-  const downloadable = (batch: ExportBatch) => batch.status === "SUCCESS" && !!batch.fileObjectPath;
+  /**
+   * A batch is downloadable when:
+   *  - status is SUCCESS (backend always regenerates the CSV on demand — no file storage required)
+   *  - record count is >= 0 (zero-row exports are still valid downloads)
+   */
+  const downloadable = (batch: ExportBatch) => batch.status === "SUCCESS";
+
+  const handleDownload = async (batch: ExportBatch) => {
+    if (downloadingId !== null) return;
+    setDownloadingId(batch.id);
+    try {
+      const blob = await downloadExport(batch.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = batch.fileName ?? `${batch.batchId}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      const msg = e?.data?.error ?? e?.message ?? "Export file could not be downloaded.";
+      toast({ variant: "destructive", title: "Download failed", description: msg });
+    } finally {
+      setDownloadingId(null);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -231,17 +258,26 @@ export function ExportsPage() {
               <div className="flex items-center gap-2"><span className="text-muted-foreground">Status: </span><ExportStatusBadge status={createdBatch.status} /></div>
               <div>
                 {downloadable(createdBatch) ? (
-                  <a href={getDownloadExportUrl(createdBatch.id)} download data-testid="link-download-created">
-                    <Button variant="outline" size="sm">
-                      <Download className="mr-2 h-4 w-4" />
-                      Download
-                    </Button>
-                  </a>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDownload(createdBatch)}
+                    disabled={downloadingId === createdBatch.id}
+                    data-testid="button-download-created"
+                  >
+                    {downloadingId === createdBatch.id
+                      ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      : <Download className="mr-2 h-4 w-4" />}
+                    Download
+                  </Button>
                 ) : (
-                  <span className="text-xs text-muted-foreground">No file available</span>
+                  <span className="text-xs text-muted-foreground">Not available for download</span>
                 )}
               </div>
             </div>
+            {createdBatch.fileName && (
+              <p className="mt-2 text-xs text-muted-foreground font-mono">{createdBatch.fileName}</p>
+            )}
           </CardContent>
         </Card>
       )}
@@ -291,16 +327,25 @@ export function ExportsPage() {
                     <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                       {format(new Date(batch.exportedAt), "MMM d, yyyy HH:mm")}
                     </TableCell>
-                    <TableCell className="max-w-[200px] truncate">{batch.fileName || "—"}</TableCell>
+                    <TableCell className="max-w-[200px] truncate text-xs text-muted-foreground font-mono">
+                      {batch.fileName || "—"}
+                    </TableCell>
                     <TableCell className="text-right">
                       {downloadable(batch) ? (
-                        <a href={getDownloadExportUrl(batch.id)} download data-testid={`link-download-${batch.id}`}>
-                          <Button variant="ghost" size="sm">
-                            <Download className="h-4 w-4" />
-                          </Button>
-                        </a>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDownload(batch)}
+                          disabled={downloadingId === batch.id}
+                          data-testid={`button-download-${batch.id}`}
+                          title={`Download ${batch.fileName ?? batch.batchId}`}
+                        >
+                          {downloadingId === batch.id
+                            ? <Loader2 className="h-4 w-4 animate-spin" />
+                            : <Download className="h-4 w-4" />}
+                        </Button>
                       ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
+                        <span className="text-xs text-muted-foreground" title={`Status: ${batch.status}`}>—</span>
                       )}
                     </TableCell>
                   </TableRow>
