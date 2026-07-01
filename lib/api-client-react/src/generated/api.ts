@@ -4280,10 +4280,11 @@ export const downloadExport = async (id: number, options?: RequestInit): Promise
   return customFetch<Blob>(getDownloadExportUrl(id),
   {
     ...options,
-    method: 'GET'
+    method: 'GET',
+    responseType: 'blob',
 
 
-  }
+  } as Parameters<typeof customFetch>[1]
 );}
 
 

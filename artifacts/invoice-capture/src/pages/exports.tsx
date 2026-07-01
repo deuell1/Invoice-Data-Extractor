@@ -4,7 +4,7 @@ import {
   useListExports,
   useListVendors,
   getListExportsQueryKey,
-  downloadExport,
+  getDownloadExportUrl,
   type ExportBatch,
 } from "@workspace/api-client-react";
 import { ExportRequestExportType, ExportRequestFormat } from "@workspace/api-client-react";
@@ -122,17 +122,39 @@ export function ExportsPage() {
     if (downloadingId !== null) return;
     setDownloadingId(batch.id);
     try {
-      const blob = await downloadExport(batch.id);
-      const url = URL.createObjectURL(blob);
+      // Use raw fetch so we can call .blob() explicitly.
+      // customFetch auto-detects text/csv as "text" and returns a string,
+      // which is not a valid argument for URL.createObjectURL().
+      const response = await fetch(getDownloadExportUrl(batch.id));
+
+      if (!response.ok) {
+        let msg = "Export file could not be downloaded.";
+        try {
+          const errBody = await response.json();
+          msg = errBody?.error ?? msg;
+        } catch {
+          // response body wasn't JSON — keep generic message
+        }
+        if (response.status === 404) msg = "Export batch was not found.";
+        throw new Error(msg);
+      }
+
+      // Extract filename from Content-Disposition header when available.
+      const cd = response.headers.get("content-disposition");
+      const cdMatch = cd?.match(/filename="([^"]+)"/);
+      const fileName = cdMatch?.[1] ?? batch.fileName ?? `${batch.batchId}.csv`;
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
-      a.download = batch.fileName ?? `${batch.batchId}.csv`;
+      a.href = objectUrl;
+      a.download = fileName;
       document.body.appendChild(a);
       a.click();
       a.remove();
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(objectUrl);
     } catch (e: any) {
-      const msg = e?.data?.error ?? e?.message ?? "Export file could not be downloaded.";
+      const msg = e?.message ?? "Export file could not be downloaded.";
       toast({ variant: "destructive", title: "Download failed", description: msg });
     } finally {
       setDownloadingId(null);
