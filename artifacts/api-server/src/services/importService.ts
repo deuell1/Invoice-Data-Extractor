@@ -102,7 +102,7 @@ export function getTemplateCsv(importType: ImportType): string {
 }
 
 export function templateFileName(importType: ImportType): string {
-  return `${importType.toLowerCase()}_import_template.csv`;
+  return `${importType.toLowerCase().replace(/_/g, "-")}-template.csv`;
 }
 
 // ─── CSV parsing ─────────────────────────────────────────────────────────────

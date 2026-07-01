@@ -4,7 +4,7 @@ import {
   useCommitImport,
   useListImports,
   getListImportsQueryKey,
-  getImportTemplate,
+  getGetImportTemplateUrl,
   type ImportValidationResult,
   type ImportBatch,
 } from "@workspace/api-client-react";
@@ -117,18 +117,40 @@ export function ImportsPage() {
   const handleDownloadTemplate = async () => {
     setDownloading(true);
     try {
-      const blob = await getImportTemplate({ importType });
-      const url = URL.createObjectURL(blob);
+      // Use raw fetch so we can call .blob() explicitly.
+      // customFetch auto-detects text/csv as "text" and returns a string,
+      // which is not a valid argument for URL.createObjectURL().
+      const response = await fetch(getGetImportTemplateUrl({ importType }));
+
+      if (!response.ok) {
+        let msg = "Could not download the import template.";
+        try {
+          const errBody = await response.json();
+          msg = errBody?.error ?? msg;
+        } catch {
+          // non-JSON error body — keep generic message
+        }
+        throw new Error(msg);
+      }
+
+      // Prefer the backend-provided filename from Content-Disposition.
+      const cd = response.headers.get("content-disposition");
+      const cdMatch = cd?.match(/filename="([^"]+)"/);
+      const fileName =
+        cdMatch?.[1] ?? `${importType.toLowerCase().replace(/_/g, "-")}-template.csv`;
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
-      a.download = `${importType.toLowerCase()}-template.csv`;
+      a.href = objectUrl;
+      a.download = fileName;
       document.body.appendChild(a);
       a.click();
       a.remove();
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(objectUrl);
       toast({ title: "Template downloaded", description: `${selectedTypeMeta?.label} CSV template downloaded.` });
-    } catch {
-      toast({ variant: "destructive", title: "Download failed", description: "Could not download the import template." });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Download failed", description: e?.message ?? "Could not download the import template." });
     } finally {
       setDownloading(false);
     }

@@ -3668,10 +3668,11 @@ export const getImportTemplate = async (params: GetImportTemplateParams, options
   return customFetch<Blob>(getGetImportTemplateUrl(params),
   {
     ...options,
-    method: 'GET'
+    method: 'GET',
+    responseType: 'blob',
 
 
-  }
+  } as Parameters<typeof customFetch>[1]
 );}
 
 
