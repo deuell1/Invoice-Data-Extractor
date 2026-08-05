@@ -291,9 +291,30 @@ console.log("  Stage 3: Extraction done   → PENDING_APPROVAL or EXCEPTION");
 console.log("══════════════════════════════════════════");
 
 {
+  // Create vendors whose names exactly match those embedded in the test PDF so
+  // that vendor matching succeeds after real OpenAI extraction.  We use a
+  // run-specific vendorCode suffix to avoid duplicate-key conflicts across runs
+  // while keeping the vendorName stable for fuzzy matching.
+  const PDF_VENDORS = [
+    { vendorCode: `PDF-ACME-${RUN_ID}`,    vendorName: "Acme Office Supplies Inc." },
+    { vendorCode: `PDF-FAST-${RUN_ID}`,    vendorName: "FastFreight Logistics" },
+    { vendorCode: `PDF-TECH-${RUN_ID}`,    vendorName: "TechParts Global Ltd." },
+  ];
+  for (const pv of PDF_VENDORS) {
+    const { status: pvS, json: pvJ } = await api("POST", "/vendors", {
+      vendorCode: pv.vendorCode,
+      vendorName: pv.vendorName,
+      paymentTerms: "Net 30",
+      isActive: true,
+      actor: "smoke-test",
+    });
+    assert(pvS === 201, `Suite 4 vendor created: ${pv.vendorName} (got ${pvS}: ${JSON.stringify(pvJ).slice(0, 120)})`);
+    console.log(`  → ensured vendor "${pv.vendorName}" (${pvJ.id})`);
+  }
+
   // Generate the multi-invoice test PDF.
   const genScript = path.resolve(__dirname, "gen_pdf.mjs");
-  const genResult = spawnSync("node", [genScript], { env: { ...process.env }, stdio: "pipe" });
+  const genResult = spawnSync("node", [genScript], { env: { ...process.env, SMOKE_RUN_ID: RUN_ID }, stdio: "pipe" });
   if (genResult.status !== 0) {
     const err = genResult.stderr?.toString() || "unknown error";
     assert(false, `gen_pdf.mjs failed (exit ${genResult.status}): ${err}`);
@@ -381,6 +402,12 @@ console.log("══════════════════════�
   // Stage 3: Wait for extraction to complete on all invoices.
   // Each invoice will reach PENDING_APPROVAL or EXCEPTION; never stays PENDING_EXTRACTION.
   console.log("  → waiting for all invoices to finish extraction …");
+
+  // Known-good exceptionReasons produced by the validation/extraction pipeline.
+  // Anything that looks like a raw stack trace or uncaught server error is a bug.
+  const UNHANDLED_ERROR_PATTERNS = [/TypeError/i, /ReferenceError/i, /SyntaxError/i, /\bat\s+\w/];
+
+  const suite4Finals = [];
   for (const inv of detectedInvoices) {
     const finalInv = await waitForExtraction(inv.id, 120_000);
     const validStatuses = ["PENDING_APPROVAL", "EXCEPTION"];
@@ -388,8 +415,56 @@ console.log("══════════════════════�
       validStatuses.includes(finalInv.status),
       `invoice ${inv.id} reached PENDING_APPROVAL or EXCEPTION (got "${finalInv.status}")`,
     );
-    console.log(`  → invoice ${inv.id}: final status=${finalInv.status}`);
+    console.log(`  → invoice ${inv.id}: final status=${finalInv.status} exceptionReason=${finalInv.exceptionReason ?? "none"}`);
+
+    if (finalInv.status === "EXCEPTION") {
+      const reason = finalInv.exceptionReason ?? "";
+      const looksLikeUnhandledError = UNHANDLED_ERROR_PATTERNS.some((p) => p.test(reason));
+      assert(
+        !looksLikeUnhandledError,
+        `invoice ${finalInv.id} EXCEPTION reason is a business-logic message, not a crash (got: "${reason.slice(0, 120)}")`,
+      );
+    }
+
+    suite4Finals.push(finalInv);
   }
+
+  // Stage 4: Approve + post at least one invoice that reached PENDING_APPROVAL.
+  // This confirms the full extraction → approval → posting path works end-to-end
+  // with real OpenAI output (not just that the invoice left PENDING_EXTRACTION).
+  console.log("\n  [Stage 4] Approve + post a PENDING_APPROVAL invoice from suite 4 source doc");
+
+  const suite4Approvable = suite4Finals.filter((inv) => inv.status === "PENDING_APPROVAL");
+  assert(
+    suite4Approvable.length >= 1,
+    `At least 1 source-doc invoice reached PENDING_APPROVAL (got ${suite4Approvable.length}/${suite4Finals.length}). ` +
+    `Check that PDF vendor names match seeded vendors — extraction status: ${suite4Finals.map((i) => `${i.id}:${i.status}`).join(", ")}`,
+  );
+
+  const toApprove = suite4Approvable[0];
+  const { status: s4aS, json: s4aJ } = await api("POST", `/invoices/${toApprove.id}/approve`, {});
+  assert(
+    s4aS === 200,
+    `POST /invoices/${toApprove.id}/approve returns 200 (got ${s4aS}: ${JSON.stringify(s4aJ).slice(0, 300)})`,
+  );
+  assert(s4aJ.status === "APPROVED", `source-doc invoice ${toApprove.id} status=APPROVED (got "${s4aJ.status}")`);
+  console.log(`  → invoice ${toApprove.id} approved`);
+
+  // Stage 5: Post (voucher) the approved source-doc invoice.
+  console.log("\n  [Stage 5] Post (voucher) the approved source-doc invoice");
+  const s4VoucherId = `VCH-S4-${RUN_ID}`;
+  const { status: s4pS, json: s4pJ } = await api(
+    "PATCH",
+    `/invoices/${toApprove.id}/voucher`,
+    { voucherId: s4VoucherId },
+  );
+  assert(
+    s4pS === 200,
+    `PATCH /invoices/${toApprove.id}/voucher returns 200 (got ${s4pS}: ${JSON.stringify(s4pJ).slice(0, 300)})`,
+  );
+  assert(s4pJ.status === "POSTED", `source-doc invoice ${toApprove.id} status=POSTED (got "${s4pJ.status}")`);
+  assert(s4pJ.voucherId === s4VoucherId, `voucherId stored (${s4pJ.voucherId})`);
+  console.log(`  → invoice ${toApprove.id} posted with voucherId=${s4VoucherId}`);
 }
 
 // ─── Suite 5: True exception override approval ────────────────────────────────

@@ -1,10 +1,17 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { writeFileSync } from "node:fs";
 
+// Vendor names MUST match names in scripts/src/seed.ts within the 85% fuzzy-match
+// threshold so that vendor matching succeeds during smoke-test extraction.
+//
+// Invoice numbers are suffixed with SMOKE_RUN_ID (supplied by smoke_test.mjs)
+// so that each test run produces unique numbers and the duplicate-invoice guard
+// never blocks the suite.  When run standalone, a timestamp suffix is used.
+const runSuffix = process.env.SMOKE_RUN_ID ?? `standalone-${Date.now()}`;
 const invoices = [
-  { vendor: "Acme Office Supplies Inc.", num: "ACME-1001", date: "2026-05-01", total: "1250.00", tax: "100.00", sub: "1150.00" },
-  { vendor: "Globex Logistics LLC", num: "GLX-5582", date: "2026-05-03", total: "880.50", tax: "70.50", sub: "810.00" },
-  { vendor: "Initech Software Co.", num: "INI-9090", date: "2026-05-07", total: "4300.00", tax: "300.00", sub: "4000.00" },
+  { vendor: "Acme Office Supplies Inc.", num: `ACME-${runSuffix}`, date: "2026-05-01", total: "1250.00", tax: "100.00", sub: "1150.00" },
+  { vendor: "FastFreight Logistics",     num: `FF-${runSuffix}`,   date: "2026-05-03", total: "880.50",  tax: "70.50",  sub: "810.00"  },
+  { vendor: "TechParts Global Ltd.",     num: `TP-${runSuffix}`,   date: "2026-05-07", total: "4300.00", tax: "300.00", sub: "4000.00" },
 ];
 
 const doc = await PDFDocument.create();
