@@ -36,11 +36,6 @@ const IMPORT_TYPES: { value: ImportType; label: string; description: string; adm
     adminOnly: true,
   },
   {
-    value: ImportValidationInputImportType.PO_REFERENCE,
-    label: "PO Reference",
-    description: "Load purchase order reference data.",
-  },
-  {
     value: ImportValidationInputImportType.INVOICE_CORRECTION,
     label: "Invoice Correction",
     description: "Apply field corrections to existing invoices.",
@@ -69,7 +64,7 @@ export function ImportsPage() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [importType, setImportType] = useState<ImportType>(ImportValidationInputImportType.PO_REFERENCE);
+  const [importType, setImportType] = useState<ImportType>(ImportValidationInputImportType.VENDOR_MASTER);
   const [fileName, setFileName] = useState<string>("");
   const [content, setContent] = useState<string>("");
   const [uploadedBy, setUploadedBy] = useState<string>("");

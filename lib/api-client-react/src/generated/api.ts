@@ -62,7 +62,6 @@ import type {
   ListImportsParams,
   ListInvoicesParams,
   ListSourceDocumentsParams,
-  ListVendorCleanupsParams,
   ListVendorsParams,
   RejectInput,
   RemovalInput,
@@ -77,11 +76,6 @@ import type {
   VendorActivityResponse,
   VendorAnalyticsResponse,
   VendorAuditEntry,
-  VendorCleanupCommitInput,
-  VendorCleanupListResponse,
-  VendorCleanupPreview,
-  VendorCleanupPreviewInput,
-  VendorCleanupResult,
   VendorImportInput,
   VendorImportResult,
   VendorInput,
@@ -3668,11 +3662,10 @@ export const getImportTemplate = async (params: GetImportTemplateParams, options
   return customFetch<Blob>(getGetImportTemplateUrl(params),
   {
     ...options,
-    method: 'GET',
-    responseType: 'blob',
+    method: 'GET'
 
 
-  } as Parameters<typeof customFetch>[1]
+  }
 );}
 
 
@@ -3795,232 +3788,6 @@ export function useGetImport<TData = Awaited<ReturnType<typeof getImport>>, TErr
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetImportQueryOptions(id,options)
-
-  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
-
-  return { ...query, queryKey: queryOptions.queryKey };
-}
-
-
-
-
-
-
-
-export const getPreviewVendorCleanupUrl = () => {
-
-
-
-
-  return `/api/vendors/cleanup/preview`
-}
-
-/**
- * @summary Preview imported-vendor cleanup plan (no data changes)
- */
-export const previewVendorCleanup = async (vendorCleanupPreviewInput?: VendorCleanupPreviewInput, options?: RequestInit): Promise<VendorCleanupPreview> => {
-
-  return customFetch<VendorCleanupPreview>(getPreviewVendorCleanupUrl(),
-  {
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      vendorCleanupPreviewInput,)
-  }
-);}
-
-
-
-
-export const getPreviewVendorCleanupMutationOptions = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewVendorCleanup>>, TError,{data?: BodyType<VendorCleanupPreviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof previewVendorCleanup>>, TError,{data?: BodyType<VendorCleanupPreviewInput>}, TContext> => {
-
-const mutationKey = ['previewVendorCleanup'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof previewVendorCleanup>>, {data?: BodyType<VendorCleanupPreviewInput>}> = (props) => {
-          const {data} = props ?? {};
-
-          return  previewVendorCleanup(data,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type PreviewVendorCleanupMutationResult = NonNullable<Awaited<ReturnType<typeof previewVendorCleanup>>>
-    export type PreviewVendorCleanupMutationBody = BodyType<VendorCleanupPreviewInput> | undefined
-    export type PreviewVendorCleanupMutationError = ErrorType<unknown>
-
-    /**
- * @summary Preview imported-vendor cleanup plan (no data changes)
- */
-export const usePreviewVendorCleanup = <TError = ErrorType<unknown>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof previewVendorCleanup>>, TError,{data?: BodyType<VendorCleanupPreviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof previewVendorCleanup>>,
-        TError,
-        {data?: BodyType<VendorCleanupPreviewInput>},
-        TContext
-      > => {
-      return useMutation(getPreviewVendorCleanupMutationOptions(options));
-    }
-
-export const getCommitVendorCleanupUrl = () => {
-
-
-
-
-  return `/api/vendors/cleanup/commit`
-}
-
-/**
- * @summary Commit an imported-vendor cleanup (requires actor, reason, confirmation)
- */
-export const commitVendorCleanup = async (vendorCleanupCommitInput: VendorCleanupCommitInput, options?: RequestInit): Promise<VendorCleanupResult> => {
-
-  return customFetch<VendorCleanupResult>(getCommitVendorCleanupUrl(),
-  {
-    ...options,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(
-      vendorCleanupCommitInput,)
-  }
-);}
-
-
-
-
-export const getCommitVendorCleanupMutationOptions = <TError = ErrorType<ErrorEnvelope>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof commitVendorCleanup>>, TError,{data: BodyType<VendorCleanupCommitInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof commitVendorCleanup>>, TError,{data: BodyType<VendorCleanupCommitInput>}, TContext> => {
-
-const mutationKey = ['commitVendorCleanup'];
-const {mutation: mutationOptions, request: requestOptions} = options ?
-      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
-      options
-      : {...options, mutation: {...options.mutation, mutationKey}}
-      : {mutation: { mutationKey, }, request: undefined};
-
-
-
-
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof commitVendorCleanup>>, {data: BodyType<VendorCleanupCommitInput>}> = (props) => {
-          const {data} = props ?? {};
-
-          return  commitVendorCleanup(data,requestOptions)
-        }
-
-
-
-
-
-
-  return  { mutationFn, ...mutationOptions }}
-
-    export type CommitVendorCleanupMutationResult = NonNullable<Awaited<ReturnType<typeof commitVendorCleanup>>>
-    export type CommitVendorCleanupMutationBody = BodyType<VendorCleanupCommitInput>
-    export type CommitVendorCleanupMutationError = ErrorType<ErrorEnvelope>
-
-    /**
- * @summary Commit an imported-vendor cleanup (requires actor, reason, confirmation)
- */
-export const useCommitVendorCleanup = <TError = ErrorType<ErrorEnvelope>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof commitVendorCleanup>>, TError,{data: BodyType<VendorCleanupCommitInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
- ): UseMutationResult<
-        Awaited<ReturnType<typeof commitVendorCleanup>>,
-        TError,
-        {data: BodyType<VendorCleanupCommitInput>},
-        TContext
-      > => {
-      return useMutation(getCommitVendorCleanupMutationOptions(options));
-    }
-
-export const getListVendorCleanupsUrl = (params?: ListVendorCleanupsParams,) => {
-  const normalizedParams = new URLSearchParams();
-
-  Object.entries(params || {}).forEach(([key, value]) => {
-
-    if (value !== undefined) {
-      normalizedParams.append(key, value === null ? 'null' : value.toString())
-    }
-  });
-
-  const stringifiedParams = normalizedParams.toString();
-
-  return stringifiedParams.length > 0 ? `/api/vendors/cleanup/history?${stringifiedParams}` : `/api/vendors/cleanup/history`
-}
-
-/**
- * @summary List vendor cleanup history
- */
-export const listVendorCleanups = async (params?: ListVendorCleanupsParams, options?: RequestInit): Promise<VendorCleanupListResponse> => {
-
-  return customFetch<VendorCleanupListResponse>(getListVendorCleanupsUrl(params),
-  {
-    ...options,
-    method: 'GET'
-
-
-  }
-);}
-
-
-
-
-
-export const getListVendorCleanupsQueryKey = (params?: ListVendorCleanupsParams,) => {
-    return [
-    `/api/vendors/cleanup/history`, ...(params ? [params] : [])
-    ] as const;
-    }
-
-
-export const getListVendorCleanupsQueryOptions = <TData = Awaited<ReturnType<typeof listVendorCleanups>>, TError = ErrorType<unknown>>(params?: ListVendorCleanupsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVendorCleanups>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-) => {
-
-const {query: queryOptions, request: requestOptions} = options ?? {};
-
-  const queryKey =  queryOptions?.queryKey ?? getListVendorCleanupsQueryKey(params);
-
-
-
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof listVendorCleanups>>> = ({ signal }) => listVendorCleanups(params, { signal, ...requestOptions });
-
-
-
-
-
-   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listVendorCleanups>>, TError, TData> & { queryKey: QueryKey }
-}
-
-export type ListVendorCleanupsQueryResult = NonNullable<Awaited<ReturnType<typeof listVendorCleanups>>>
-export type ListVendorCleanupsQueryError = ErrorType<unknown>
-
-
-/**
- * @summary List vendor cleanup history
- */
-
-export function useListVendorCleanups<TData = Awaited<ReturnType<typeof listVendorCleanups>>, TError = ErrorType<unknown>>(
- params?: ListVendorCleanupsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listVendorCleanups>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
-
- ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-
-  const queryOptions = getListVendorCleanupsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 
@@ -4281,11 +4048,10 @@ export const downloadExport = async (id: number, options?: RequestInit): Promise
   return customFetch<Blob>(getDownloadExportUrl(id),
   {
     ...options,
-    method: 'GET',
-    responseType: 'blob',
+    method: 'GET'
 
 
-  } as Parameters<typeof customFetch>[1]
+  }
 );}
 
 

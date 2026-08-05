@@ -5,6 +5,7 @@ import {
   getListInvoicesQueryKey,
   useUpdateInvoiceStatus,
   useUpdateInvoice,
+  useAssignException,
   useGetInvoiceAuditLog,
   getGetInvoiceAuditLogQueryKey,
   useListVendors,
@@ -17,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { InvoiceCleanupActions } from "@/components/cleanup-actions";
-import { Loader2, AlertTriangle, ArrowRight, RotateCcw, ChevronDown, ChevronRight, Pencil, AlertCircle } from "lucide-react";
+import { Loader2, AlertTriangle, ArrowRight, RotateCcw, ChevronDown, ChevronRight, Pencil, AlertCircle, UserRound } from "lucide-react";
 import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -42,6 +43,8 @@ type Invoice = {
   exceptionReason: string | null;
   lowConfidenceFields: string | null;
   updatedAt: string;
+  status: string;
+  exceptionOwner?: string | null;
 };
 
 function InvoiceAuditPanel({ invoiceId }: { invoiceId: number }) {
@@ -216,11 +219,88 @@ function EditFieldsModal({
   );
 }
 
+function AssignOwnerModal({
+  invoice,
+  open,
+  onClose,
+}: {
+  invoice: Invoice;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const assignException = useAssignException();
+  const [owner, setOwner] = useState(invoice.exceptionOwner ?? "");
+  const [actor, setActor] = useState("");
+
+  const handleAssign = async () => {
+    if (!owner.trim()) return;
+    if (!actor.trim()) return;
+    try {
+      await assignException.mutateAsync({ id: invoice.id, data: { owner: owner.trim(), actor: actor.trim() } });
+      toast({ title: "Owner assigned", description: `Exception assigned to ${owner.trim()}` });
+      queryClient.invalidateQueries({ queryKey: getListInvoicesQueryKey({ status: "EXCEPTION" }) });
+      onClose();
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Failed", description: e?.data?.error || "Could not assign owner" });
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <UserRound className="h-4 w-4" />
+            Assign Owner
+          </DialogTitle>
+          <p className="text-sm text-muted-foreground">
+            {invoice.invoiceNumber || "Untitled"} · {invoice.vendorName || "Unknown Vendor"}
+          </p>
+        </DialogHeader>
+        <div className="space-y-3 py-1">
+          <div className="space-y-1">
+            <Label className="text-xs">Assign To *</Label>
+            <Input
+              placeholder="e.g. jane.smith"
+              value={owner}
+              onChange={(e) => setOwner(e.target.value)}
+              data-testid="input-assign-owner"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Your Name (actor) *</Label>
+            <Input
+              placeholder="e.g. ap.manager"
+              value={actor}
+              onChange={(e) => setActor(e.target.value)}
+              data-testid="input-assign-actor"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button
+            onClick={handleAssign}
+            disabled={!owner.trim() || !actor.trim() || assignException.isPending}
+            data-testid="button-assign-confirm"
+          >
+            {assignException.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+            Assign
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function ExceptionQueue() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
+  const [assigningInvoice, setAssigningInvoice] = useState<Invoice | null>(null);
 
   const { data: invoicesRes, isLoading } = useListInvoices(
     { status: "EXCEPTION", limit: 100 },
@@ -323,6 +403,16 @@ export function ExceptionQueue() {
                         <Button
                           variant="outline"
                           size="sm"
+                          onClick={() => setAssigningInvoice(invoice as Invoice)}
+                          data-testid={`button-assign-${invoice.id}`}
+                          title="Assign owner"
+                        >
+                          <UserRound className="h-3.5 w-3.5 mr-1" />
+                          Assign
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
                           onClick={() => setEditingInvoice(invoice as Invoice)}
                           data-testid={`button-edit-${invoice.id}`}
                           title="Edit flagged fields"
@@ -385,6 +475,13 @@ export function ExceptionQueue() {
           invoice={editingInvoice}
           open={true}
           onClose={() => setEditingInvoice(null)}
+        />
+      )}
+      {assigningInvoice && (
+        <AssignOwnerModal
+          invoice={assigningInvoice}
+          open={true}
+          onClose={() => setAssigningInvoice(null)}
         />
       )}
     </div>

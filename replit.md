@@ -1,45 +1,44 @@
-# [Project name]
+# Invoice Capture MVP
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A single-tenant accounts-payable automation system that processes supplier invoices from scan/upload through AI extraction, vendor matching, validation, exception handling, approval, voucher creation, and CSV export.
 
-## Run & Operate
+## Core Pipeline
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+Upload → Extract (OpenAI OCR) → Vendor Match (fuzzy) → Validate / Tie-Out → Review / Exception Queue → Approve → Voucher → Post → CSV Export
 
-## Stack
+## Repository Map
 
-- pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+```
+.
+├── artifacts/
+│   ├── api-server/          # Express API (TypeScript) — all business logic
+│   │   └── src/
+│   │       ├── routes/      # Thin HTTP handlers (invoices, vendors, imports, exports, approvals, sources, audit, settings, accuracy)
+│   │       └── services/    # Core logic (extractionService, vendorMatchingService, validationService, importService, exportService)
+│   └── invoice-capture/     # Vite + React SPA
+│       └── src/
+│           ├── pages/       # One file per route (invoice-list, exception-queue, approval-queue, vendor-admin, vendor-detail, imports, exports, …)
+│           └── components/  # Shared UI (layout, app-router, cleanup-actions, …)
+├── lib/
+│   ├── db/src/schema/       # Drizzle ORM schema (vendors, invoices, source_documents, audit, import_batch, export_batch, accuracy_run, exception_event, app_settings)
+│   ├── api-spec/            # openapi.yaml — single source of truth for the API contract
+│   ├── api-zod/             # Generated Zod schemas (run codegen to regenerate; never hand-edit)
+│   └── api-client-react/    # Generated React Query hooks (run codegen to regenerate; never hand-edit)
+└── pnpm-workspace.yaml
+```
 
-## Where things live
+## Architecture Decisions
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+1. **OpenAPI-first codegen**: `lib/api-spec/openapi.yaml` is the single contract. After any spec change, run `pnpm --filter @workspace/api-spec run codegen` to regenerate `lib/api-zod` and `lib/api-client-react`. Never hand-edit generated files.
 
-## Architecture decisions
+2. **State machine on the server**: Every invoice status transition is enforced in `artifacts/api-server/src/routes/invoices.ts`. POSTED is terminal; posting requires APPROVED; the client must not assume transitions are free.
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+3. **Vendor match is the critical gate**: `vendorMatchingService.ts` uses fuzzy matching (85 % threshold) on `vendorRawName`. An invoice with no vendor match sits in EXCEPTION and cannot proceed to APPROVED. Missing-vendor is a non-overridable hard block at approval.
 
-## Product
+4. **Extraction confidence is 0–1 (overall) / 0–100 (per-field)**: `extractionService.ts` normalises OpenAI output to these scales. Do not conflate the two when reading `confidenceScore` vs `fieldConfidence` values.
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+## User Preferences
 
-## User preferences
-
-_Populate as you build — explicit user instructions worth remembering across sessions._
-
-## Gotchas
-
-_Populate as you build — sharp edges, "always run X before Y" rules._
-
-## Pointers
-
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- Deletion-only pass first: remove features before adding new ones
+- Keep the AP pipeline clean; no governance extras (notes threading, reviewed flags, etc.)
+- Vendor edit UI: operational fields editable inline; secondary details (address, contact, taxId, etc.) in a collapsed read-only accordion

@@ -2,7 +2,6 @@ import { eq, ne } from "drizzle-orm";
 import {
   db,
   vendorIdTable,
-  poHeaderTable,
   invoiceCaptureTable,
   importBatchTable,
   type ImportBatch,
@@ -17,14 +16,12 @@ import { toCsv } from "../lib/csv";
  *
  * Import types map to reference-data tables:
  *   VENDOR_MASTER      → vendor_id
- *   PO_REFERENCE       → po_header
  *   INVOICE_CORRECTION → invoice_capture (matched-vendor rows only; vendors are
  *                        NEVER auto-created)
  */
 
 export type ImportType =
   | "VENDOR_MASTER"
-  | "PO_REFERENCE"
   | "INVOICE_CORRECTION";
 
 type ColumnType = "string" | "number" | "int" | "date";
@@ -66,16 +63,6 @@ const COLUMN_SPECS: Record<ImportType, ColumnSpec[]> = {
     { name: "requiresPO", example: "false" },
     { name: "notes", example: "" },
     { name: "aliases", example: "Acme|ACME Corp" },
-  ],
-  PO_REFERENCE: [
-    { name: "poNumber", required: true, example: "PO-5001" },
-    { name: "vendorCode", example: "V-1001" },
-    { name: "poDate", type: "date", example: "2024-01-15" },
-    { name: "buyer", example: "Jane Buyer" },
-    { name: "description", example: "Office supplies" },
-    { name: "totalAmount", type: "number", example: "1500.00" },
-    { name: "currency", example: "USD" },
-    { name: "status", example: "OPEN" },
   ],
   INVOICE_CORRECTION: [
     { name: "vendorCode", example: "V-1001" },
@@ -237,7 +224,6 @@ export async function analyzeImport(
   const existingVendorCodes = new Set<string>();
   const vendorByCode = new Map<string, { id: number }>();
   const vendorByName = new Map<string, { id: number }>();
-  const existingPoNumbers = new Set<string>();
   const existingInvoiceKeys = new Map<string, { id: number }>();
 
   if (importType === "VENDOR_MASTER" || importType === "INVOICE_CORRECTION") {
@@ -255,12 +241,6 @@ export async function analyzeImport(
         vendorByName.set(v.vendorName.toLowerCase(), { id: v.id });
       }
     }
-  }
-  if (importType === "PO_REFERENCE") {
-    const pos = await db
-      .select({ poNumber: poHeaderTable.poNumber })
-      .from(poHeaderTable);
-    for (const p of pos) existingPoNumbers.add(p.poNumber.toLowerCase());
   }
   if (importType === "INVOICE_CORRECTION") {
     const invs = await db
@@ -282,7 +262,6 @@ export async function analyzeImport(
   }
 
   const seenVendorCodes = new Set<string>();
-  const seenPoNumbers = new Set<string>();
   const seenInvoiceKeys = new Set<string>();
 
   const rows: InternalRow[] = [];
@@ -416,31 +395,6 @@ export async function analyzeImport(
         requiresPO: requiresPORaw !== "" && BOOL_TRUTHY.includes(requiresPORaw),
         notes: cellAt(cells, "notes") || null,
         aliases: parsedAliases,
-      };
-    } else if (importType === "PO_REFERENCE") {
-      const po = cellAt(cells, "poNumber");
-      if (po) {
-        const key = po.toLowerCase();
-        if (seenPoNumbers.has(key)) {
-          errors.push(`Duplicate poNumber '${po}' within file`);
-        } else {
-          seenPoNumbers.add(key);
-        }
-        dbExists = existingPoNumbers.has(key);
-        if (dbExists && !updateExisting) {
-          errors.push(`PO number '${po}' already exists`);
-        }
-      }
-      const total = cellAt(cells, "totalAmount");
-      entity = {
-        poNumber: po,
-        vendorCode: cellAt(cells, "vendorCode") || null,
-        poDate: cellAt(cells, "poDate") || null,
-        buyer: cellAt(cells, "buyer") || null,
-        description: cellAt(cells, "description") || null,
-        totalAmount: total !== "" ? total : null,
-        currency: cellAt(cells, "currency") || "USD",
-        status: cellAt(cells, "status") || "OPEN",
       };
     } else {
       // INVOICE_CORRECTION
@@ -665,46 +619,6 @@ export async function commitImportData(
           vendorCode: e.vendorCode,
           ...sharedFields,
           createdBy: input.uploadedBy ?? null,
-        });
-      }
-    }
-  } else if (input.importType === "PO_REFERENCE") {
-    for (const row of acceptedRows) {
-      const e = row.entity as {
-        poNumber: string;
-        vendorCode: string | null;
-        poDate: string | null;
-        buyer: string | null;
-        description: string | null;
-        totalAmount: string | null;
-        currency: string;
-        status: string;
-      };
-      if (row.dbExists && (input.updateExisting ?? false)) {
-        await db
-          .update(poHeaderTable)
-          .set({
-            vendorCode: e.vendorCode,
-            poDate: e.poDate,
-            buyer: e.buyer,
-            description: e.description,
-            totalAmount: e.totalAmount,
-            currency: e.currency,
-            status: e.status,
-            importBatchId: importBatchRef,
-          })
-          .where(eq(poHeaderTable.poNumber, e.poNumber));
-      } else {
-        await db.insert(poHeaderTable).values({
-          poNumber: e.poNumber,
-          vendorCode: e.vendorCode,
-          poDate: e.poDate,
-          buyer: e.buyer,
-          description: e.description,
-          totalAmount: e.totalAmount,
-          currency: e.currency,
-          status: e.status,
-          importBatchId: importBatchRef,
         });
       }
     }

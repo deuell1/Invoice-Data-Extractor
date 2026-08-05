@@ -8,17 +8,12 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   LayoutDashboard,
-  Search,
   Files,
-  ShieldAlert,
-  BarChart3,
   Upload,
   Download,
-  Target,
   History,
   Settings,
-  Construction,
-  RotateCcw
+  FilePlus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -33,21 +28,16 @@ export function Layout({ children }: LayoutProps) {
 
   const navigation = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+    { name: "Intake", href: "/invoices/new", icon: FilePlus },
     { name: "Invoices", href: "/invoices", icon: FileText },
-    { name: "Search", href: "/search", icon: Search },
     { name: "Sources", href: "/sources", icon: Files },
     { name: "Exceptions", href: "/exceptions", icon: AlertCircle },
-    { name: "Exception Mgmt", href: "/exception-management", icon: ShieldAlert },
     { name: "Approvals", href: "/approvals", icon: CheckSquare },
     { name: "Vendors", href: "/vendors", icon: Users },
-    { name: "Vendor Cleanup", href: "/vendors/cleanup", icon: RotateCcw },
-    { name: "Analytics", href: "/analytics", icon: BarChart3 },
     { name: "Imports", href: "/imports", icon: Upload },
     { name: "Exports", href: "/exports", icon: Download },
-    { name: "Accuracy", href: "/accuracy", icon: Target },
     { name: "Audit", href: "/audit", icon: History },
     { name: "Settings", href: "/settings", icon: Settings },
-    { name: "Phase 3", href: "/phase3", icon: Construction },
   ];
 
   return (
@@ -77,7 +67,9 @@ export function Layout({ children }: LayoutProps) {
         <div className="flex-1 overflow-y-auto py-4">
           <nav className="space-y-1 px-2">
             {navigation.map((item) => {
-              const isActive = location === item.href || location.startsWith(item.href + "/");
+              const isActive = location === item.href || 
+                (item.href !== "/invoices/new" && location.startsWith(item.href + "/")) ||
+                (item.href === "/invoices/new" && location === "/invoices/new");
               return (
                 <Link 
                   key={item.name} 
@@ -88,7 +80,7 @@ export function Layout({ children }: LayoutProps) {
                       ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium" 
                       : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
                   )}
-                  data-testid={`nav-${item.name.toLowerCase()}`}
+                  data-testid={`nav-${item.name.toLowerCase().replace(/\s+/g, "-")}`}
                 >
                   <item.icon className="h-4 w-4 shrink-0" />
                   <span className={cn("truncate", !sidebarOpen && "hidden")}>{item.name}</span>

@@ -2348,7 +2348,7 @@ export const listImportsQueryPageDefault = 1;
 export const listImportsQueryLimitDefault = 20;
 
 export const ListImportsQueryParams = zod.object({
-  "importType": zod.enum(['VENDOR_MASTER', 'PO_REFERENCE', 'INVOICE_CORRECTION']).optional(),
+  "importType": zod.enum(['VENDOR_MASTER', 'INVOICE_CORRECTION']).optional(),
   "page": zod.coerce.number().default(listImportsQueryPageDefault),
   "limit": zod.coerce.number().default(listImportsQueryLimitDefault)
 })
@@ -2387,7 +2387,7 @@ export const ListImportsResponse = zod.object({
 export const commitImportBodyUpdateExistingDefault = false;
 
 export const CommitImportBody = zod.object({
-  "importType": zod.enum(['VENDOR_MASTER', 'PO_REFERENCE', 'INVOICE_CORRECTION']),
+  "importType": zod.enum(['VENDOR_MASTER', 'INVOICE_CORRECTION']),
   "fileName": zod.string().min(1),
   "content": zod.string(),
   "uploadedBy": zod.string().nullish(),
@@ -2399,15 +2399,13 @@ export const CommitImportBody = zod.object({
  * @summary Validate an import file and preview rows without committing
  */
 
-
-
 export const validateImportBodyUpdateExistingDefault = false;
 
 export const ValidateImportBody = zod.object({
-  "importType": zod.enum(['VENDOR_MASTER', 'PO_REFERENCE', 'INVOICE_CORRECTION']),
+  "importType": zod.enum(['VENDOR_MASTER', 'INVOICE_CORRECTION']),
   "fileName": zod.string().min(1),
   "content": zod.string().describe('Raw CSV file content.'),
-  "updateExisting": zod.boolean().default(validateImportBodyUpdateExistingDefault).describe('When true, existing rows (by natural key) are treated as updates during validation preview — mirrors commit behaviour so the preview accurately reflects what will happen on commit.')
+  "updateExisting": zod.boolean().default(validateImportBodyUpdateExistingDefault).describe('When true, existing rows (by natural key) are treated as updates during validation preview — mirrors commit behaviour so the preview accurately reflects what will happen on commit.\n')
 })
 
 export const ValidateImportResponse = zod.object({
@@ -2432,7 +2430,7 @@ export const ValidateImportResponse = zod.object({
  * @summary Download a CSV template for an import type
  */
 export const GetImportTemplateQueryParams = zod.object({
-  "importType": zod.enum(['VENDOR_MASTER', 'PO_REFERENCE', 'INVOICE_CORRECTION'])
+  "importType": zod.enum(['VENDOR_MASTER', 'INVOICE_CORRECTION'])
 })
 
 
@@ -2462,120 +2460,6 @@ export const GetImportResponse = zod.object({
 })).optional(),
   "createdAt": zod.coerce.date(),
   "updatedAt": zod.coerce.date()
-})
-
-
-/**
- * @summary Preview imported-vendor cleanup plan (no data changes)
- */
-export const PreviewVendorCleanupBody = zod.object({
-  "importBatchId": zod.string().nullish().describe('When set, restrict preview to vendors from this import batch.')
-}).describe('Optional filters for the cleanup preview. Defaults to all imported vendors.')
-
-export const PreviewVendorCleanupResponse = zod.object({
-  "totalImported": zod.number(),
-  "safeToDelete": zod.number(),
-  "referencedRetained": zod.number(),
-  "toDeactivate": zod.number(),
-  "fullResetAllowed": zod.boolean(),
-  "fullResetBlockReason": zod.string().nullish(),
-  "items": zod.array(zod.object({
-  "vendorId": zod.number(),
-  "vendorCode": zod.string(),
-  "vendorName": zod.string(),
-  "importBatchId": zod.string().nullish(),
-  "lastImportedAt": zod.coerce.date().nullish(),
-  "isActive": zod.boolean(),
-  "onHold": zod.boolean(),
-  "imported": zod.boolean(),
-  "invoiceRefCount": zod.number(),
-  "poRefCount": zod.number(),
-  "canDelete": zod.boolean(),
-  "mustRetain": zod.boolean(),
-  "recommendedAction": zod.enum(['DELETE', 'DEACTIVATE', 'KEEP'])
-})),
-  "batchStatuses": zod.array(zod.object({
-  "batchId": zod.string(),
-  "fileName": zod.string(),
-  "cleanupStatus": zod.enum(['ACTIVE', 'FULLY_CLEANED', 'PARTIALLY_CLEANED', 'RETAINED']),
-  "importedVendorsRemaining": zod.number()
-}))
-})
-
-
-/**
- * @summary Commit an imported-vendor cleanup (requires actor, reason, confirmation)
- */
-
-
-
-
-export const CommitVendorCleanupBody = zod.object({
-  "mode": zod.enum(['DELETE_SAFE', 'DELETE_AND_DEACTIVATE', 'FULL_RESET']).describe('DELETE_SAFE deletes unreferenced imported vendors only. DELETE_AND_DEACTIVATE also deactivates referenced imported vendors. FULL_RESET deletes all imported vendors but is blocked if any are referenced.\n'),
-  "actor": zod.string().min(1).describe('Identified actor performing the cleanup.'),
-  "reason": zod.string().min(1).describe('Reason for the cleanup.'),
-  "confirm": zod.boolean().describe('Must be true to commit. Defaults to no-op preview behavior otherwise.'),
-  "importBatchId": zod.string().nullish().describe('When set, restrict cleanup to vendors from this import batch.')
-})
-
-export const CommitVendorCleanupResponse = zod.object({
-  "cleanupId": zod.string(),
-  "mode": zod.string(),
-  "actor": zod.string(),
-  "reason": zod.string(),
-  "vendorsReviewed": zod.number(),
-  "vendorsDeleted": zod.number(),
-  "vendorsDeactivated": zod.number(),
-  "vendorsSkipped": zod.number(),
-  "details": zod.array(zod.object({
-  "vendorId": zod.number(),
-  "vendorCode": zod.string(),
-  "vendorName": zod.string(),
-  "oldStatus": zod.string(),
-  "newStatus": zod.string(),
-  "action": zod.enum(['DELETED', 'DEACTIVATED', 'SKIPPED']),
-  "reason": zod.string()
-})),
-  "createdAt": zod.coerce.date()
-})
-
-
-/**
- * @summary List vendor cleanup history
- */
-export const listVendorCleanupsQueryPageDefault = 1;
-export const listVendorCleanupsQueryLimitDefault = 20;
-
-export const ListVendorCleanupsQueryParams = zod.object({
-  "page": zod.coerce.number().default(listVendorCleanupsQueryPageDefault),
-  "limit": zod.coerce.number().default(listVendorCleanupsQueryLimitDefault)
-})
-
-export const ListVendorCleanupsResponse = zod.object({
-  "data": zod.array(zod.object({
-  "id": zod.number(),
-  "cleanupId": zod.string(),
-  "mode": zod.string(),
-  "actor": zod.string(),
-  "reason": zod.string(),
-  "vendorsReviewed": zod.number(),
-  "vendorsDeleted": zod.number(),
-  "vendorsDeactivated": zod.number(),
-  "vendorsSkipped": zod.number(),
-  "details": zod.array(zod.object({
-  "vendorId": zod.number(),
-  "vendorCode": zod.string(),
-  "vendorName": zod.string(),
-  "oldStatus": zod.string(),
-  "newStatus": zod.string(),
-  "action": zod.enum(['DELETED', 'DEACTIVATED', 'SKIPPED']),
-  "reason": zod.string()
-})).optional(),
-  "createdAt": zod.coerce.date()
-})),
-  "total": zod.number(),
-  "page": zod.number(),
-  "limit": zod.number()
 })
 
 

@@ -11,6 +11,5 @@ export type ListImportsImportType = typeof ListImportsImportType[keyof typeof Li
 
 export const ListImportsImportType = {
   VENDOR_MASTER: 'VENDOR_MASTER',
-  PO_REFERENCE: 'PO_REFERENCE',
   INVOICE_CORRECTION: 'INVOICE_CORRECTION',
 } as const;

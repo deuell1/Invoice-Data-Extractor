@@ -11,6 +11,5 @@ export type GetImportTemplateImportType = typeof GetImportTemplateImportType[key
 
 export const GetImportTemplateImportType = {
   VENDOR_MASTER: 'VENDOR_MASTER',
-  PO_REFERENCE: 'PO_REFERENCE',
   INVOICE_CORRECTION: 'INVOICE_CORRECTION',
 } as const;

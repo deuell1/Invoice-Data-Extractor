@@ -11,6 +11,5 @@ export type ImportCommitInputImportType = typeof ImportCommitInputImportType[key
 
 export const ImportCommitInputImportType = {
   VENDOR_MASTER: 'VENDOR_MASTER',
-  PO_REFERENCE: 'PO_REFERENCE',
   INVOICE_CORRECTION: 'INVOICE_CORRECTION',
 } as const;

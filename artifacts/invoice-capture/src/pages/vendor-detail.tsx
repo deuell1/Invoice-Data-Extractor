@@ -22,38 +22,20 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  AlertCircle, AlertTriangle, ArrowLeft, Check, ChevronRight,
-  Clock, Edit2, Eye, EyeOff, Loader2, Plus, Receipt, Shield,
+  AlertCircle, AlertTriangle, ArrowLeft, Check, ChevronDown, ChevronRight, ChevronUp,
+  Clock, Edit2, Loader2, Plus, Receipt, Shield,
   TrendingUp, X,
 } from "lucide-react";
 
 type EditForm = {
   vendorCode: string;
   vendorName: string;
-  legalName: string;
-  dba: string;
-  vendorCategory: string;
-  vendorType: string;
-  taxId: string;
-  addressLine1: string;
-  addressLine2: string;
-  city: string;
-  state: string;
-  postalCode: string;
-  country: string;
-  contactEmail: string;
-  apEmail: string;
-  remittanceEmail: string;
-  contactPhone: string;
-  website: string;
   paymentTerms: string;
   termsDays: string;
-  currency: string;
-  notes: string;
   isActive: boolean;
   onHold: boolean;
   holdReason: string;
-  requiresPO: boolean;
+  notes: string;
   aliases: string[];
   actor: string;
   reason: string;
@@ -63,30 +45,12 @@ function buildEditForm(vendor: Vendor): EditForm {
   return {
     vendorCode: vendor.vendorCode,
     vendorName: vendor.vendorName ?? "",
-    legalName: vendor.legalName ?? "",
-    dba: vendor.dba ?? "",
-    vendorCategory: vendor.vendorCategory ?? "",
-    vendorType: vendor.vendorType ?? "",
-    taxId: vendor.taxId ?? "",
-    addressLine1: vendor.addressLine1 ?? "",
-    addressLine2: vendor.addressLine2 ?? "",
-    city: vendor.city ?? "",
-    state: vendor.state ?? "",
-    postalCode: vendor.postalCode ?? "",
-    country: vendor.country ?? "",
-    contactEmail: vendor.contactEmail ?? "",
-    apEmail: vendor.apEmail ?? "",
-    remittanceEmail: vendor.remittanceEmail ?? "",
-    contactPhone: vendor.contactPhone ?? "",
-    website: vendor.website ?? "",
     paymentTerms: vendor.paymentTerms ?? "",
     termsDays: vendor.termsDays != null ? String(vendor.termsDays) : "",
-    currency: vendor.currency ?? "",
-    notes: vendor.notes ?? "",
     isActive: vendor.isActive ?? true,
     onHold: vendor.onHold ?? false,
     holdReason: vendor.holdReason ?? "",
-    requiresPO: vendor.requiresPO ?? false,
+    notes: vendor.notes ?? "",
     aliases: (vendor.aliases ?? []) as string[],
     actor: "",
     reason: "",
@@ -127,6 +91,92 @@ function EditableText({
   );
 }
 
+function AdditionalDetails({ vendor }: { vendor: Vendor }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Card>
+      <button
+        type="button"
+        className="w-full"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm font-semibold uppercase tracking-wide text-muted-foreground flex items-center justify-between">
+            <span>Additional Details</span>
+            {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </CardTitle>
+        </CardHeader>
+      </button>
+      {open && (
+        <CardContent className="pt-0">
+          <p className="text-xs text-muted-foreground mb-3">Read-only — update via Vendor Master CSV import.</p>
+          {/* Identity */}
+          {(vendor.legalName || vendor.dba) && (
+            <>
+              {vendor.legalName && <FieldRow label="Legal Name">{vendor.legalName}</FieldRow>}
+              {vendor.dba && <FieldRow label="DBA">{vendor.dba}</FieldRow>}
+            </>
+          )}
+          {(vendor.vendorCategory || vendor.vendorType) && (
+            <>
+              {vendor.vendorCategory && <FieldRow label="Category">{vendor.vendorCategory}</FieldRow>}
+              {vendor.vendorType && <FieldRow label="Type">{vendor.vendorType}</FieldRow>}
+            </>
+          )}
+          {vendor.taxId && (
+            <FieldRow label="Tax ID (EIN)"><span className="font-mono text-xs">••••{vendor.taxId.slice(-4)}</span></FieldRow>
+          )}
+          {/* Contact */}
+          {(vendor.apEmail || vendor.remittanceEmail || vendor.contactEmail || vendor.contactPhone || vendor.website) && (
+            <>
+              {vendor.apEmail && (
+                <FieldRow label="AP Email">
+                  <a href={`mailto:${vendor.apEmail}`} className="underline text-blue-600">{vendor.apEmail}</a>
+                </FieldRow>
+              )}
+              {vendor.remittanceEmail && (
+                <FieldRow label="Remittance Email">
+                  <a href={`mailto:${vendor.remittanceEmail}`} className="underline text-blue-600">{vendor.remittanceEmail}</a>
+                </FieldRow>
+              )}
+              {vendor.contactEmail && (
+                <FieldRow label="Contact Email">
+                  <a href={`mailto:${vendor.contactEmail}`} className="underline text-blue-600">{vendor.contactEmail}</a>
+                </FieldRow>
+              )}
+              {vendor.contactPhone && <FieldRow label="Phone">{vendor.contactPhone}</FieldRow>}
+              {vendor.website && (
+                <FieldRow label="Website">
+                  <a href={vendor.website} target="_blank" rel="noreferrer" className="underline text-blue-600">{vendor.website}</a>
+                </FieldRow>
+              )}
+            </>
+          )}
+          {/* Address */}
+          {(vendor.addressLine1 || vendor.address) && (
+            <FieldRow label="Address">
+              <div>
+                {vendor.addressLine1 && <div>{vendor.addressLine1}</div>}
+                {vendor.addressLine2 && <div>{vendor.addressLine2}</div>}
+                {(vendor.city || vendor.state || vendor.postalCode) && (
+                  <div>{[vendor.city, vendor.state, vendor.postalCode].filter(Boolean).join(", ")}</div>
+                )}
+                {vendor.country && <div>{vendor.country}</div>}
+                {!vendor.addressLine1 && vendor.address && <div>{vendor.address}</div>}
+              </div>
+            </FieldRow>
+          )}
+          {!vendor.legalName && !vendor.dba && !vendor.vendorCategory && !vendor.vendorType &&
+           !vendor.taxId && !vendor.apEmail && !vendor.remittanceEmail && !vendor.contactEmail &&
+           !vendor.contactPhone && !vendor.website && !vendor.addressLine1 && !vendor.address && (
+            <p className="text-sm text-muted-foreground py-2">No additional details on file.</p>
+          )}
+        </CardContent>
+      )}
+    </Card>
+  );
+}
+
 export function VendorDetail() {
   const params = useParams<{ id: string }>();
   const vendorId = parseInt(params.id ?? "0", 10);
@@ -151,7 +201,6 @@ export function VendorDetail() {
   const [aliasDraft, setAliasDraft] = useState("");
   const [saveError, setSaveError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [showTaxId, setShowTaxId] = useState(false);
 
   const openEdit = () => {
     if (!vendor) return;
@@ -187,32 +236,9 @@ export function VendorDetail() {
       return;
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const nextErrors: Record<string, string> = {};
-
-    for (const [field, val] of [
-      ["apEmail", form.apEmail],
-      ["contactEmail", form.contactEmail],
-      ["remittanceEmail", form.remittanceEmail],
-    ] as const) {
-      if (val.trim() && !emailRegex.test(val.trim())) {
-        nextErrors[field] = "Must be a valid email address";
-      }
-    }
-    if (form.website.trim()) {
-      try {
-        const url = new URL(form.website.trim());
-        if (!["http:", "https:"].includes(url.protocol)) throw new Error();
-      } catch {
-        nextErrors.website = "Must be a valid https:// URL";
-      }
-    }
     const termsDaysNum = form.termsDays.trim() ? parseInt(form.termsDays.trim(), 10) : null;
     if (form.termsDays.trim() && (termsDaysNum === null || isNaN(termsDaysNum) || termsDaysNum < 0)) {
-      nextErrors.termsDays = "Must be a whole number ≥ 0";
-    }
-    if (Object.keys(nextErrors).length > 0) {
-      setFieldErrors(nextErrors);
+      setFieldErrors({ termsDays: "Must be a whole number ≥ 0" });
       setSaveError("Please fix the highlighted fields before saving");
       return;
     }
@@ -223,30 +249,12 @@ export function VendorDetail() {
       reason: form.reason.trim() || null,
       ...(codeChanged ? { vendorCode: form.vendorCode.trim() } : {}),
       vendorName: form.vendorName.trim(),
-      legalName: form.legalName.trim() || null,
-      dba: form.dba.trim() || null,
-      vendorCategory: form.vendorCategory.trim() || null,
-      vendorType: form.vendorType.trim() || null,
-      taxId: form.taxId.trim() || null,
-      addressLine1: form.addressLine1.trim() || null,
-      addressLine2: form.addressLine2.trim() || null,
-      city: form.city.trim() || null,
-      state: form.state.trim() || null,
-      postalCode: form.postalCode.trim() || null,
-      country: form.country.trim() || null,
-      contactEmail: form.contactEmail.trim() || null,
-      apEmail: form.apEmail.trim() || null,
-      remittanceEmail: form.remittanceEmail.trim() || null,
-      contactPhone: form.contactPhone.trim() || null,
-      website: form.website.trim() || null,
       paymentTerms: form.paymentTerms.trim() || null,
       termsDays: termsDaysNum,
-      currency: form.currency.trim() || null,
       notes: form.notes.trim() || null,
       isActive: form.isActive,
       onHold: form.onHold,
       holdReason: form.holdReason.trim() || null,
-      requiresPO: form.requiresPO,
       aliases: form.aliases,
     };
 
@@ -312,7 +320,6 @@ export function VendorDetail() {
 
   const aliases = (vendor.aliases ?? []) as string[];
 
-  // ── Status badges ──────────────────────────────────────────────────────────
   const statusBadge = () => {
     if (vendor.onHold) return <Badge variant="destructive">On Hold</Badge>;
     if (!vendor.isActive) return <Badge variant="secondary">Inactive</Badge>;
@@ -400,7 +407,7 @@ export function VendorDetail() {
                   onChange={(e) => set("actor", e.target.value)}
                   className="bg-white"
                 />
-                <p className="text-xs text-blue-600">Required for audit trail — pilot has no auth.</p>
+                <p className="text-xs text-blue-600">Required for audit trail.</p>
               </div>
               <div className="space-y-1">
                 <Label className="text-xs font-semibold text-blue-800">Reason for Change</Label>
@@ -419,23 +426,18 @@ export function VendorDetail() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2 space-y-4">
 
-          {/* Profile */}
+          {/* Profile (Name + Code) */}
           <Section title="Profile">
             {isEditing && form ? (
               <div className="space-y-3">
-                {/* Vendor Code — editable only when no invoices reference this vendor */}
                 <div className="space-y-1">
                   <Label className="text-xs text-muted-foreground">Vendor Code</Label>
                   {(activity?.invoiceCount ?? 0) === 0 ? (
-                    <div>
-                      <Input
-                        value={form.vendorCode}
-                        placeholder="V-1001"
-                        onChange={(e) => { set("vendorCode", e.target.value); if (fieldErrors.vendorCode) setFieldErrors((fe) => ({ ...fe, vendorCode: "" })); }}
-                        className={fieldErrors.vendorCode ? "border-destructive" : ""}
-                      />
-                      {fieldErrors.vendorCode && <p className="text-xs text-destructive mt-0.5">{fieldErrors.vendorCode}</p>}
-                    </div>
+                    <Input
+                      value={form.vendorCode}
+                      placeholder="V-1001"
+                      onChange={(e) => set("vendorCode", e.target.value)}
+                    />
                   ) : (
                     <div className="flex items-center gap-2">
                       <code className="bg-muted px-2 py-1 rounded text-xs">{vendor.vendorCode}</code>
@@ -443,40 +445,12 @@ export function VendorDetail() {
                     </div>
                   )}
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <EditableText label="Vendor Name *" value={form.vendorName} onChange={(v) => set("vendorName", v)} />
-                  <EditableText label="Legal Name" value={form.legalName} onChange={(v) => set("legalName", v)} placeholder="Full registered name" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <EditableText label="DBA / Trade Name" value={form.dba} onChange={(v) => set("dba", v)} placeholder="Doing business as" />
-                  <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">Website</Label>
-                    <Input
-                      value={form.website}
-                      placeholder="https://…"
-                      onChange={(e) => { set("website", e.target.value); if (fieldErrors.website) setFieldErrors((fe) => ({ ...fe, website: "" })); }}
-                      className={fieldErrors.website ? "border-destructive" : ""}
-                    />
-                    {fieldErrors.website && <p className="text-xs text-destructive mt-0.5">{fieldErrors.website}</p>}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <EditableText label="Category" value={form.vendorCategory} onChange={(v) => set("vendorCategory", v)} placeholder="e.g. Supplies" />
-                  <EditableText label="Type" value={form.vendorType} onChange={(v) => set("vendorType", v)} placeholder="GOODS / SERVICES" />
-                </div>
+                <EditableText label="Vendor Name *" value={form.vendorName} onChange={(v) => set("vendorName", v)} />
               </div>
             ) : (
               <>
                 <FieldRow label="Vendor Code"><code className="bg-muted px-1 rounded text-xs">{vendor.vendorCode}</code></FieldRow>
-                <FieldRow label="Legal Name">{vendor.legalName ?? <span className="text-muted-foreground">—</span>}</FieldRow>
-                <FieldRow label="DBA">{vendor.dba ?? <span className="text-muted-foreground">—</span>}</FieldRow>
-                <FieldRow label="Website">
-                  {vendor.website
-                    ? <a href={vendor.website} target="_blank" rel="noreferrer" className="underline text-blue-600">{vendor.website}</a>
-                    : <span className="text-muted-foreground">—</span>}
-                </FieldRow>
-                <FieldRow label="Category">{vendor.vendorCategory ?? <span className="text-muted-foreground">—</span>}</FieldRow>
-                <FieldRow label="Type">{vendor.vendorType ?? <span className="text-muted-foreground">—</span>}</FieldRow>
+                <FieldRow label="Vendor Name">{vendor.vendorName ?? <span className="text-muted-foreground">—</span>}</FieldRow>
               </>
             )}
           </Section>
@@ -509,13 +483,6 @@ export function VendorDetail() {
                     />
                   </div>
                 )}
-                <div className="flex items-center justify-between py-1 border-t">
-                  <div>
-                    <p className="text-sm font-medium">Requires PO</p>
-                    <p className="text-xs text-muted-foreground">Invoices must be matched to a PO</p>
-                  </div>
-                  <Switch checked={form.requiresPO} onCheckedChange={(v) => set("requiresPO", v)} />
-                </div>
               </div>
             ) : (
               <>
@@ -541,92 +508,10 @@ export function VendorDetail() {
             )}
           </Section>
 
-          {/* Contact & Remittance */}
-          <Section title="Contact & Remittance">
-            {isEditing && form ? (
-              <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">AP / Accounts Payable Email</Label>
-                    <Input type="email" value={form.apEmail} placeholder="ap@vendor.com" onChange={(e) => { set("apEmail", e.target.value); if (fieldErrors.apEmail) setFieldErrors((fe) => ({ ...fe, apEmail: "" })); }} className={fieldErrors.apEmail ? "border-destructive" : ""} />
-                    {fieldErrors.apEmail && <p className="text-xs text-destructive mt-0.5">{fieldErrors.apEmail}</p>}
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">Remittance Email</Label>
-                    <Input type="email" value={form.remittanceEmail} placeholder="remit@vendor.com" onChange={(e) => { set("remittanceEmail", e.target.value); if (fieldErrors.remittanceEmail) setFieldErrors((fe) => ({ ...fe, remittanceEmail: "" })); }} className={fieldErrors.remittanceEmail ? "border-destructive" : ""} />
-                    {fieldErrors.remittanceEmail && <p className="text-xs text-destructive mt-0.5">{fieldErrors.remittanceEmail}</p>}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs text-muted-foreground">General Contact Email</Label>
-                    <Input type="email" value={form.contactEmail} onChange={(e) => { set("contactEmail", e.target.value); if (fieldErrors.contactEmail) setFieldErrors((fe) => ({ ...fe, contactEmail: "" })); }} className={fieldErrors.contactEmail ? "border-destructive" : ""} />
-                    {fieldErrors.contactEmail && <p className="text-xs text-destructive mt-0.5">{fieldErrors.contactEmail}</p>}
-                  </div>
-                  <EditableText label="Phone" value={form.contactPhone} onChange={(v) => set("contactPhone", v)} placeholder="+1-555-0100" />
-                </div>
-              </div>
-            ) : (
-              <>
-                <FieldRow label="AP Email">
-                  {vendor.apEmail
-                    ? <a href={`mailto:${vendor.apEmail}`} className="underline text-blue-600">{vendor.apEmail}</a>
-                    : <span className="text-amber-600 flex items-center gap-1"><AlertTriangle className="h-3.5 w-3.5" />Not set</span>}
-                </FieldRow>
-                <FieldRow label="Remittance Email">
-                  {vendor.remittanceEmail
-                    ? <a href={`mailto:${vendor.remittanceEmail}`} className="underline text-blue-600">{vendor.remittanceEmail}</a>
-                    : <span className="text-muted-foreground">—</span>}
-                </FieldRow>
-                <FieldRow label="Contact Email">
-                  {vendor.contactEmail
-                    ? <a href={`mailto:${vendor.contactEmail}`} className="underline text-blue-600">{vendor.contactEmail}</a>
-                    : <span className="text-muted-foreground">—</span>}
-                </FieldRow>
-                <FieldRow label="Phone">{vendor.contactPhone ?? <span className="text-muted-foreground">—</span>}</FieldRow>
-              </>
-            )}
-          </Section>
-
-          {/* Address */}
-          <Section title="Address">
-            {isEditing && form ? (
-              <div className="space-y-3">
-                <EditableText label="Address Line 1" value={form.addressLine1} onChange={(v) => set("addressLine1", v)} />
-                <EditableText label="Address Line 2" value={form.addressLine2} onChange={(v) => set("addressLine2", v)} />
-                <div className="grid grid-cols-3 gap-3">
-                  <EditableText label="City" value={form.city} onChange={(v) => set("city", v)} />
-                  <EditableText label="State" value={form.state} onChange={(v) => set("state", v)} />
-                  <EditableText label="Postal Code" value={form.postalCode} onChange={(v) => set("postalCode", v)} />
-                </div>
-                <EditableText label="Country" value={form.country} onChange={(v) => set("country", v)} placeholder="US" />
-              </div>
-            ) : (
-              <>
-                <FieldRow label="Address">
-                  {vendor.addressLine1 ? (
-                    <div>
-                      <div>{vendor.addressLine1}</div>
-                      {vendor.addressLine2 && <div>{vendor.addressLine2}</div>}
-                      {(vendor.city || vendor.state || vendor.postalCode) && (
-                        <div>{[vendor.city, vendor.state, vendor.postalCode].filter(Boolean).join(", ")}</div>
-                      )}
-                      {vendor.country && <div>{vendor.country}</div>}
-                    </div>
-                  ) : vendor.address ? (
-                    <span>{vendor.address}</span>
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )}
-                </FieldRow>
-              </>
-            )}
-          </Section>
-
           {/* Payment Terms */}
           <Section title="Payment Terms">
             {isEditing && form ? (
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <EditableText label="Terms Code" value={form.paymentTerms} onChange={(v) => set("paymentTerms", v)} placeholder="NET30" />
                 <div className="space-y-1">
                   <Label className="text-xs text-muted-foreground">Days</Label>
@@ -639,7 +524,6 @@ export function VendorDetail() {
                   />
                   {fieldErrors.termsDays && <p className="text-xs text-destructive mt-0.5">{fieldErrors.termsDays}</p>}
                 </div>
-                <EditableText label="Currency" value={form.currency} onChange={(v) => set("currency", v)} placeholder="USD" />
               </div>
             ) : (
               <>
@@ -692,44 +576,24 @@ export function VendorDetail() {
             )}
           </Section>
 
-          {/* Tax & Notes */}
-          <Section title="Tax & Notes">
-            <FieldRow label="Tax ID (EIN)">
-              {vendor.taxId ? (
-                <div className="flex items-center gap-2">
-                  <span>{showTaxId ? vendor.taxId : `••••${vendor.taxId.slice(-4)}`}</span>
-                  <button type="button" onClick={() => setShowTaxId((v) => !v)} className="text-muted-foreground hover:text-foreground">
-                    {showTaxId ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                  </button>
-                </div>
-              ) : (
-                <span className="text-muted-foreground">—</span>
-              )}
-            </FieldRow>
+          {/* Notes */}
+          <Section title="Notes">
             {isEditing && form ? (
-              <div className="mt-3 space-y-1">
-                <Label className="text-xs text-muted-foreground">Tax ID</Label>
-                <Input
-                  value={form.taxId}
-                  onChange={(e) => set("taxId", e.target.value)}
-                  placeholder="12-3456789"
-                  type="password"
-                  autoComplete="off"
-                />
-                <Label className="text-xs text-muted-foreground mt-2 block">Notes</Label>
-                <Textarea
-                  value={form.notes}
-                  onChange={(e) => set("notes", e.target.value)}
-                  placeholder="Internal notes…"
-                  rows={3}
-                />
-              </div>
+              <Textarea
+                value={form.notes}
+                onChange={(e) => set("notes", e.target.value)}
+                placeholder="Internal notes…"
+                rows={3}
+              />
             ) : (
-              <FieldRow label="Notes">
-                {vendor.notes ? <span className="text-sm">{vendor.notes}</span> : <span className="text-muted-foreground">—</span>}
-              </FieldRow>
+              <div className="text-sm">
+                {vendor.notes ? <span>{vendor.notes}</span> : <span className="text-muted-foreground">—</span>}
+              </div>
             )}
           </Section>
+
+          {/* Additional Details (collapsed, read-only) */}
+          <AdditionalDetails vendor={vendor} />
         </div>
 
         {/* Right panel */}

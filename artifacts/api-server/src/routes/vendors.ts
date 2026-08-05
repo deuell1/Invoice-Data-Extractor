@@ -7,7 +7,6 @@ import {
   vendorAuditLogTable,
   invoiceCaptureTable,
   importBatchTable,
-  poHeaderTable,
 } from "@workspace/db";
 import { toCsv } from "../lib/csv";
 import {
@@ -26,19 +25,7 @@ import {
   GetVendorActivityResponse,
   GetVendorAuditLogParams,
   GetVendorAuditLogResponse,
-  PreviewVendorCleanupBody,
-  PreviewVendorCleanupResponse,
-  CommitVendorCleanupBody,
-  CommitVendorCleanupResponse,
-  ListVendorCleanupsQueryParams,
-  ListVendorCleanupsResponse,
 } from "@workspace/api-zod";
-import { vendorCleanupLogTable } from "@workspace/db";
-import {
-  computeCleanupPlan,
-  commitCleanup,
-  FullResetBlockedError,
-} from "../services/vendorCleanupService";
 
 const router: IRouter = Router();
 
@@ -507,109 +494,6 @@ router.get("/vendors/profile-export", async (req, res): Promise<void> => {
   res.send(csv);
 });
 
-// ─── Vendor Cleanup (declared before /vendors/:id) ───────────────────────────
-
-// POST /vendors/cleanup/preview — read-only cleanup plan, never mutates data.
-router.post("/vendors/cleanup/preview", async (req, res): Promise<void> => {
-  const parsed = PreviewVendorCleanupBody.safeParse(req.body ?? {});
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
-  }
-  const plan = await computeCleanupPlan(parsed.data.importBatchId ?? null);
-  res.json(PreviewVendorCleanupResponse.parse(plan));
-});
-
-// POST /vendors/cleanup/commit — requires actor, reason, and explicit confirm.
-router.post("/vendors/cleanup/commit", async (req, res): Promise<void> => {
-  const parsed = CommitVendorCleanupBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
-  }
-
-  const { mode, actor, reason, confirm, importBatchId } = parsed.data;
-
-  // Controlled cleanup: never commit without an identified actor, a reason, and
-  // explicit confirmation. Absent confirmation, this is a no-op (preview-only).
-  if (!actor || actor.trim().length === 0) {
-    res.status(400).json({ error: "An identified actor is required to commit a cleanup." });
-    return;
-  }
-  if (!reason || reason.trim().length === 0) {
-    res.status(400).json({ error: "A cleanup reason is required to commit a cleanup." });
-    return;
-  }
-  if (confirm !== true) {
-    res.status(400).json({
-      error: "Explicit confirmation is required. No changes were made (preview only).",
-    });
-    return;
-  }
-
-  try {
-    const result = await commitCleanup({
-      mode,
-      actor: actor.trim(),
-      reason: reason.trim(),
-      importBatchId: importBatchId ?? null,
-    });
-    res.json(CommitVendorCleanupResponse.parse(result));
-  } catch (err) {
-    if (err instanceof FullResetBlockedError) {
-      res.status(409).json({ error: err.message });
-      return;
-    }
-    throw err;
-  }
-});
-
-// GET /vendors/cleanup/history — list past cleanup runs.
-router.get("/vendors/cleanup/history", async (req, res): Promise<void> => {
-  const parsed = ListVendorCleanupsQueryParams.safeParse(req.query);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
-  }
-  const page = parsed.data.page ?? 1;
-  const limit = parsed.data.limit ?? 20;
-  const offset = (page - 1) * limit;
-
-  const [rows, countRows] = await Promise.all([
-    db
-      .select()
-      .from(vendorCleanupLogTable)
-      .orderBy(sql`${vendorCleanupLogTable.createdAt} DESC`)
-      .limit(limit)
-      .offset(offset),
-    db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(vendorCleanupLogTable),
-  ]);
-
-  res.json(
-    ListVendorCleanupsResponse.parse({
-      data: rows.map((r) => ({
-        id: r.id,
-        cleanupId: r.cleanupId,
-        mode: r.mode,
-        actor: r.actor,
-        reason: r.reason,
-        vendorsReviewed: r.vendorsReviewed,
-        vendorsDeleted: r.vendorsDeleted,
-        vendorsDeactivated: r.vendorsDeactivated,
-        vendorsSkipped: r.vendorsSkipped,
-        details: r.details ?? [],
-        createdAt:
-          r.createdAt instanceof Date ? r.createdAt.toISOString() : String(r.createdAt),
-      })),
-      total: countRows[0]?.count ?? 0,
-      page,
-      limit,
-    }),
-  );
-});
-
 // ─── GET /vendors/:id ─────────────────────────────────────────────────────────
 
 router.get("/vendors/:id", async (req, res): Promise<void> => {
@@ -732,38 +616,24 @@ router.patch("/vendors/:id", async (req, res): Promise<void> => {
         return;
       }
 
-      const [[invRow], [poRow]] = await Promise.all([
-        db
-          .select({ count: sql<number>`count(*)::int` })
-          .from(invoiceCaptureTable)
-          .where(eq(invoiceCaptureTable.vendorId, params.data.id)),
-        db
-          .select({ count: sql<number>`count(*)::int` })
-          .from(poHeaderTable)
-          .where(eq(poHeaderTable.vendorCode, current.vendorCode)),
-      ]);
+      const [invRow] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(invoiceCaptureTable)
+        .where(eq(invoiceCaptureTable.vendorId, params.data.id));
 
       const invCount = invRow?.count ?? 0;
-      const poCount = poRow?.count ?? 0;
-      const totalRefs = invCount + poCount;
 
-      if (totalRefs > 0 && !parsed.data.adminOverride) {
+      if (invCount > 0 && !parsed.data.adminOverride) {
         res.status(409).json({
-          error: `Vendor code cannot be changed: referenced by ${invCount} invoice(s) and ${poCount} PO(s). Set adminOverride=true with a reason to proceed.`,
+          error: `Vendor code cannot be changed: referenced by ${invCount} invoice(s). Set adminOverride=true with a reason to proceed.`,
         });
         return;
       }
 
-      if (totalRefs > 0 && parsed.data.adminOverride) {
+      if (invCount > 0 && parsed.data.adminOverride) {
         if (!parsed.data.reason?.trim()) {
           res.status(400).json({ error: "reason is required when using adminOverride to change a referenced vendor code" });
           return;
-        }
-        if (poCount > 0) {
-          await db
-            .update(poHeaderTable)
-            .set({ vendorCode: newCode })
-            .where(eq(poHeaderTable.vendorCode, current.vendorCode));
         }
       }
     }
