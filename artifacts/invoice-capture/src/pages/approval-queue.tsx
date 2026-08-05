@@ -11,15 +11,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Download, CheckSquare, CheckCircle2, AlertTriangle } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Loader2, Download, CheckSquare, CheckCircle2, AlertTriangle, Lock } from "lucide-react";
 import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { StatusBadge } from "@/components/status-badge";
+import { useIsManager } from "@/hooks/use-role";
 
 export function ApprovalQueue() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const isManager = useIsManager();
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   
   const { data: invoicesRes, isLoading } = useListInvoices({ limit: 100 }); // Getting all to show pending and approved, normally we'd filter or tab this
@@ -88,22 +91,55 @@ export function ApprovalQueue() {
           </h1>
         </div>
         <div className="flex gap-3">
-          <Button 
-            variant="outline" 
-            onClick={handleExport}
-            data-testid="button-export-csv"
-          >
-            <Download className="mr-2 h-4 w-4" />
-            Export Approved to CSV
-          </Button>
-          <Button 
-            onClick={handleBulkApprove}
-            disabled={selectedIds.length === 0 || bulkApprove.isPending}
-            data-testid="button-bulk-approve"
-          >
-            {bulkApprove.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-            Approve Selected ({selectedIds.length})
-          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button 
+                    variant="outline" 
+                    onClick={handleExport}
+                    disabled={!isManager}
+                    data-testid="button-export-csv"
+                  >
+                    {isManager ? (
+                      <Download className="mr-2 h-4 w-4" />
+                    ) : (
+                      <Lock className="mr-2 h-4 w-4" />
+                    )}
+                    Export Approved to CSV
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              {!isManager && (
+                <TooltipContent>AP Manager role required to export</TooltipContent>
+              )}
+            </Tooltip>
+          </TooltipProvider>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button 
+                    onClick={handleBulkApprove}
+                    disabled={selectedIds.length === 0 || bulkApprove.isPending || !isManager}
+                    data-testid="button-bulk-approve"
+                  >
+                    {bulkApprove.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : !isManager ? (
+                      <Lock className="mr-2 h-4 w-4" />
+                    ) : (
+                      <CheckCircle2 className="mr-2 h-4 w-4" />
+                    )}
+                    Approve Selected ({selectedIds.length})
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              {!isManager && (
+                <TooltipContent>AP Manager role required to approve invoices</TooltipContent>
+              )}
+            </Tooltip>
+          </TooltipProvider>
         </div>
       </div>
 
@@ -163,9 +199,26 @@ export function ApprovalQueue() {
                         {invoice.totalAmount != null ? new Intl.NumberFormat("en-US", { style: "currency", currency: invoice.currency || "USD" }).format(invoice.totalAmount) : "—"}
                       </TableCell>
                       <TableCell className="text-right">
-                        <Button size="sm" onClick={() => handleApprove(invoice.id)} data-testid={`button-approve-${invoice.id}`}>
-                          Approve
-                        </Button>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span>
+                                <Button
+                                  size="sm"
+                                  onClick={() => handleApprove(invoice.id)}
+                                  disabled={!isManager}
+                                  data-testid={`button-approve-${invoice.id}`}
+                                >
+                                  {isManager ? null : <Lock className="mr-1 h-3 w-3" />}
+                                  Approve
+                                </Button>
+                              </span>
+                            </TooltipTrigger>
+                            {!isManager && (
+                              <TooltipContent>AP Manager role required</TooltipContent>
+                            )}
+                          </Tooltip>
+                        </TooltipProvider>
                       </TableCell>
                     </TableRow>
                   ))

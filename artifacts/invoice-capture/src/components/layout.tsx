@@ -17,9 +17,13 @@ import {
   FilePlus,
   LogOut,
   User,
+  ShieldCheck,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { useRole } from "@/hooks/use-role";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -30,6 +34,7 @@ export function Layout({ children }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const { user } = useUser();
   const { signOut } = useClerk();
+  const role = useRole();
 
   const navigation = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -118,9 +123,27 @@ export function Layout({ children }: LayoutProps) {
                   <User className="h-3.5 w-3.5 text-sidebar-foreground" />
                 </div>
               )}
-              <span className={cn("text-xs text-sidebar-foreground/80 truncate flex-1", !sidebarOpen && "hidden")}>
-                {displayName}
-              </span>
+              <div className={cn("flex flex-col min-w-0 flex-1", !sidebarOpen && "hidden")}>
+                <span className="text-xs text-sidebar-foreground/80 truncate">
+                  {displayName}
+                </span>
+                <div className="flex items-center gap-1 mt-0.5">
+                  {role === "AP_MANAGER" ? (
+                    <ShieldCheck className="h-3 w-3 text-emerald-500 shrink-0" />
+                  ) : (
+                    <Shield className="h-3 w-3 text-blue-400 shrink-0" />
+                  )}
+                  <span
+                    className={cn(
+                      "text-[10px] font-medium",
+                      role === "AP_MANAGER" ? "text-emerald-500" : "text-blue-400"
+                    )}
+                    data-testid="user-role-label"
+                  >
+                    {role === "AP_MANAGER" ? "AP Manager" : "AP Clerk"}
+                  </span>
+                </div>
+              </div>
             </div>
           )}
           <Button

@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { requireRole } from "../middlewares/requireAuth";
 import { applyVendorMatch, findBestVendorMatch } from "../services/vendorMatcher";
 import { triggerExtraction } from "../services/extractionService";
 import { validateInvoice, VENDOR_HARD_BLOCK_REASONS } from "../services/validationService";
@@ -621,7 +622,7 @@ router.get("/invoices/stats", async (_req, res): Promise<void> => {
 });
 
 // ─── GET /invoices/export ────────────────────────────────────────────────────
-router.get("/invoices/export", async (req, res): Promise<void> => {
+router.get("/invoices/export", requireRole("AP_MANAGER"), async (req, res): Promise<void> => {
   const parsed = ExportInvoicesCsvQueryParams.safeParse(req.query);
   const status = parsed.success ? (parsed.data.status ?? "APPROVED") : "APPROVED";
 
@@ -1098,7 +1099,7 @@ router.delete("/invoices/:id", async (req, res): Promise<void> => {
 });
 
 // ─── PATCH /invoices/:id/voucher ─────────────────────────────────────────────
-router.patch("/invoices/:id/voucher", async (req, res): Promise<void> => {
+router.patch("/invoices/:id/voucher", requireRole("AP_MANAGER"), async (req, res): Promise<void> => {
   const params = SetVoucherIdParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -1155,7 +1156,7 @@ router.patch("/invoices/:id/voucher", async (req, res): Promise<void> => {
 });
 
 // ─── POST /invoices/:id/approve ──────────────────────────────────────────────
-router.post("/invoices/:id/approve", async (req, res): Promise<void> => {
+router.post("/invoices/:id/approve", requireRole("AP_MANAGER"), async (req, res): Promise<void> => {
   const params = ApproveInvoiceParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -1338,7 +1339,7 @@ router.post("/invoices/:id/submit", async (req, res): Promise<void> => {
 });
 
 // ─── POST /invoices/bulk-approve ─────────────────────────────────────────────
-router.post("/invoices/bulk-approve", async (req, res): Promise<void> => {
+router.post("/invoices/bulk-approve", requireRole("AP_MANAGER"), async (req, res): Promise<void> => {
   const parsed = BulkApproveInvoicesBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });

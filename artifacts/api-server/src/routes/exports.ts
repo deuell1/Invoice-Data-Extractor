@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { requireRole } from "../middlewares/requireAuth";
 import { eq, desc, sql } from "drizzle-orm";
 import { db, exportBatchTable } from "@workspace/db";
 import {
@@ -40,7 +41,7 @@ function serializeBatch(row: typeof exportBatchTable.$inferSelect) {
 }
 
 // ─── POST /exports ───────────────────────────────────────────────────────────
-router.post("/exports", async (req, res): Promise<void> => {
+router.post("/exports", requireRole("AP_MANAGER"), async (req, res): Promise<void> => {
   const parsed = CreateExportBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });

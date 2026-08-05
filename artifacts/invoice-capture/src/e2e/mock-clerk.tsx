@@ -23,6 +23,8 @@ const MOCK_USER = {
   firstName: "Smoke",
   lastName: "Test",
   primaryEmailAddress: { emailAddress: "smoke@test.e2e" },
+  // Grant AP_MANAGER so smoke tests can exercise approve/export routes.
+  publicMetadata: { role: "AP_MANAGER" },
 };
 
 // ─── ClerkProvider ────────────────────────────────────────────────────────────

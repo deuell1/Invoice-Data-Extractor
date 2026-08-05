@@ -7,6 +7,7 @@ import {
   getDownloadExportUrl,
   type ExportBatch,
 } from "@workspace/api-client-react";
+import { useIsManager } from "@/hooks/use-role";
 import { ExportRequestExportType, ExportRequestFormat } from "@workspace/api-client-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -18,7 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
-import { Loader2, Download, FileDown, Inbox, CheckCircle2 } from "lucide-react";
+import { Loader2, Download, FileDown, Inbox, CheckCircle2, Lock } from "lucide-react";
 import { format } from "date-fns";
 
 type ExportType = (typeof ExportRequestExportType)[keyof typeof ExportRequestExportType];
@@ -64,6 +65,7 @@ function ExportStatusBadge({ status }: { status: string }) {
 export function ExportsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const isManager = useIsManager();
 
   const [exportType, setExportType] = useState<ExportType>(ExportRequestExportType.APPROVED);
   const [statusFilter, setStatusFilter] = useState<string>("ANY");
@@ -255,11 +257,28 @@ export function ExportsPage() {
             </div>
           </div>
 
-          <div>
-            <Button onClick={handleCreate} disabled={createExport.isPending} data-testid="button-create-export">
-              {createExport.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={handleCreate}
+              disabled={createExport.isPending || !isManager}
+              data-testid="button-create-export"
+              title={!isManager ? "AP Manager role required to create exports" : undefined}
+            >
+              {createExport.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : !isManager ? (
+                <Lock className="mr-2 h-4 w-4" />
+              ) : (
+                <Download className="mr-2 h-4 w-4" />
+              )}
               Generate Export
             </Button>
+            {!isManager && (
+              <span className="text-xs text-muted-foreground flex items-center gap-1">
+                <Lock className="h-3 w-3" />
+                AP Manager role required
+              </span>
+            )}
           </div>
         </CardContent>
       </Card>

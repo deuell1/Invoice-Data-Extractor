@@ -18,3 +18,4 @@
 - [Orval mutation hook call pattern](orval-mutation-pattern.md) — orval-generated mutation hooks (useMutation) expect {data: T} wrapper, not T directly; useQuery hooks need explicit queryKey when passing enabled option.
 - [Vendor cleanup utility](vendor-cleanup-utility.md) — imported-vendor cleanup: 3 commit modes, referenced vendors deactivate-never-delete, FULL_RESET blocked if any referenced; preview→confirm flow.
 - [Clerk auth setup](clerk-auth-setup.md) — server middleware, client ClerkProvider, actor pre-fill hook, smoke-test API key bypass, Tailwind v4 layer ordering rules.
+- [Role-based access control](rbac.md) — AP_MANAGER vs AP_CLERK enforced via requireRole() middleware; role from Clerk publicMetadata; smoke-test bypass defaults to AP_MANAGER; frontend useRole()/useIsManager() hooks read publicMetadata.

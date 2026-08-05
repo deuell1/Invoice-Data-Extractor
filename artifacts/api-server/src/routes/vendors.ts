@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { Router, type IRouter } from "express";
+import { requireRole } from "../middlewares/requireAuth";
 import { eq, ilike, sql, and, asc, desc, isNull, or, gte, ne } from "drizzle-orm";
 import {
   db,
@@ -893,7 +894,7 @@ router.get("/vendors/:id/activity", async (req, res): Promise<void> => {
 // invoice still references this vendor (clean up invoices first).  Requires
 // { confirm: true } in the request body as an explicit safety gate.
 
-router.delete("/vendors/:id", async (req, res): Promise<void> => {
+router.delete("/vendors/:id", requireRole("AP_MANAGER"), async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!Number.isFinite(id) || id <= 0) {
     res.status(400).json({ error: "Invalid vendor id" });
