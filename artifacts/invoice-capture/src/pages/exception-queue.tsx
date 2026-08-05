@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useActorName } from "@/hooks/use-actor";
 import { Link } from "wouter";
 import {
   useListInvoices,
@@ -232,7 +233,13 @@ function AssignOwnerModal({
   const queryClient = useQueryClient();
   const assignException = useAssignException();
   const [owner, setOwner] = useState(invoice.exceptionOwner ?? "");
-  const [actor, setActor] = useState("");
+  const actorName = useActorName();
+  const [actor, setActor] = useState(actorName);
+
+  // Pre-fill actor when Clerk user loads (may be empty on first render)
+  useEffect(() => {
+    if (actorName && !actor) setActor(actorName);
+  }, [actorName]);
 
   const handleAssign = async () => {
     if (!owner.trim()) return;

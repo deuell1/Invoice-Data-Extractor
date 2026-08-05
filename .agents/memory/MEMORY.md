@@ -17,3 +17,4 @@
 - [Drizzle aggregate SQL + enum columns](drizzle-aggregate-enum.md) — PG enum columns need ::text cast in raw sql templates for string comparisons; aggregate sql templates must use Number() on results; use sum(case when) not count(*) filter(where)::int.
 - [Orval mutation hook call pattern](orval-mutation-pattern.md) — orval-generated mutation hooks (useMutation) expect {data: T} wrapper, not T directly; useQuery hooks need explicit queryKey when passing enabled option.
 - [Vendor cleanup utility](vendor-cleanup-utility.md) — imported-vendor cleanup: 3 commit modes, referenced vendors deactivate-never-delete, FULL_RESET blocked if any referenced; preview→confirm flow.
+- [Clerk auth setup](clerk-auth-setup.md) — server middleware, client ClerkProvider, actor pre-fill hook, smoke-test API key bypass, Tailwind v4 layer ordering rules.

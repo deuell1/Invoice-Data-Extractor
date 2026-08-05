@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useActorName } from "@/hooks/use-actor";
 import { Link } from "wouter";
 import {
   useListVendors,
@@ -60,6 +61,7 @@ export function VendorAdmin() {
 
   const createVendor = useCreateVendor();
   const importVendors = useImportVendors();
+  const actorName = useActorName();
 
   // ── Add Vendor dialog ──────────────────────────────────────────────────────
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -69,6 +71,13 @@ export function VendorAdmin() {
     paymentTerms: "", termsDays: "", currency: "",
     vendorCategory: "", vendorType: "", notes: "", actor: "",
   });
+
+  // Pre-fill actor from authenticated identity when Clerk user loads
+  useEffect(() => {
+    if (actorName) {
+      setNewVendor((v) => (v.actor ? v : { ...v, actor: actorName }));
+    }
+  }, [actorName]);
   const [addError, setAddError] = useState<string | null>(null);
 
   const handleAdd = async () => {
@@ -111,7 +120,7 @@ export function VendorAdmin() {
         vendorCode: "", vendorName: "", legalName: "", dba: "",
         taxId: "", apEmail: "", contactEmail: "",
         paymentTerms: "", termsDays: "", currency: "",
-        vendorCategory: "", vendorType: "", notes: "", actor: "",
+        vendorCategory: "", vendorType: "", notes: "", actor: actorName,
       });
       queryClient.invalidateQueries({ queryKey: getListVendorsQueryKey() });
     } catch (e) {

@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { requireAuth } from "../middlewares/requireAuth";
 import healthRouter from "./health";
 import invoicesRouter from "./invoices";
 import vendorsRouter from "./vendors";
@@ -13,7 +14,11 @@ import settingsRouter from "./settings";
 
 const router: IRouter = Router();
 
+// Health check is public — all other routes require a valid Clerk session
 router.use(healthRouter);
+
+router.use(requireAuth);
+
 router.use(invoicesRouter);
 router.use(vendorsRouter);
 router.use(storageRouter);

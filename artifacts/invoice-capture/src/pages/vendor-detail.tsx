@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useActorName } from "@/hooks/use-actor";
 import { useParams, Link } from "wouter";
 import {
   useGetVendor,
@@ -195,6 +196,7 @@ export function VendorDetail() {
   });
 
   const updateVendor = useUpdateVendor();
+  const actorName = useActorName();
 
   const [isEditing, setIsEditing] = useState(false);
   const [form, setForm] = useState<EditForm | null>(null);
@@ -204,7 +206,8 @@ export function VendorDetail() {
 
   const openEdit = () => {
     if (!vendor) return;
-    setForm(buildEditForm(vendor));
+    const base = buildEditForm(vendor);
+    setForm({ ...base, actor: actorName });
     setAliasDraft("");
     setSaveError(null);
     setFieldErrors({});

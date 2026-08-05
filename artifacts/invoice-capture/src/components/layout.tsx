@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
+import { useUser, useClerk } from "@clerk/react";
 import { 
   FileText, 
   AlertCircle, 
@@ -14,6 +15,8 @@ import {
   History,
   Settings,
   FilePlus,
+  LogOut,
+  User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -25,6 +28,8 @@ interface LayoutProps {
 export function Layout({ children }: LayoutProps) {
   const [location] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const { user } = useUser();
+  const { signOut } = useClerk();
 
   const navigation = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -39,6 +44,14 @@ export function Layout({ children }: LayoutProps) {
     { name: "Audit", href: "/audit", icon: History },
     { name: "Settings", href: "/settings", icon: Settings },
   ];
+
+  const displayName = user
+    ? [user.firstName, user.lastName].filter(Boolean).join(" ") ||
+      user.primaryEmailAddress?.emailAddress ||
+      "User"
+    : null;
+
+  const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
   return (
     <div className="flex h-screen bg-gray-50/50 dark:bg-gray-900/50 overflow-hidden">
@@ -90,10 +103,39 @@ export function Layout({ children }: LayoutProps) {
           </nav>
         </div>
         
-        <div className="p-4 border-t border-sidebar-border shrink-0">
-          <div className={cn("text-xs text-sidebar-foreground/60 truncate", !sidebarOpen && "hidden")}>
-            AP System MVP
-          </div>
+        {/* User identity + sign out */}
+        <div className="p-3 border-t border-sidebar-border shrink-0 space-y-2">
+          {user && (
+            <div className={cn("flex items-center gap-2 px-1", !sidebarOpen && "justify-center")}>
+              {user.imageUrl ? (
+                <img
+                  src={user.imageUrl}
+                  alt={displayName ?? "User"}
+                  className="h-7 w-7 rounded-full shrink-0 object-cover ring-1 ring-sidebar-border"
+                />
+              ) : (
+                <div className="h-7 w-7 rounded-full bg-sidebar-accent flex items-center justify-center shrink-0">
+                  <User className="h-3.5 w-3.5 text-sidebar-foreground" />
+                </div>
+              )}
+              <span className={cn("text-xs text-sidebar-foreground/80 truncate flex-1", !sidebarOpen && "hidden")}>
+                {displayName}
+              </span>
+            </div>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn(
+              "w-full text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+              !sidebarOpen && "px-0 justify-center"
+            )}
+            onClick={() => signOut({ redirectUrl: basePath || "/" })}
+            data-testid="button-sign-out"
+          >
+            <LogOut className="h-4 w-4 shrink-0" />
+            <span className={cn("ml-2", !sidebarOpen && "hidden")}>Sign out</span>
+          </Button>
         </div>
       </div>
 

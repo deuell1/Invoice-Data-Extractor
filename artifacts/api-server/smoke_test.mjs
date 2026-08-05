@@ -45,8 +45,13 @@ function warn(message) {
   console.warn(`  ⚠ ${message}`);
 }
 
+// Smoke-test API key — must match SMOKE_TEST_API_KEY on the server
+const SMOKE_API_KEY = process.env.SMOKE_TEST_API_KEY ?? "";
+
 async function api(method, path, body) {
-  const opts = { method, headers: { "Content-Type": "application/json" } };
+  const headers = { "Content-Type": "application/json" };
+  if (SMOKE_API_KEY) headers["Authorization"] = `Bearer ${SMOKE_API_KEY}`;
+  const opts = { method, headers };
   if (body !== undefined) opts.body = JSON.stringify(body);
   const res = await fetch(`${BASE}${path}`, opts);
   const text = await res.text();
@@ -243,7 +248,8 @@ let pipelineVoucherId;
   assert(xbJ.recordCount >= 1, `export contains at least one record (got ${xbJ.recordCount})`);
 
   // Download and verify CSV content.
-  const dlRes = await fetch(`${BASE}/exports/${xbJ.id}/download`);
+  const smokeHeaders = SMOKE_API_KEY ? { Authorization: `Bearer ${SMOKE_API_KEY}` } : {};
+  const dlRes = await fetch(`${BASE}/exports/${xbJ.id}/download`, { headers: smokeHeaders });
   assert(dlRes.status === 200, `GET /exports/:id/download returns 200 (got ${dlRes.status})`);
   const contentType = dlRes.headers.get("content-type") ?? "";
   assert(contentType.includes("csv"), `Content-Type is CSV (got "${contentType}")`);
@@ -253,7 +259,7 @@ let pipelineVoucherId;
   console.log(`  → CSV length=${csv.length} bytes, recordCount=${xbJ.recordCount}`);
 
   // Also verify the quick inline export endpoint.
-  const inlineRes = await fetch(`${BASE}/invoices/export?status=POSTED`);
+  const inlineRes = await fetch(`${BASE}/invoices/export?status=POSTED`, { headers: smokeHeaders });
   assert(inlineRes.status === 200, `GET /invoices/export?status=POSTED returns 200`);
   const inlineCsv = await inlineRes.text();
   assert(inlineCsv.includes(pipelineInvoiceNumber), `Inline CSV export contains the invoice number`);
