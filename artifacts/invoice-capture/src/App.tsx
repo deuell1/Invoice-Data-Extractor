@@ -3,13 +3,39 @@ import { ClerkProvider, SignIn, SignUp, Show, useClerk } from "@clerk/react";
 import { publishableKeyFromHost } from "@clerk/react/internal";
 import { shadcn } from "@clerk/themes";
 import { Switch, Route, useLocation, Router as WouterRouter, Redirect } from "wouter";
-import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQueryClient, QueryCache, MutationCache } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppRouter } from "@/components/app-router";
 import { HomePage } from "@/pages/home";
+import { useToast } from "@/hooks/use-toast";
+import { ApiError } from "@workspace/api-client-react";
 
-const queryClient = new QueryClient();
+// Module-level 401 handler — registered by SessionExpiredGuard once it mounts.
+// Using a module-level ref avoids passing the callback through the QueryClient
+// constructor (which runs outside the React tree).
+let _on401: (() => void) | null = null;
+
+function fireOn401() {
+  _on401?.();
+}
+
+const queryClient = new QueryClient({
+  queryCache: new QueryCache({
+    onError(error) {
+      if (error instanceof ApiError && error.status === 401) {
+        fireOn401();
+      }
+    },
+  }),
+  mutationCache: new MutationCache({
+    onError(error) {
+      if (error instanceof ApiError && error.status === 401) {
+        fireOn401();
+      }
+    },
+  }),
+});
 
 // REQUIRED — resolves key from window.location.hostname for multi-domain support.
 const clerkPubKey = publishableKeyFromHost(
@@ -107,6 +133,29 @@ function SignUpPage() {
   );
 }
 
+// Listens for 401 errors from any query/mutation and signs the user out with a toast.
+function SessionExpiredGuard() {
+  const { signOut } = useClerk();
+  const { toast } = useToast();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    _on401 = () => {
+      toast({
+        title: "Session expired",
+        description: "Your session has expired. Please sign in again.",
+        variant: "destructive",
+      });
+      signOut().then(() => setLocation("/sign-in"));
+    };
+    return () => {
+      _on401 = null;
+    };
+  }, [signOut, toast, setLocation]);
+
+  return null;
+}
+
 // Invalidates the query cache when the signed-in user changes.
 function ClerkQueryClientCacheInvalidator() {
   const { addListener } = useClerk();
@@ -185,6 +234,7 @@ function ClerkProviderWithRoutes() {
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <ClerkQueryClientCacheInvalidator />
+          <SessionExpiredGuard />
           <Switch>
             <Route path="/" component={HomeRoute} />
             <Route path="/sign-in/*?" component={SignInPage} />
