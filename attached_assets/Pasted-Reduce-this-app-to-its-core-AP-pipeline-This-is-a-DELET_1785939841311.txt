@@ -1,0 +1,52 @@
+Reduce this app to its core AP pipeline. This is a DELETION-ONLY pass: remove secondary features, fix what breaks as a result, and change nothing else. Do not add features, do not refactor working code, do not touch the extraction, validation, tie-out, duplicate-detection, approval/posting, or CSV-export logic in any way beyond deleting references to removed features.
+
+What the app must still do when you finish
+
+Upload document → extract → vendor match → validate/tie-out → review/exception → approve → assign voucher → post → CSV export. Vendor admin and vendor CSV import stay. Audit log stays. Everything else goes.
+
+1. Delete these client pages and all their routes/nav links
+
+In artifacts/invoice-capture/src/pages/:
+
+phase3.tsx — future-ERP marketing page, no function
+advanced-search.tsx
+vendor-analytics.tsx
+vendor-cleanup.tsx
+accuracy.tsx
+exception-management.tsx — the app has two exception pages; keep exception-queue.tsx as the only one. Before deleting, check whether exception-management.tsx contains any capability exception-queue.tsx lacks (e.g. bulk resolve, owner assignment). If it does, move that one capability into exception-queue.tsx first, then delete.
+
+Remove every router entry, sidebar/nav link, dashboard tile, and import that referenced these pages. The nav should end up with roughly: Dashboard, Intake, Invoices, Extraction Review, Exceptions, Approvals, Source Documents, Vendors, Imports, Exports, Audit, Settings.
+
+Keep: dashboard.tsx, invoice-intake.tsx, invoice-list.tsx, extraction-review.tsx, exception-queue.tsx, approval-queue.tsx, source-documents.tsx, source-batch.tsx, vendor-admin.tsx, vendor-detail.tsx, imports.tsx, exports.tsx, audit-viewer.tsx, settings.tsx, not-found.tsx.
+
+2. Remove the vendor-cleanup feature end to end
+Delete artifacts/api-server/src/services/vendorCleanupService.ts
+Remove its routes from artifacts/api-server/src/routes/vendors.ts (or wherever they mount)
+Delete the vendor_cleanup schema file lib/db/src/schema/vendor_cleanup.ts and its export from lib/db/src/schema/index.ts
+Keep vendor_audit.ts — the audit trail on vendor edits stays.
+Remove cleanup-related paths from the OpenAPI spec in lib/api-spec, then regenerate codegen (see step 6) so the generated vendorCleanup* types disappear rather than being hand-deleted.
+3. Remove PO matching until a PO feed exists
+Delete lib/db/src/schema/po_header.ts and its export from the schema index
+Remove all poHeader references. Known call sites: artifacts/api-server/src/services/importService.ts (the PO import type — remove PO as an import option, keep vendor import), artifacts/api-server/src/services/vendorCleanupService.ts (being deleted anyway), artifacts/api-server/src/routes/vendors.ts
+Remove the PO import option from imports.tsx and from the import validation schemas
+If any validation rule in validationService.ts references PO lookup, remove only that rule; touch nothing else in the file. poNumber stays as a plain text field on the invoice — we still capture it from extraction, we just don't match against anything.
+4. Accuracy feature: keep the backend, drop the UI
+
+The extraction-accuracy harness (uat/extraction-accuracy/) and the accuracy_run table/routes stay — they're needed to close the "accuracy unmeasured" exit condition and will be driven from the CLI. Only the accuracy.tsx page and its nav entry are deleted (step 1). Do not delete lib/db/src/schema/accuracy_run.ts or artifacts/api-server/src/routes/accuracy.ts.
+
+5. Simplify the vendor edit UI (do NOT drop DB columns)
+
+Leave the vendor_id table schema exactly as it is — no migration. In vendor-admin.tsx / vendor-detail.tsx, reduce the editable form to the operational fields only: vendorCode, vendorName, aliases, paymentTerms, termsDays, onHold, holdReason, isActive, notes. Move the remaining columns (addresses, tax id, emails, phone, website, category, type, legal name, dba) into a collapsed "Additional details" section that is read-only in the UI. They remain importable via CSV.
+
+6. Regenerate and verify
+Update the OpenAPI spec in lib/api-spec to remove deleted endpoints, then run pnpm --filter @workspace/api-spec run codegen so lib/api-zod and lib/api-client-react regenerate cleanly. Never hand-edit generated files.
+Run pnpm run typecheck and pnpm run build. Both must pass with zero errors.
+Grep the whole repo for vendorCleanup, poHeader, phase3, advanced-search, vendor-analytics and confirm zero remaining references outside git history.
+Start the server and click through every remaining nav item; no broken links, no 404s from removed routes, no console errors.
+7. Repo hygiene
+Delete the attached_assets/ directory — 16 pasted prompt files, development exhaust, not source.
+Fill in replit.md properly: it is still the unfilled template. One sentence on what the app does, the repo map, and the architecture decisions section listing at least: extraction never assigns vendorId directly; tie-out thresholds (±$0.01 pass / ±$0.05 warn / fail blocks); posted invoices are immutable; CSV export is the current terminus by design.
+Do not modify anything in uat/.
+8. Report back
+
+When done, list: every file deleted, every file modified with one line on why, the typecheck/build output, and anything you found referencing a deleted feature that you were unsure about and left in place. If a deletion would force a change to extraction, validation, tie-out, approval, or export logic beyond removing an import, STOP and report instead of making the change.
