@@ -875,6 +875,8 @@ export interface ExceptionNoteInput {
 export interface ExceptionAssignInput {
   /** @minLength 1 */
   owner: string;
+  /** Clerk user ID of the assignee; stored for server-side scope enforcement */
+  ownerClerkId?: string;
   /** @nullable */
   actor?: string | null;
 }
@@ -1217,6 +1219,10 @@ confidenceMin?: number | null;
  * @nullable
  */
 confidenceMax?: number | null;
+/**
+ * Filter PENDING_APPROVAL invoices by the Clerk user ID of who submitted them (managers only; clerks are auto-scoped server-side)
+ */
+assignedTo?: string;
 sortBy?: ListInvoicesSortBy;
 sortDir?: ListInvoicesSortDir;
 page?: number;
@@ -1437,6 +1443,10 @@ owner?: string;
  * @nullable
  */
 reviewed?: boolean | null;
+/**
+ * Filter by Clerk user ID assigned as exception owner; unassigned items always included (managers only; clerks are auto-scoped server-side)
+ */
+assignedTo?: string;
 sortBy?: ListExceptionsSortBy;
 sortDir?: ListExceptionsSortDir;
 page?: number;

@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, asc, desc, eq, ilike, isNull, isNotNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, ilike, isNull, isNotNull, or, sql } from "drizzle-orm";
 import { db, invoiceCaptureTable, vendorIdTable, exceptionEventTable } from "@workspace/db";
 import {
   ListExceptionsQueryParams,
@@ -36,8 +36,22 @@ router.get("/exceptions", async (req, res): Promise<void> => {
     res.status(400).json({ error: parsed.error.message });
     return;
   }
-  const { reason, owner, reviewed, sortBy, sortDir, page, limit } = parsed.data;
+  const { reason, owner, reviewed, assignedTo, sortBy, sortDir, page, limit } = parsed.data;
   const offset = ((page ?? 1) - 1) * (limit ?? 20);
+
+  // ── Server-side scope enforcement ────────────────────────────────────────────
+  // AP_CLERKs are always scoped to their own work regardless of query params —
+  // they cannot widen the scope by omitting or overriding assignedTo.
+  // AP_MANAGERs honor the caller-supplied assignedTo (for "My work" toggle) or
+  // see all exceptions when no filter is provided.
+  const userRole = (req as any).clerkUserRole as string | undefined;
+  const clerkUserId = (req as any).clerkUserId as string | undefined;
+
+  // Derive the effective scope identifier:
+  //  - AP_CLERK: always use their own Clerk user ID (override any caller param)
+  //  - AP_MANAGER: use caller-supplied assignedTo if present, otherwise no filter
+  const effectiveAssignedTo: string | undefined =
+    userRole === "AP_CLERK" ? clerkUserId : assignedTo;
 
   const conditions = [eq(invoiceCaptureTable.status, "EXCEPTION")];
   if (reason) {
@@ -45,6 +59,24 @@ router.get("/exceptions", async (req, res): Promise<void> => {
   }
   if (owner) {
     conditions.push(eq(invoiceCaptureTable.exceptionOwner, owner));
+  }
+  // Scope filter: show invoices assigned to the effective assignee (by Clerk ID) OR
+  // truly unassigned (BOTH exceptionOwner AND exceptionOwnerClerkId are null).
+  //
+  // Items where exceptionOwner is set but exceptionOwnerClerkId is null are considered
+  // "assigned by display name" (e.g. manager typed a name but didn't supply Clerk ID).
+  // These are treated as assigned-to-someone — not unassigned — so they are NOT visible
+  // to other clerks, preventing cross-clerk data leakage from display-name-only assignments.
+  if (effectiveAssignedTo) {
+    conditions.push(
+      or(
+        eq(invoiceCaptureTable.exceptionOwnerClerkId, effectiveAssignedTo),
+        and(
+          isNull(invoiceCaptureTable.exceptionOwner),
+          isNull(invoiceCaptureTable.exceptionOwnerClerkId),
+        ),
+      )!,
+    );
   }
   if (reviewed != null) {
     conditions.push(
@@ -170,7 +202,11 @@ router.post("/invoices/:id/exception/assign", async (req, res): Promise<void> =>
 
   await db
     .update(invoiceCaptureTable)
-    .set({ exceptionOwner: parsed.data.owner })
+    .set({
+      exceptionOwner: parsed.data.owner,
+      // Store the assignee's Clerk user ID for server-side scope enforcement.
+      exceptionOwnerClerkId: parsed.data.ownerClerkId ?? null,
+    })
     .where(eq(invoiceCaptureTable.id, params.data.id));
 
   await appendExceptionEvent({

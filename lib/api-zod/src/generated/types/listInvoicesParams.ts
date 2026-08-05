@@ -62,6 +62,10 @@ confidenceMin?: number | null;
  * @nullable
  */
 confidenceMax?: number | null;
+/**
+ * Filter PENDING_APPROVAL invoices by the Clerk user ID of who submitted them
+ */
+assignedTo?: string;
 sortBy?: ListInvoicesSortBy;
 sortDir?: ListInvoicesSortDir;
 page?: number;

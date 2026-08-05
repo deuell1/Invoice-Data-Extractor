@@ -57,6 +57,7 @@ export async function getFullInvoiceById(id: number) {
       exportFileName: invoiceCaptureTable.exportFileName,
       exportFormat: invoiceCaptureTable.exportFormat,
       exceptionOwner: invoiceCaptureTable.exceptionOwner,
+      exceptionOwnerClerkId: invoiceCaptureTable.exceptionOwnerClerkId,
       exceptionReviewedAt: invoiceCaptureTable.exceptionReviewedAt,
       exceptionReviewedBy: invoiceCaptureTable.exceptionReviewedBy,
       vendorMatchScore: invoiceCaptureTable.vendorMatchScore,

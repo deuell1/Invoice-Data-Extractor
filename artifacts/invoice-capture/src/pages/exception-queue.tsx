@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
+import { useUser } from "@clerk/react";
 import { useActorName } from "@/hooks/use-actor";
+import { useIsManager } from "@/hooks/use-role";
 import { Link } from "wouter";
 import {
-  useListInvoices,
-  getListInvoicesQueryKey,
+  useListExceptions,
+  getListExceptionsQueryKey,
   useUpdateInvoiceStatus,
   useUpdateInvoice,
   useAssignException,
@@ -19,7 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { InvoiceCleanupActions } from "@/components/cleanup-actions";
-import { Loader2, AlertTriangle, ArrowRight, RotateCcw, ChevronDown, ChevronRight, Pencil, AlertCircle, UserRound } from "lucide-react";
+import { Loader2, AlertTriangle, ArrowRight, RotateCcw, ChevronDown, ChevronRight, Pencil, AlertCircle, UserRound, Users } from "lucide-react";
 import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -116,7 +118,7 @@ function EditFieldsModal({
 
       await updateInvoice.mutateAsync({ id: invoice.id, data: payload });
       toast({ title: "Saved", description: "Invoice fields updated" });
-      queryClient.invalidateQueries({ queryKey: getListInvoicesQueryKey({ status: "EXCEPTION" }) });
+      queryClient.invalidateQueries({ queryKey: getListExceptionsQueryKey() });
       queryClient.invalidateQueries({ queryKey: getGetInvoiceAuditLogQueryKey(invoice.id) });
       onClose();
     } catch (e: any) {
@@ -234,20 +236,42 @@ function AssignOwnerModal({
   const assignException = useAssignException();
   const [owner, setOwner] = useState(invoice.exceptionOwner ?? "");
   const actorName = useActorName();
+  const { user } = useUser();
+  // ownerClerkId is auto-filled when assigning to self; manager can override for cross-user.
+  const [ownerClerkId, setOwnerClerkId] = useState<string>("");
   const [actor, setActor] = useState(actorName);
 
-  // Pre-fill actor when Clerk user loads (may be empty on first render)
+  // Pre-fill actor and ownerClerkId when Clerk user loads
   useEffect(() => {
     if (actorName && !actor) setActor(actorName);
   }, [actorName]);
+
+  // Auto-fill ownerClerkId when owner matches the current user's name (self-assign)
+  useEffect(() => {
+    if (user?.id && owner.trim() === actorName) {
+      setOwnerClerkId(user.id);
+    } else if (owner.trim() !== actorName) {
+      // Clear auto-fill when owner changes away from self
+      setOwnerClerkId((prev) => (prev === user?.id ? "" : prev));
+    }
+  }, [owner, actorName, user?.id]);
 
   const handleAssign = async () => {
     if (!owner.trim()) return;
     if (!actor.trim()) return;
     try {
-      await assignException.mutateAsync({ id: invoice.id, data: { owner: owner.trim(), actor: actor.trim() } });
+      await assignException.mutateAsync({
+        id: invoice.id,
+        data: {
+          owner: owner.trim(),
+          // ownerClerkId enables server-side "My work" scoping for the assignee.
+          // It is required for the assignment to appear in the assignee's personal queue.
+          ownerClerkId: ownerClerkId.trim() || undefined,
+          actor: actor.trim(),
+        },
+      });
       toast({ title: "Owner assigned", description: `Exception assigned to ${owner.trim()}` });
-      queryClient.invalidateQueries({ queryKey: getListInvoicesQueryKey({ status: "EXCEPTION" }) });
+      queryClient.invalidateQueries({ queryKey: getListExceptionsQueryKey() });
       onClose();
     } catch (e: any) {
       toast({ variant: "destructive", title: "Failed", description: e?.data?.error || "Could not assign owner" });
@@ -274,6 +298,19 @@ function AssignOwnerModal({
               value={owner}
               onChange={(e) => setOwner(e.target.value)}
               data-testid="input-assign-owner"
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs flex items-center gap-1">
+              Assignee Clerk User ID
+              <span className="text-muted-foreground font-normal">(auto-filled for self; required for "My work" scoping)</span>
+            </Label>
+            <Input
+              placeholder={user?.id ?? "user_xxxx..."}
+              value={ownerClerkId}
+              onChange={(e) => setOwnerClerkId(e.target.value)}
+              data-testid="input-assign-owner-clerk-id"
+              className="font-mono text-xs"
             />
           </div>
           <div className="space-y-1">
@@ -305,13 +342,24 @@ function AssignOwnerModal({
 export function ExceptionQueue() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const isManager = useIsManager();
+  const { user } = useUser();
+  const [showAll, setShowAll] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [editingInvoice, setEditingInvoice] = useState<Invoice | null>(null);
   const [assigningInvoice, setAssigningInvoice] = useState<Invoice | null>(null);
 
-  const { data: invoicesRes, isLoading } = useListInvoices(
-    { status: "EXCEPTION", limit: 100 },
-    { query: { queryKey: getListInvoicesQueryKey({ status: "EXCEPTION", limit: 100 }) } }
+  // Clerks: server always enforces "My work" scope via req.clerkUserId — no
+  // assignedTo needed. Managers: "My work" sends their Clerk user ID; "All"
+  // omits assignedTo so the server returns the full queue.
+  const effectiveShowAll = isManager && showAll;
+  const queryParams = effectiveShowAll
+    ? { limit: 100 }
+    : { limit: 100, ...(user?.id ? { assignedTo: user.id } : {}) };
+
+  const { data: exceptionsRes, isLoading } = useListExceptions(
+    queryParams,
+    { query: { queryKey: getListExceptionsQueryKey(queryParams) } }
   );
 
   const updateStatus = useUpdateInvoiceStatus();
@@ -323,7 +371,7 @@ export function ExceptionQueue() {
         data: { status: "PENDING_APPROVAL", reason: "Exception resolved manually" },
       });
       toast({ title: "Resolved", description: "Invoice sent to approval queue" });
-      queryClient.invalidateQueries({ queryKey: getListInvoicesQueryKey({ status: "EXCEPTION" }) });
+      queryClient.invalidateQueries({ queryKey: getListExceptionsQueryKey() });
     } catch {
       toast({ variant: "destructive", title: "Error", description: "Failed to resolve exception" });
     }
@@ -336,7 +384,7 @@ export function ExceptionQueue() {
         data: { status: "PENDING_EXTRACTION", reason: "Returned to extraction for correction" },
       });
       toast({ title: "Returned", description: "Invoice returned to extraction queue" });
-      queryClient.invalidateQueries({ queryKey: getListInvoicesQueryKey({ status: "EXCEPTION" }) });
+      queryClient.invalidateQueries({ queryKey: getListExceptionsQueryKey() });
     } catch {
       toast({ variant: "destructive", title: "Error", description: "Failed to return invoice" });
     }
@@ -350,8 +398,37 @@ export function ExceptionQueue() {
             <AlertTriangle className="h-6 w-6" />
             Exception Queue
           </h1>
-          <p className="text-sm text-muted-foreground mt-1">Invoices requiring manual intervention</p>
+          <p className="text-sm text-muted-foreground mt-1">
+            {effectiveShowAll
+              ? "All exceptions across the team"
+              : "Your assigned exceptions and unassigned items"}
+          </p>
         </div>
+        {/* Managers get a My work / All toggle; clerks are always in My work mode */}
+        {isManager && (
+          <div className="flex items-center gap-1 rounded-md border p-1 bg-muted/30">
+            <Button
+              variant={!showAll ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setShowAll(false)}
+              className="gap-1.5"
+              data-testid="toggle-my-work"
+            >
+              <UserRound className="h-3.5 w-3.5" />
+              My work
+            </Button>
+            <Button
+              variant={showAll ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setShowAll(true)}
+              className="gap-1.5"
+              data-testid="toggle-all-work"
+            >
+              <Users className="h-3.5 w-3.5" />
+              All
+            </Button>
+          </div>
+        )}
       </div>
 
       <Card className="flex-1 flex flex-col min-h-0 border-destructive/20">
@@ -374,7 +451,7 @@ export function ExceptionQueue() {
                     <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
                   </TableCell>
                 </TableRow>
-              ) : invoicesRes?.data?.length === 0 ? (
+              ) : exceptionsRes?.data?.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
                     <div className="flex flex-col items-center justify-center space-y-3">
@@ -386,7 +463,7 @@ export function ExceptionQueue() {
                   </TableCell>
                 </TableRow>
               ) : (
-                invoicesRes?.data?.flatMap((invoice) => {
+                exceptionsRes?.data?.flatMap((invoice) => {
                   const isExpanded = expandedId === invoice.id;
                   return [
                     <TableRow key={invoice.id} data-testid={`row-exception-${invoice.id}`} className="cursor-pointer hover:bg-muted/30">

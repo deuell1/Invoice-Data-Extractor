@@ -45,6 +45,7 @@ export const ListInvoicesQueryParams = zod.object({
   "amountMax": zod.coerce.number().nullish(),
   "confidenceMin": zod.coerce.number().nullish().describe('Minimum overall confidence as a percentage (0-100)'),
   "confidenceMax": zod.coerce.number().nullish().describe('Maximum overall confidence as a percentage (0-100)'),
+  "assignedTo": zod.coerce.string().optional().describe('Filter PENDING_APPROVAL invoices by the Clerk user ID of who submitted them'),
   "sortBy": zod.enum(['createdAt', 'invoiceDate', 'dueDate', 'totalAmount', 'vendorName', 'confidenceScore', 'status']).default(listInvoicesQuerySortByDefault),
   "sortDir": zod.enum(['asc', 'desc']).default(listInvoicesQuerySortDirDefault),
   "page": zod.coerce.number().default(listInvoicesQueryPageDefault),
@@ -1925,6 +1926,7 @@ export const ListExceptionsQueryParams = zod.object({
   "reason": zod.coerce.string().optional().describe('Filter by exception reason substring'),
   "owner": zod.coerce.string().optional(),
   "reviewed": zod.coerce.boolean().nullish(),
+  "assignedTo": zod.coerce.string().optional().describe('Filter by actor name assigned as exception owner; unassigned items always included'),
   "sortBy": zod.enum(['age', 'vendorName', 'totalAmount', 'confidenceScore', 'status']).default(listExceptionsQuerySortByDefault),
   "sortDir": zod.enum(['asc', 'desc']).default(listExceptionsQuerySortDirDefault),
   "page": zod.coerce.number().default(listExceptionsQueryPageDefault),
@@ -2059,6 +2061,7 @@ export const AssignExceptionParams = zod.object({
 
 export const AssignExceptionBody = zod.object({
   "owner": zod.string().min(1),
+  "ownerClerkId": zod.string().optional().describe('Clerk user ID of the assignee; stored for server-side scope enforcement'),
   "actor": zod.string().nullish()
 })
 

@@ -76,6 +76,7 @@ export const invoiceCaptureTable = pgTable("invoice_capture", {
   exportFormat: text("export_format"),
   // ── Phase 2: exception management ──
   exceptionOwner: text("exception_owner"),
+  exceptionOwnerClerkId: text("exception_owner_clerk_id"),
   exceptionReviewedAt: timestamp("exception_reviewed_at", { withTimezone: true }),
   exceptionReviewedBy: text("exception_reviewed_by"),
   vendorMatchScore: numeric("vendor_match_score", { precision: 5, scale: 4 }),
@@ -93,6 +94,8 @@ export const invoiceCaptureTable = pgTable("invoice_capture", {
   extractionAttempts: integer("extraction_attempts").notNull().default(0),
   extractionErrorDetail: text("extraction_error_detail"),
   role: invoiceRoleEnum("role").notNull().default("AP_PROCESSOR"),
+  // ── Submission tracking (Clerk user ID of whoever submitted to PENDING_APPROVAL) ──
+  submittedBy: text("submitted_by"),
   removedAt: timestamp("removed_at", { withTimezone: true }),
   removedBy: text("removed_by"),
   removalReason: text("removal_reason"),

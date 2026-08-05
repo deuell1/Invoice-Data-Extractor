@@ -18,6 +18,10 @@ owner?: string;
  * @nullable
  */
 reviewed?: boolean | null;
+/**
+ * Filter by actor name assigned as exception owner; unassigned items always included
+ */
+assignedTo?: string;
 sortBy?: ListExceptionsSortBy;
 sortDir?: ListExceptionsSortDir;
 page?: number;

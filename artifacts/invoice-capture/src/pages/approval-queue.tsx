@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { useUser } from "@clerk/react";
 import { 
   useListInvoices, 
+  getListInvoicesQueryKey,
   useBulkApproveInvoices,
   useApproveInvoice,
   useSetVoucherId
@@ -12,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Loader2, Download, CheckSquare, CheckCircle2, AlertTriangle, Lock } from "lucide-react";
+import { Loader2, Download, CheckSquare, CheckCircle2, AlertTriangle, Lock, UserRound, Users } from "lucide-react";
 import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -23,12 +25,37 @@ export function ApprovalQueue() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const isManager = useIsManager();
+  const { user } = useUser();
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  
-  const { data: invoicesRes, isLoading } = useListInvoices({ limit: 100 }); // Getting all to show pending and approved, normally we'd filter or tab this
-  
-  const pendingInvoices = invoicesRes?.data?.filter(i => i.status === 'PENDING_APPROVAL') || [];
-  const approvedInvoices = invoicesRes?.data?.filter(i => i.status === 'APPROVED' || i.status === 'POSTED') || [];
+  const [showAll, setShowAll] = useState(false);
+
+  // Clerks always see "My work" (invoices they submitted); managers can toggle.
+  const effectiveShowAll = isManager && showAll;
+  // Use Clerk user ID to filter — matches the submittedBy column set during submit.
+  const assignedToFilter = !effectiveShowAll && user?.id ? user.id : undefined;
+
+  const pendingParams = {
+    status: "PENDING_APPROVAL" as const,
+    limit: 100,
+    ...(assignedToFilter ? { assignedTo: assignedToFilter } : {}),
+  };
+
+  const { data: pendingRes, isLoading: pendingLoading } = useListInvoices(
+    pendingParams,
+    { query: { queryKey: getListInvoicesQueryKey(pendingParams) } }
+  );
+
+  // Approved/posted section is always unscoped (relevant history for all)
+  const approvedParams = { limit: 100 };
+  const { data: approvedRes, isLoading: approvedLoading } = useListInvoices(
+    approvedParams,
+    { query: { queryKey: getListInvoicesQueryKey(approvedParams) } }
+  );
+
+  const pendingInvoices = pendingRes?.data?.filter(i => i.status === 'PENDING_APPROVAL') || [];
+  const approvedInvoices = approvedRes?.data?.filter(i => i.status === 'APPROVED' || i.status === 'POSTED') || [];
+
+  const isLoading = pendingLoading || approvedLoading;
 
   const bulkApprove = useBulkApproveInvoices();
   const approveInvoice = useApproveInvoice();
@@ -89,8 +116,38 @@ export function ApprovalQueue() {
             <CheckSquare className="h-6 w-6" />
             Approvals & Export
           </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {effectiveShowAll
+              ? "All invoices pending approval across the team"
+              : "Invoices you submitted for approval"}
+          </p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 items-center">
+          {/* Managers get a My work / All toggle; clerks are locked to My work */}
+          {isManager && (
+            <div className="flex items-center gap-1 rounded-md border p-1 bg-muted/30">
+              <Button
+                variant={!showAll ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setShowAll(false)}
+                className="gap-1.5"
+                data-testid="toggle-my-work"
+              >
+                <UserRound className="h-3.5 w-3.5" />
+                My work
+              </Button>
+              <Button
+                variant={showAll ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setShowAll(true)}
+                className="gap-1.5"
+                data-testid="toggle-all-work"
+              >
+                <Users className="h-3.5 w-3.5" />
+                All
+              </Button>
+            </div>
+          )}
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -166,7 +223,7 @@ export function ApprovalQueue() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {isLoading ? (
+                {pendingLoading ? (
                   <TableRow><TableCell colSpan={5} className="text-center py-4"><Loader2 className="h-4 w-4 animate-spin mx-auto" /></TableCell></TableRow>
                 ) : pendingInvoices.length === 0 ? (
                   <TableRow><TableCell colSpan={5} className="text-center py-8 text-muted-foreground">No pending approvals</TableCell></TableRow>
@@ -244,7 +301,7 @@ export function ApprovalQueue() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {isLoading ? (
+                {approvedLoading ? (
                   <TableRow><TableCell colSpan={4} className="text-center py-4"><Loader2 className="h-4 w-4 animate-spin mx-auto" /></TableCell></TableRow>
                 ) : approvedInvoices.length === 0 ? (
                   <TableRow><TableCell colSpan={4} className="text-center py-8 text-muted-foreground">No approved invoices</TableCell></TableRow>

@@ -118,6 +118,8 @@ async function getInvoiceById(id: number) {
       removedBy: invoiceCaptureTable.removedBy,
       removalReason: invoiceCaptureTable.removalReason,
       removalNote: invoiceCaptureTable.removalNote,
+      submittedBy: invoiceCaptureTable.submittedBy,
+      exceptionOwnerClerkId: invoiceCaptureTable.exceptionOwnerClerkId,
       createdAt: invoiceCaptureTable.createdAt,
       updatedAt: invoiceCaptureTable.updatedAt,
     })
@@ -285,6 +287,7 @@ router.get("/invoices", async (req, res): Promise<void> => {
     amountMax,
     confidenceMin,
     confidenceMax,
+    assignedTo,
     sortBy,
     sortDir,
     page,
@@ -370,6 +373,37 @@ router.get("/invoices", async (req, res): Promise<void> => {
   if (confidenceMax != null) {
     conditions.push(lte(invoiceCaptureTable.confidenceScore, String(confidenceMax / 100)));
   }
+  // ── Server-side scope enforcement ────────────────────────────────────────────
+  // AP_CLERK: always restrict results to their personal work regardless of any
+  // caller-supplied query params — prevents access-scope bypass via direct API calls.
+  // AP_MANAGER: honor the optional assignedTo param (for "My work" toggle in the UI).
+  const userRole = (req as any).clerkUserRole as string | undefined;
+  const clerkUserId = (req as any).clerkUserId as string | undefined;
+
+  if (userRole === "AP_CLERK" && clerkUserId) {
+    if (status === "EXCEPTION") {
+      // Exception records: scope by Clerk-user-ID assignment. Truly unassigned
+      // (both owner fields null) are visible to all clerks.
+      // Items assigned by display-name only (ownerClerkId = null, owner = text) are
+      // NOT treated as unassigned — they belong to the named person, not a clerk.
+      conditions.push(
+        or(
+          eq(invoiceCaptureTable.exceptionOwnerClerkId, clerkUserId),
+          and(
+            isNull(invoiceCaptureTable.exceptionOwner),
+            isNull(invoiceCaptureTable.exceptionOwnerClerkId),
+          ),
+        )!,
+      );
+    } else {
+      // PENDING_APPROVAL, PENDING_EXTRACTION, APPROVED, POSTED, or no status filter:
+      // restrict to invoices submitted by this clerk.
+      conditions.push(eq(invoiceCaptureTable.submittedBy, clerkUserId));
+    }
+  } else if (userRole !== "AP_CLERK" && assignedTo) {
+    // AP_MANAGER with explicit assignedTo param (e.g. "My work" toggle in approval queue).
+    conditions.push(eq(invoiceCaptureTable.submittedBy, assignedTo));
+  }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
@@ -453,6 +487,8 @@ router.get("/invoices", async (req, res): Promise<void> => {
       removedBy: invoiceCaptureTable.removedBy,
       removalReason: invoiceCaptureTable.removalReason,
       removalNote: invoiceCaptureTable.removalNote,
+      submittedBy: invoiceCaptureTable.submittedBy,
+      exceptionOwnerClerkId: invoiceCaptureTable.exceptionOwnerClerkId,
       createdAt: invoiceCaptureTable.createdAt,
       updatedAt: invoiceCaptureTable.updatedAt,
     })
@@ -1325,6 +1361,16 @@ router.post("/invoices/:id/submit", async (req, res): Promise<void> => {
   if (outcome.checks.duplicateCheck === "FAIL") {
     res.status(409).json({ error: DUPLICATE_MESSAGE });
     return;
+  }
+
+  // Record the Clerk user ID of the submitter so the approval queue can scope
+  // "My work" to invoices submitted by the signed-in clerk.
+  const submitterId = (req as any).clerkUserId as string | undefined;
+  if (submitterId && outcome.blocking.length === 0) {
+    await db
+      .update(invoiceCaptureTable)
+      .set({ submittedBy: submitterId })
+      .where(eq(invoiceCaptureTable.id, params.data.id));
   }
 
   await appendAudit({
