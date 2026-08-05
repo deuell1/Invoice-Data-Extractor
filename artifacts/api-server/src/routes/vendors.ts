@@ -888,6 +888,62 @@ router.get("/vendors/:id/activity", async (req, res): Promise<void> => {
   );
 });
 
+// ─── DELETE /vendors/:id ─────────────────────────────────────────────────────
+// Permanent hard delete for test-data cleanup.  Refuses if any non-VOIDED
+// invoice still references this vendor (clean up invoices first).  Requires
+// { confirm: true } in the request body as an explicit safety gate.
+
+router.delete("/vendors/:id", async (req, res): Promise<void> => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id) || id <= 0) {
+    res.status(400).json({ error: "Invalid vendor id" });
+    return;
+  }
+  if (req.body?.confirm !== true) {
+    res.status(422).json({ error: "Deletion must be explicitly confirmed (confirm: true)." });
+    return;
+  }
+
+  const [vendor] = await db
+    .select({ id: vendorIdTable.id, vendorCode: vendorIdTable.vendorCode })
+    .from(vendorIdTable)
+    .where(eq(vendorIdTable.id, id))
+    .limit(1);
+
+  if (!vendor) {
+    res.status(404).json({ error: "Vendor not found" });
+    return;
+  }
+
+  // Block deletion if any active (non-VOIDED) invoice still references this vendor.
+  const [activeRef] = await db
+    .select({ id: invoiceCaptureTable.id })
+    .from(invoiceCaptureTable)
+    .where(
+      and(
+        eq(invoiceCaptureTable.vendorId, id),
+        ne(invoiceCaptureTable.status, "VOIDED"),
+      ),
+    )
+    .limit(1);
+
+  if (activeRef) {
+    res.status(409).json({
+      error:
+        "Vendor has active (non-VOIDED) invoices. Void or delete all referencing invoices first.",
+    });
+    return;
+  }
+
+  // Delete audit log rows then the vendor row.
+  await db.transaction(async (tx) => {
+    await tx.delete(vendorAuditLogTable).where(eq(vendorAuditLogTable.vendorId, id));
+    await tx.delete(vendorIdTable).where(eq(vendorIdTable.id, id));
+  });
+
+  res.json({ deleted: true, deletedVendorId: id });
+});
+
 // ─── GET /vendors/:id/audit ───────────────────────────────────────────────────
 
 router.get("/vendors/:id/audit", async (req, res): Promise<void> => {

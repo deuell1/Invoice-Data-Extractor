@@ -12,6 +12,9 @@
  * Each stage is a hard gate: the test fails if the expected status transition
  * is not reached within the timeout, or if storage/extraction is unavailable.
  *
+ * Cleanup: every vendor and invoice created by this run is deleted in a
+ * try/finally block so the database does not accumulate test data across runs.
+ *
  * Environment:
  *   API_BASE_URL  (default: http://localhost:8080/api)
  */
@@ -97,6 +100,81 @@ async function waitForExtraction(invoiceId, timeoutMs = 90_000) {
 
 const RUN_ID = `smoke-${Date.now()}`;
 
+// ─── Cleanup tracking ─────────────────────────────────────────────────────────
+// All vendor and invoice IDs created during this run are accumulated here so
+// the finally block can remove them regardless of test outcome.
+
+const createdVendorIds = [];
+const createdInvoiceIds = [];
+
+/**
+ * Best-effort cleanup: void then delete every invoice created this run,
+ * then delete every vendor. Errors are logged but never rethrown so they
+ * cannot mask an assertion failure.
+ */
+async function cleanup() {
+  console.log("\n── Cleanup: removing smoke-test data ──────────────────────");
+  if (createdInvoiceIds.length === 0 && createdVendorIds.length === 0) {
+    console.log("  (nothing to clean up)");
+    return;
+  }
+
+  // Step 1: void all invoices first (handles POSTED/APPROVED that cannot be
+  // hard-deleted directly).
+  for (const id of createdInvoiceIds) {
+    try {
+      const { status } = await api("POST", `/invoices/${id}/void`, {
+        reason: "Smoke-test cleanup — automated removal after run",
+        actor: "smoke-test",
+      });
+      if (status === 200 || status === 404) {
+        // 200 = voided, 404 = already gone — both are fine
+      } else {
+        warn(`void invoice ${id} returned ${status}`);
+      }
+    } catch (err) {
+      warn(`void invoice ${id} failed: ${err.message}`);
+    }
+  }
+
+  // Step 2: hard-delete all invoices (now that they're VOIDED or never POSTED).
+  for (const id of createdInvoiceIds) {
+    try {
+      const { status } = await api("DELETE", `/invoices/${id}`, {
+        confirm: true,
+        actor: "smoke-test",
+      });
+      if (status === 200 || status === 404) {
+        console.log(`  ✓ deleted invoice ${id}`);
+      } else {
+        warn(`delete invoice ${id} returned ${status}`);
+      }
+    } catch (err) {
+      warn(`delete invoice ${id} failed: ${err.message}`);
+    }
+  }
+
+  // Step 3: delete all vendors (invoices are gone so the FK check passes).
+  for (const id of createdVendorIds) {
+    try {
+      const { status } = await api("DELETE", `/vendors/${id}`, { confirm: true });
+      if (status === 200 || status === 404) {
+        console.log(`  ✓ deleted vendor ${id}`);
+      } else {
+        warn(`delete vendor ${id} returned ${status}`);
+      }
+    } catch (err) {
+      warn(`delete vendor ${id} failed: ${err.message}`);
+    }
+  }
+
+  console.log("── Cleanup complete ────────────────────────────────────────");
+}
+
+// ─── Suites (wrapped in try/finally so cleanup always runs) ──────────────────
+
+try {
+
 // ─── Suite 1: Health check ────────────────────────────────────────────────────
 
 console.log("\n══════════════════════════════════════════");
@@ -146,6 +224,7 @@ let pipelineVoucherId;
   });
   assert(vs === 201, `POST /vendors returns 201 (got ${vs}: ${JSON.stringify(vj).slice(0, 200)})`);
   assert(vj.isActive === true, "vendor is active");
+  createdVendorIds.push(vj.id);
 
   // Create invoice with vendorRawName so vendor is matched synchronously at
   // creation time (score=1.0).  Extraction is NOT triggered yet; the invoice
@@ -170,6 +249,7 @@ let pipelineVoucherId;
   assert(ij.vendorId != null, `vendor matched at creation (vendorId=${ij.vendorId})`);
   assert(Number(ij.vendorMatchScore) >= 0.85, `vendorMatchScore >= 0.85 (got ${ij.vendorMatchScore})`);
   pipelineInvoiceId = ij.id;
+  createdInvoiceIds.push(pipelineInvoiceId);
   console.log(`  → invoice id=${pipelineInvoiceId}, vendorMatchScore=${ij.vendorMatchScore}`);
 }
 
@@ -309,6 +389,7 @@ console.log("══════════════════════�
       actor: "smoke-test",
     });
     assert(pvS === 201, `Suite 4 vendor created: ${pv.vendorName} (got ${pvS}: ${JSON.stringify(pvJ).slice(0, 120)})`);
+    createdVendorIds.push(pvJ.id);
     console.log(`  → ensured vendor "${pv.vendorName}" (${pvJ.id})`);
   }
 
@@ -390,6 +471,11 @@ console.log("══════════════════════�
   const detectedInvoices = afterDetection.invoices ?? [];
   assert(detectedInvoices.length >= 1, `At least 1 invoice detected from source doc (got ${detectedInvoices.length})`);
   console.log(`  → detected ${detectedInvoices.length} invoice(s)`);
+
+  // Track all detected invoices for cleanup.
+  for (const inv of detectedInvoices) {
+    createdInvoiceIds.push(inv.id);
+  }
 
   // Verify each detected invoice started at PENDING_EXTRACTION.
   for (const inv of detectedInvoices) {
@@ -487,6 +573,7 @@ console.log("══════════════════════�
     isActive: true,
     actor: "smoke-test",
   });
+  createdVendorIds.push(excV.id);
 
   const excInvNum = `EXCTEST-${RUN_ID}`;
   const { status: excIS, json: excI } = await api("POST", "/invoices", {
@@ -502,6 +589,7 @@ console.log("══════════════════════�
   });
   assert(excIS === 201, `Exception test invoice created (got ${excIS})`);
   const excId = excI.id;
+  createdInvoiceIds.push(excId);
   assert(excI.vendorId != null, `Vendor matched for exception test invoice (vendorId=${excI.vendorId})`);
 
   // Force to EXCEPTION status using the status endpoint.
@@ -553,13 +641,14 @@ console.log("══════════════════════�
 
 {
   const bulkVendorName = `Bulk Test Supplier ${RUN_ID}`;
-  await api("POST", "/vendors", {
+  const { json: bulkV } = await api("POST", "/vendors", {
     vendorCode: `BULK-${RUN_ID}`,
     vendorName: bulkVendorName,
     paymentTerms: "Net 30",
     isActive: true,
     actor: "smoke-test",
   });
+  createdVendorIds.push(bulkV.id);
 
   const bulkIds = [];
   for (let i = 1; i <= 2; i++) {
@@ -575,6 +664,7 @@ console.log("══════════════════════�
       fileObjectPath: `/objects/test/${RUN_ID}/bulk-${i}.pdf`,
     });
     bulkIds.push(bInv.id);
+    createdInvoiceIds.push(bInv.id);
   }
 
   const { status: baS, json: baJ } = await api("POST", "/invoices/bulk-approve", { ids: bulkIds });
@@ -634,5 +724,10 @@ if (failures.length) {
   for (const f of failures) console.log(`  • ${f}`);
 }
 console.log("══════════════════════════════════════════\n");
+
+} finally {
+  // Always clean up, regardless of test outcome.
+  await cleanup();
+}
 
 process.exit(failed > 0 ? 1 : 0);
