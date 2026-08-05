@@ -1,0 +1,557 @@
+/**
+ * AP Pipeline Smoke Test
+ *
+ * Validates the full AP pipeline end-to-end, stage by stage:
+ *
+ *   Stage 1  Upload source document     → invoice created in PENDING_EXTRACTION
+ *   Stage 2  Extraction completes       → invoice moves to PENDING_APPROVAL or EXCEPTION
+ *   Stage 3  Approve invoice            → APPROVED
+ *   Stage 4  Post invoice (voucher)     → POSTED
+ *   Stage 5  Export to CSV              → download contains the invoice
+ *
+ * Each stage is a hard gate: the test fails if the expected status transition
+ * is not reached within the timeout, or if storage/extraction is unavailable.
+ *
+ * Environment:
+ *   API_BASE_URL  (default: http://localhost:8080/api)
+ */
+
+import { existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const BASE = process.env.API_BASE_URL ?? "http://localhost:8080/api";
+
+// ─── Test harness ─────────────────────────────────────────────────────────────
+
+let passed = 0;
+let failed = 0;
+const failures = [];
+
+function assert(condition, message) {
+  if (!condition) {
+    console.error(`  ✗ FAIL: ${message}`);
+    failed++;
+    failures.push(message);
+    throw new Error(message);
+  }
+  console.log(`  ✓ ${message}`);
+  passed++;
+}
+
+function warn(message) {
+  console.warn(`  ⚠ ${message}`);
+}
+
+async function api(method, path, body) {
+  const opts = { method, headers: { "Content-Type": "application/json" } };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  const res = await fetch(`${BASE}${path}`, opts);
+  const text = await res.text();
+  let json;
+  try { json = JSON.parse(text); } catch { json = { _raw: text }; }
+  return { status: res.status, ok: res.ok, json, headers: res.headers };
+}
+
+/**
+ * Poll `fn` until it returns a truthy value. Hard-fails the test if the
+ * timeout is exceeded — there is no silent pass-on-timeout.
+ */
+async function poll(fn, { timeoutMs = 90_000, intervalMs = 2_500, label = "condition" } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  let lastResult;
+  while (Date.now() < deadline) {
+    lastResult = await fn();
+    if (lastResult !== null && lastResult !== undefined && lastResult !== false) return lastResult;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error(`Timed out (${timeoutMs}ms) waiting for: ${label}`);
+}
+
+/**
+ * Poll an invoice until extractionStatus is terminal (COMPLETED or FAILED)
+ * and status has left PENDING_EXTRACTION.
+ * Returns the final invoice JSON.
+ */
+async function waitForExtraction(invoiceId, timeoutMs = 90_000) {
+  return poll(
+    async () => {
+      const { json } = await api("GET", `/invoices/${invoiceId}`);
+      const { status, extractionStatus } = json;
+      console.log(`  … invoice ${invoiceId}: status=${status} extractionStatus=${extractionStatus}`);
+      const extractionDone = extractionStatus === "COMPLETED" || extractionStatus === "FAILED";
+      const leftPending = status !== "PENDING_EXTRACTION";
+      if (extractionDone && leftPending) return json;
+      return false;
+    },
+    { timeoutMs, label: `invoice ${invoiceId} extraction to complete` },
+  );
+}
+
+const RUN_ID = `smoke-${Date.now()}`;
+
+// ─── Suite 1: Health check ────────────────────────────────────────────────────
+
+console.log("\n══════════════════════════════════════════");
+console.log("SUITE 1: API health check");
+console.log("══════════════════════════════════════════");
+
+{
+  const { status, json } = await api("GET", "/healthz");
+  assert(status === 200, `GET /healthz returns 200 (got ${status})`);
+  assert(json.status === "ok", `health.status is "ok" (got "${json.status}")`);
+}
+
+// ─── Suite 2: Full pipeline – extraction is the gate before approval ──────────
+//
+// Stage 1  Create vendor + invoice → PENDING_EXTRACTION
+// Stage 2  Trigger extraction      → wait for PENDING_APPROVAL or EXCEPTION
+// Stage 3  Approve                 → APPROVED
+// Stage 4  Post (voucher)          → POSTED
+// Stage 5  Export + download CSV   → CSV contains the invoice
+
+console.log("\n══════════════════════════════════════════");
+console.log("SUITE 2: Full AP pipeline (staged)");
+console.log("  Stage 1: Upload   → PENDING_EXTRACTION");
+console.log("  Stage 2: Extract  → PENDING_APPROVAL or EXCEPTION");
+console.log("  Stage 3: Approve  → APPROVED");
+console.log("  Stage 4: Post     → POSTED");
+console.log("  Stage 5: Export   → CSV verified");
+console.log("══════════════════════════════════════════");
+
+let pipelineInvoiceId;
+let pipelineInvoiceNumber;
+let pipelineVoucherId;
+
+// ── Stage 1: Create vendor + invoice → PENDING_EXTRACTION ─────────────────────
+{
+  console.log("\n  [Stage 1] Create vendor + invoice → PENDING_EXTRACTION");
+
+  const vendorCode = `TEST-${RUN_ID}`;
+  const vendorName = `Smoke Test Supplier ${RUN_ID}`;
+
+  const { status: vs, json: vj } = await api("POST", "/vendors", {
+    vendorCode,
+    vendorName,
+    paymentTerms: "Net 30",
+    isActive: true,
+    actor: "smoke-test",
+  });
+  assert(vs === 201, `POST /vendors returns 201 (got ${vs}: ${JSON.stringify(vj).slice(0, 200)})`);
+  assert(vj.isActive === true, "vendor is active");
+
+  // Create invoice with vendorRawName so vendor is matched synchronously at
+  // creation time (score=1.0).  Extraction is NOT triggered yet; the invoice
+  // sits at PENDING_EXTRACTION / extractionStatus=COMPLETED until we explicitly
+  // re-trigger extraction in Stage 2.
+  pipelineInvoiceNumber = `INV-${RUN_ID}`;
+  const { status: is, json: ij } = await api("POST", "/invoices", {
+    vendorRawName: vendorName,
+    invoiceNumber: pipelineInvoiceNumber,
+    invoiceDate: "2026-06-01",
+    dueDate: "2026-07-01",
+    totalAmount: 550,
+    subtotal: 500,
+    taxAmount: 50,
+    currency: "USD",
+    originalFileName: `${pipelineInvoiceNumber}.pdf`,
+    // Fake object path — extraction will fail → EXCEPTION (correct transition to test)
+    fileObjectPath: `/objects/test/${RUN_ID}/invoice.pdf`,
+  });
+  assert(is === 201, `POST /invoices returns 201 (got ${is}: ${JSON.stringify(ij).slice(0, 300)})`);
+  assert(ij.status === "PENDING_EXTRACTION", `invoice starts as PENDING_EXTRACTION (got "${ij.status}")`);
+  assert(ij.vendorId != null, `vendor matched at creation (vendorId=${ij.vendorId})`);
+  assert(Number(ij.vendorMatchScore) >= 0.85, `vendorMatchScore >= 0.85 (got ${ij.vendorMatchScore})`);
+  pipelineInvoiceId = ij.id;
+  console.log(`  → invoice id=${pipelineInvoiceId}, vendorMatchScore=${ij.vendorMatchScore}`);
+}
+
+// ── Stage 2: Trigger extraction → wait for PENDING_APPROVAL or EXCEPTION ──────
+{
+  console.log("\n  [Stage 2] Trigger extraction → wait for PENDING_APPROVAL or EXCEPTION");
+
+  const { status: es, json: ej } = await api("POST", `/invoices/${pipelineInvoiceId}/extract`, {});
+  assert(
+    es === 200,
+    `POST /invoices/:id/extract returns 200 (got ${es}: ${JSON.stringify(ej).slice(0, 200)})`,
+  );
+
+  // Poll until extraction leaves PENDING_EXTRACTION.
+  const extracted = await waitForExtraction(pipelineInvoiceId);
+
+  const validPostExtractionStatuses = ["PENDING_APPROVAL", "EXCEPTION"];
+  assert(
+    validPostExtractionStatuses.includes(extracted.status),
+    `invoice moved to PENDING_APPROVAL or EXCEPTION after extraction (got "${extracted.status}")`,
+  );
+  console.log(`  → extraction settled: status=${extracted.status} extractionStatus=${extracted.extractionStatus}`);
+}
+
+// ── Stage 3: Approve → APPROVED ───────────────────────────────────────────────
+{
+  console.log("\n  [Stage 3] Approve invoice → APPROVED");
+
+  // Re-fetch to get current status so we know whether a reason is needed.
+  const { json: current } = await api("GET", `/invoices/${pipelineInvoiceId}`);
+
+  let approveBody = {};
+  if (current.status === "EXCEPTION") {
+    // Exception invoices require a documented override reason.
+    approveBody = { reason: "Smoke-test exception override — extraction used fake file path" };
+    console.log("  → invoice is EXCEPTION; approving with override reason");
+  }
+
+  const { status: as, json: aj } = await api(
+    "POST",
+    `/invoices/${pipelineInvoiceId}/approve`,
+    approveBody,
+  );
+  assert(as === 200, `POST /invoices/:id/approve returns 200 (got ${as}: ${JSON.stringify(aj).slice(0, 300)})`);
+  assert(aj.status === "APPROVED", `invoice status=APPROVED after approval (got "${aj.status}")`);
+}
+
+// ── Stage 4: Post (voucher) → POSTED ─────────────────────────────────────────
+{
+  console.log("\n  [Stage 4] Assign voucher → POSTED");
+
+  pipelineVoucherId = `VCH-${RUN_ID}`;
+  const { status: ps, json: pj } = await api(
+    "PATCH",
+    `/invoices/${pipelineInvoiceId}/voucher`,
+    { voucherId: pipelineVoucherId },
+  );
+  assert(ps === 200, `PATCH /invoices/:id/voucher returns 200 (got ${ps}: ${JSON.stringify(pj).slice(0, 300)})`);
+  assert(pj.status === "POSTED", `invoice status=POSTED (got "${pj.status}")`);
+  assert(pj.voucherId === pipelineVoucherId, `voucherId stored (${pj.voucherId})`);
+}
+
+// ── Stage 5: Export → CSV verified ────────────────────────────────────────────
+{
+  console.log("\n  [Stage 5] Export batch → download CSV");
+
+  // Create a persistent export batch for POSTED invoices.
+  const { status: xbS, json: xbJ } = await api("POST", "/exports", {
+    exportType: "POSTED",
+    format: "CSV",
+    exportedBy: "smoke-test",
+  });
+  assert(xbS === 201, `POST /exports returns 201 (got ${xbS}: ${JSON.stringify(xbJ).slice(0, 300)})`);
+  assert(xbJ.status === "SUCCESS", `export batch status=SUCCESS (got "${xbJ.status}")`);
+  assert(typeof xbJ.recordCount === "number", `recordCount is a number (${xbJ.recordCount})`);
+  assert(xbJ.recordCount >= 1, `export contains at least one record (got ${xbJ.recordCount})`);
+
+  // Download and verify CSV content.
+  const dlRes = await fetch(`${BASE}/exports/${xbJ.id}/download`);
+  assert(dlRes.status === 200, `GET /exports/:id/download returns 200 (got ${dlRes.status})`);
+  const contentType = dlRes.headers.get("content-type") ?? "";
+  assert(contentType.includes("csv"), `Content-Type is CSV (got "${contentType}")`);
+  const csv = await dlRes.text();
+  assert(csv.includes(pipelineInvoiceNumber), `CSV contains the invoice number (${pipelineInvoiceNumber})`);
+  assert(csv.includes(pipelineVoucherId), `CSV contains the voucher ID (${pipelineVoucherId})`);
+  console.log(`  → CSV length=${csv.length} bytes, recordCount=${xbJ.recordCount}`);
+
+  // Also verify the quick inline export endpoint.
+  const inlineRes = await fetch(`${BASE}/invoices/export?status=POSTED`);
+  assert(inlineRes.status === 200, `GET /invoices/export?status=POSTED returns 200`);
+  const inlineCsv = await inlineRes.text();
+  assert(inlineCsv.includes(pipelineInvoiceNumber), `Inline CSV export contains the invoice number`);
+}
+
+// ─── Suite 3: Dashboard stats ─────────────────────────────────────────────────
+
+console.log("\n══════════════════════════════════════════");
+console.log("SUITE 3: Dashboard stats reflect completed pipeline");
+console.log("══════════════════════════════════════════");
+
+{
+  const { status, json } = await api("GET", "/invoices/stats");
+  assert(status === 200, `GET /invoices/stats returns 200 (got ${status})`);
+  assert(typeof json.total === "number", `stats.total is a number (${json.total})`);
+  assert(json.posted >= 1, `stats.posted >= 1 (got ${json.posted}) — includes pipeline invoice`);
+}
+
+// ─── Suite 4: Source document upload pipeline (non-optional) ─────────────────
+//
+// This suite is REQUIRED. If object storage is unavailable, the test FAILS.
+// The suite waits for extraction to reach a terminal status before asserting.
+
+console.log("\n══════════════════════════════════════════");
+console.log("SUITE 4: Source document upload pipeline (required)");
+console.log("  Stage 1: Upload PDF        → source doc created");
+console.log("  Stage 2: Detection         → invoices in PENDING_EXTRACTION");
+console.log("  Stage 3: Extraction done   → PENDING_APPROVAL or EXCEPTION");
+console.log("══════════════════════════════════════════");
+
+{
+  // Generate the multi-invoice test PDF.
+  const genScript = path.resolve(__dirname, "gen_pdf.mjs");
+  const genResult = spawnSync("node", [genScript], { env: { ...process.env }, stdio: "pipe" });
+  if (genResult.status !== 0) {
+    const err = genResult.stderr?.toString() || "unknown error";
+    assert(false, `gen_pdf.mjs failed (exit ${genResult.status}): ${err}`);
+  }
+  assert(existsSync("/tmp/multi_invoice.pdf"), "gen_pdf.mjs created /tmp/multi_invoice.pdf");
+
+  // Read the PDF bytes and request a presigned upload URL.
+  // Use dynamic import so the error is surfaced as a test failure, not an
+  // uncaught exception that bypasses the harness.
+  const { readFileSync } = await import("node:fs");
+  const pdf = readFileSync("/tmp/multi_invoice.pdf");
+
+  // Stage 1a: Request presigned upload URL.
+  const urlRes = await api("POST", "/storage/uploads/request-url", {
+    name: "smoke_test_suite4.pdf",
+    size: pdf.length,
+    contentType: "application/pdf",
+  });
+  assert(
+    urlRes.ok,
+    `Storage presigned URL returned (status=${urlRes.status} — is object storage running?): ${JSON.stringify(urlRes.json).slice(0, 200)}`,
+  );
+  const { uploadURL, objectPath } = urlRes.json;
+  assert(typeof uploadURL === "string", `uploadURL is a string (${uploadURL?.slice(0, 60)}…)`);
+  assert(typeof objectPath === "string", `objectPath is a string (${objectPath})`);
+
+  // Stage 1b: Upload PDF to presigned URL.
+  const putRes = await fetch(uploadURL, {
+    method: "PUT",
+    body: pdf,
+    headers: { "Content-Type": "application/pdf" },
+  });
+  assert(putRes.ok, `PDF uploaded via PUT to presigned URL (status=${putRes.status})`);
+
+  // Stage 1c: Create source document.
+  const { status: csS, json: csJ } = await api("POST", "/source-documents", {
+    fileObjectPath: objectPath,
+    originalFileName: "smoke_test_suite4.pdf",
+    contentType: "application/pdf",
+  });
+  assert(
+    csS === 200 || csS === 201,
+    `POST /source-documents returns 2xx (got ${csS}: ${JSON.stringify(csJ).slice(0, 200)})`,
+  );
+  const sourceId = csJ.source?.id;
+  assert(typeof sourceId === "number", `source document id returned (id=${sourceId})`);
+  console.log(`  → source document id=${sourceId}`);
+
+  // Stage 2: Poll until at least 1 invoice is detected (PENDING_EXTRACTION).
+  const afterDetection = await poll(
+    async () => {
+      const { json: d } = await api("GET", `/source-documents/${sourceId}`);
+      const s = d.source;
+      console.log(`  … detect poll: proc=${s?.processingStatus} detected=${s?.detectedInvoiceCount} invoices=${d?.invoiceCount}`);
+      const done =
+        (s.processingStatus === "COMPLETED" || s.processingStatus === "EXCEPTION") &&
+        d.invoiceCount > 0;
+      if (done) return d;
+      // Fail if processing finished but found nothing (e.g. detection itself failed).
+      const finishedEmpty =
+        (s.processingStatus === "COMPLETED" || s.processingStatus === "EXCEPTION") &&
+        (s.detectedInvoiceCount === 0);
+      if (finishedEmpty) return { _detectionEmpty: true, source: s };
+      return false;
+    },
+    { timeoutMs: 60_000, label: "source document detection" },
+  );
+
+  if (afterDetection._detectionEmpty) {
+    assert(false, `Source document detection finished but found 0 invoices (processingStatus=${afterDetection.source.processingStatus}). Check vendor data or file content.`);
+  }
+
+  const detectedInvoices = afterDetection.invoices ?? [];
+  assert(detectedInvoices.length >= 1, `At least 1 invoice detected from source doc (got ${detectedInvoices.length})`);
+  console.log(`  → detected ${detectedInvoices.length} invoice(s)`);
+
+  // Verify each detected invoice started at PENDING_EXTRACTION.
+  for (const inv of detectedInvoices) {
+    assert(
+      inv.status === "PENDING_EXTRACTION",
+      `detected invoice ${inv.id} starts as PENDING_EXTRACTION (got "${inv.status}")`,
+    );
+  }
+
+  // Stage 3: Wait for extraction to complete on all invoices.
+  // Each invoice will reach PENDING_APPROVAL or EXCEPTION; never stays PENDING_EXTRACTION.
+  console.log("  → waiting for all invoices to finish extraction …");
+  for (const inv of detectedInvoices) {
+    const finalInv = await waitForExtraction(inv.id, 120_000);
+    const validStatuses = ["PENDING_APPROVAL", "EXCEPTION"];
+    assert(
+      validStatuses.includes(finalInv.status),
+      `invoice ${inv.id} reached PENDING_APPROVAL or EXCEPTION (got "${finalInv.status}")`,
+    );
+    console.log(`  → invoice ${inv.id}: final status=${finalInv.status}`);
+  }
+}
+
+// ─── Suite 5: True exception override approval ────────────────────────────────
+//
+// Forces an invoice into EXCEPTION via the status endpoint, then verifies:
+//   (a) approving without a reason is rejected (422)
+//   (b) approving with a reason succeeds and reaches APPROVED
+
+console.log("\n══════════════════════════════════════════");
+console.log("SUITE 5: Exception override approval (required reason)");
+console.log("══════════════════════════════════════════");
+
+{
+  // Create a vendor and a fully-valid invoice.
+  const excVendorName = `Smoke Exception Vendor ${RUN_ID}`;
+  const { json: excV } = await api("POST", "/vendors", {
+    vendorCode: `EXC-${RUN_ID}`,
+    vendorName: excVendorName,
+    paymentTerms: "Net 30",
+    isActive: true,
+    actor: "smoke-test",
+  });
+
+  const excInvNum = `EXCTEST-${RUN_ID}`;
+  const { status: excIS, json: excI } = await api("POST", "/invoices", {
+    vendorRawName: excVendorName,
+    invoiceNumber: excInvNum,
+    invoiceDate: "2026-06-15",
+    dueDate: "2026-07-15",
+    totalAmount: 999,
+    subtotal: 999,
+    currency: "USD",
+    originalFileName: `${excInvNum}.pdf`,
+    fileObjectPath: `/objects/test/${RUN_ID}/exc.pdf`,
+  });
+  assert(excIS === 201, `Exception test invoice created (got ${excIS})`);
+  const excId = excI.id;
+  assert(excI.vendorId != null, `Vendor matched for exception test invoice (vendorId=${excI.vendorId})`);
+
+  // Force to EXCEPTION status using the status endpoint.
+  const { status: forceS, json: forceJ } = await api(
+    "PATCH",
+    `/invoices/${excId}/status`,
+    { status: "EXCEPTION", reason: "Forced to EXCEPTION by smoke test" },
+  );
+  assert(forceS === 200, `PATCH /invoices/:id/status → EXCEPTION returns 200 (got ${forceS}: ${JSON.stringify(forceJ).slice(0, 200)})`);
+  assert(forceJ.status === "EXCEPTION", `Invoice is now EXCEPTION (got "${forceJ.status}")`);
+  console.log(`  → invoice ${excId} forced to EXCEPTION`);
+
+  // (a) Approve WITHOUT a reason → must be rejected 422.
+  const { status: noReasonS, json: noReasonJ } = await api(
+    "POST",
+    `/invoices/${excId}/approve`,
+    {},
+  );
+  assert(
+    noReasonS === 422,
+    `Approving EXCEPTION without reason returns 422 (got ${noReasonS}: ${JSON.stringify(noReasonJ).slice(0, 200)})`,
+  );
+  console.log(`  → correctly rejected approval without reason (422)`);
+
+  // (b) Approve WITH a documented reason → must succeed.
+  const overrideReason = "Exception override: smoke test forced status for coverage";
+  const { status: withReasonS, json: withReasonJ } = await api(
+    "POST",
+    `/invoices/${excId}/approve`,
+    { reason: overrideReason },
+  );
+  assert(
+    withReasonS === 200,
+    `Approving EXCEPTION with reason returns 200 (got ${withReasonS}: ${JSON.stringify(withReasonJ).slice(0, 200)})`,
+  );
+  assert(withReasonJ.status === "APPROVED", `Invoice reached APPROVED (got "${withReasonJ.status}")`);
+  console.log(`  → EXCEPTION invoice approved with override reason → APPROVED`);
+
+  // (c) Verify idempotency guard: re-approving returns 409.
+  const { status: dupS } = await api("POST", `/invoices/${excId}/approve`, {});
+  assert(dupS === 409, `Re-approving APPROVED invoice returns 409 (got ${dupS})`);
+}
+
+// ─── Suite 6: Bulk approve ────────────────────────────────────────────────────
+
+console.log("\n══════════════════════════════════════════");
+console.log("SUITE 6: Bulk approve endpoint");
+console.log("══════════════════════════════════════════");
+
+{
+  const bulkVendorName = `Bulk Test Supplier ${RUN_ID}`;
+  await api("POST", "/vendors", {
+    vendorCode: `BULK-${RUN_ID}`,
+    vendorName: bulkVendorName,
+    paymentTerms: "Net 30",
+    isActive: true,
+    actor: "smoke-test",
+  });
+
+  const bulkIds = [];
+  for (let i = 1; i <= 2; i++) {
+    const { json: bInv } = await api("POST", "/invoices", {
+      vendorRawName: bulkVendorName,
+      invoiceNumber: `BULK-${i}-${RUN_ID}`,
+      invoiceDate: "2026-06-15",
+      dueDate: "2026-07-15",
+      totalAmount: 100 * i,
+      subtotal: 100 * i,
+      currency: "USD",
+      originalFileName: `bulk-${i}.pdf`,
+      fileObjectPath: `/objects/test/${RUN_ID}/bulk-${i}.pdf`,
+    });
+    bulkIds.push(bInv.id);
+  }
+
+  const { status: baS, json: baJ } = await api("POST", "/invoices/bulk-approve", { ids: bulkIds });
+  assert(baS === 200, `POST /invoices/bulk-approve returns 200 (got ${baS})`);
+  assert(typeof baJ.succeeded === "number", `bulk-approve returns succeeded count (${baJ.succeeded})`);
+  assert(
+    baJ.succeeded === 2,
+    `bulk-approve succeeded for 2 invoices (got ${baJ.succeeded}, errors: ${JSON.stringify(baJ.errors)})`,
+  );
+}
+
+// ─── Suite 7: Vendors search ──────────────────────────────────────────────────
+
+console.log("\n══════════════════════════════════════════");
+console.log("SUITE 7: Vendors list and search");
+console.log("══════════════════════════════════════════");
+
+{
+  const { status, json } = await api("GET", `/vendors?search=${encodeURIComponent("Smoke Test")}`);
+  assert(status === 200, `GET /vendors search returns 200 (${status})`);
+  assert(Array.isArray(json.data), "vendors.data is an array");
+  assert(json.data.length >= 1, `search found at least 1 smoke-test vendor (${json.data.length})`);
+}
+
+// ─── Suite 8: Source documents list ──────────────────────────────────────────
+
+console.log("\n══════════════════════════════════════════");
+console.log("SUITE 8: Source documents list");
+console.log("══════════════════════════════════════════");
+
+{
+  const { status, json } = await api("GET", "/source-documents");
+  assert(status === 200, `GET /source-documents returns 200 (${status})`);
+  assert(typeof json.total === "number", `source-documents.total is a number (${json.total})`);
+  assert(json.total >= 1, `At least 1 source document exists (${json.total})`);
+}
+
+// ─── Suite 9: Exports list ────────────────────────────────────────────────────
+
+console.log("\n══════════════════════════════════════════");
+console.log("SUITE 9: Exports list");
+console.log("══════════════════════════════════════════");
+
+{
+  const { status, json } = await api("GET", "/exports");
+  assert(status === 200, `GET /exports returns 200 (${status})`);
+  assert(Array.isArray(json.data), "exports.data is an array");
+  assert(json.data.length >= 1, `At least 1 export batch exists (${json.data.length})`);
+}
+
+// ─── Summary ──────────────────────────────────────────────────────────────────
+
+console.log("\n══════════════════════════════════════════");
+console.log(`RESULTS: ${passed} passed, ${failed} failed`);
+if (failures.length) {
+  console.log("Failed assertions:");
+  for (const f of failures) console.log(`  • ${f}`);
+}
+console.log("══════════════════════════════════════════\n");
+
+process.exit(failed > 0 ? 1 : 0);
