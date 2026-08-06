@@ -107,6 +107,7 @@ const RUN_ID = `smoke-${Date.now()}`;
 const createdVendorIds = [];
 const createdInvoiceIds = [];
 const createdSourceDocIds = [];
+const createdExportBatchIds = [];
 // Object paths uploaded via presigned PUT but not yet linked to a tracked source
 // document — must be cleaned up directly when source-doc creation fails.
 const orphanedObjectPaths = [];
@@ -122,6 +123,7 @@ async function cleanup() {
     createdInvoiceIds.length === 0 &&
     createdVendorIds.length === 0 &&
     createdSourceDocIds.length === 0 &&
+    createdExportBatchIds.length === 0 &&
     orphanedObjectPaths.length === 0
   ) {
     console.log("  (nothing to clean up)");
@@ -197,7 +199,21 @@ async function cleanup() {
     }
   }
 
-  // Step 5: delete all vendors (invoices are gone so the FK check passes).
+  // Step 5: delete export batches created during this run.
+  for (const id of createdExportBatchIds) {
+    try {
+      const { status } = await api("DELETE", `/exports/${id}`, undefined);
+      if (status === 200 || status === 404) {
+        console.log(`  ✓ deleted export batch ${id}`);
+      } else {
+        warn(`delete export batch ${id} returned ${status}`);
+      }
+    } catch (err) {
+      warn(`delete export batch ${id} failed: ${err.message}`);
+    }
+  }
+
+  // Step 6: delete all vendors (invoices are gone so the FK check passes).
   for (const id of createdVendorIds) {
     try {
       const { status } = await api("DELETE", `/vendors/${id}`, { confirm: true });
@@ -369,6 +385,7 @@ let pipelineVoucherId;
   assert(xbJ.status === "SUCCESS", `export batch status=SUCCESS (got "${xbJ.status}")`);
   assert(typeof xbJ.recordCount === "number", `recordCount is a number (${xbJ.recordCount})`);
   assert(xbJ.recordCount >= 1, `export contains at least one record (got ${xbJ.recordCount})`);
+  createdExportBatchIds.push(xbJ.id);
 
   // Download and verify CSV content.
   const smokeHeaders = SMOKE_API_KEY ? { Authorization: `Bearer ${SMOKE_API_KEY}` } : {};

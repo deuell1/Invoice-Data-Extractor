@@ -145,6 +145,28 @@ router.get("/exports/:id", async (req, res): Promise<void> => {
   res.json(GetExportResponse.parse(serializeBatch(batch)));
 });
 
+// ─── DELETE /exports/:id ─────────────────────────────────────────────────────
+router.delete("/exports/:id", requireRole("AP_MANAGER"), async (req, res): Promise<void> => {
+  const params = GetExportParams.safeParse(req.params);
+  if (!params.success) {
+    res.status(400).json({ error: params.error.message });
+    return;
+  }
+
+  const [batch] = await db
+    .select()
+    .from(exportBatchTable)
+    .where(eq(exportBatchTable.id, params.data.id))
+    .limit(1);
+  if (!batch) {
+    res.status(404).json({ error: "Export batch not found" });
+    return;
+  }
+
+  await db.delete(exportBatchTable).where(eq(exportBatchTable.id, params.data.id));
+  res.json({ ok: true, id: params.data.id });
+});
+
 // ─── GET /exports/:id/download ───────────────────────────────────────────────
 router.get("/exports/:id/download", async (req, res): Promise<void> => {
   const params = DownloadExportParams.safeParse(req.params);
