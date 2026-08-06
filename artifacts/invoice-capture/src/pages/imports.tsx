@@ -48,7 +48,7 @@ function ImportStatusBadge({ status }: { status: string }) {
   const map: Record<string, string> = {
     COMMITTED: "text-emerald-700 border-emerald-300 bg-emerald-50",
     VALIDATED: "text-blue-700 border-blue-300 bg-blue-50",
-    PENDING: "text-slate-700 border-slate-300 bg-slate-50",
+    PENDING: "text-muted-foreground border-border bg-muted",
     CANCELLED: "text-amber-700 border-amber-300 bg-amber-50",
     FAILED: "text-destructive border-destructive/40 bg-destructive/5",
   };

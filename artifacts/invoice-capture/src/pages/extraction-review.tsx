@@ -705,7 +705,7 @@ export function ExtractionReview() {
           <CardHeader className="py-3 px-4 shrink-0 bg-muted/30 border-b">
             <CardTitle className="text-sm font-medium">Document Viewer</CardTitle>
           </CardHeader>
-          <CardContent className="p-0 flex-1 relative bg-gray-100 dark:bg-gray-800">
+          <CardContent className="p-0 flex-1 relative bg-muted">
             {invoice.fileObjectPath ? (() => {
               const fileUrl = buildStorageUrl(invoice.fileObjectPath, invoice.originalFileName);
               const downloadUrl = buildStorageUrl(

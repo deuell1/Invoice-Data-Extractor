@@ -273,9 +273,9 @@ export function DashboardPage() {
         <StatCard
           title="Pending Extraction"
           value={metrics?.pendingExtraction ?? 0}
-          icon={<FileText className="h-4 w-4 text-slate-500" />}
+          icon={<FileText className="h-4 w-4 text-muted-foreground" />}
           loading={isLoading}
-          color="text-slate-500"
+          color="text-muted-foreground"
           testId="metric-pending-extraction"
         />
       </div>
@@ -364,17 +364,17 @@ export function DashboardPage() {
           <StatCard
             title="Missing PO"
             value={metrics?.missingPo ?? 0}
-            icon={<FileQuestion className="h-4 w-4 text-slate-500" />}
+            icon={<FileQuestion className="h-4 w-4 text-muted-foreground" />}
             loading={isLoading}
-            color="text-slate-500"
+            color="text-muted-foreground"
             testId="metric-missing-po"
           />
           <StatCard
             title="Missing Due Date"
             value={metrics?.missingDueDate ?? 0}
-            icon={<CalendarX className="h-4 w-4 text-slate-500" />}
+            icon={<CalendarX className="h-4 w-4 text-muted-foreground" />}
             loading={isLoading}
-            color="text-slate-500"
+            color="text-muted-foreground"
             testId="metric-missing-due-date"
           />
         </div>
