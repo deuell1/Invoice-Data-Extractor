@@ -11,6 +11,7 @@ import importsRouter from "./imports";
 import exportsRouter from "./exports";
 import accuracyRouter from "./accuracy";
 import settingsRouter from "./settings";
+import usersRouter from "./users";
 
 const router: IRouter = Router();
 
@@ -29,5 +30,6 @@ router.use(importsRouter);
 router.use(exportsRouter);
 router.use(accuracyRouter);
 router.use(settingsRouter);
+router.use(usersRouter);
 
 export default router;

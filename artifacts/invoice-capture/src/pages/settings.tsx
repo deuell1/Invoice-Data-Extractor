@@ -11,7 +11,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
-import { Loader2, Settings as SettingsIcon, Save } from "lucide-react";
+import { Loader2, Settings as SettingsIcon, Save, Users } from "lucide-react";
+import { Link, useLocation } from "wouter";
 
 type FormState = {
   extractionConfidenceThreshold: string;
@@ -95,6 +96,8 @@ export function SettingsPage() {
     }
   };
 
+  const [location] = useLocation();
+
   return (
     <div className="space-y-6 flex flex-col h-full">
       <div className="shrink-0">
@@ -103,6 +106,36 @@ export function SettingsPage() {
           Settings
         </h1>
         <p className="text-sm text-muted-foreground mt-1">Internal configuration thresholds and defaults</p>
+      </div>
+
+      {/* Sub-nav */}
+      <div className="flex gap-1 border-b pb-0 shrink-0">
+        <Link href="/settings">
+          <button
+            className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              location === "/settings"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+            data-testid="tab-settings-config"
+          >
+            <SettingsIcon className="h-3.5 w-3.5" />
+            Configuration
+          </button>
+        </Link>
+        <Link href="/settings/users">
+          <button
+            className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              location === "/settings/users"
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+            data-testid="tab-settings-users"
+          >
+            <Users className="h-3.5 w-3.5" />
+            Users
+          </button>
+        </Link>
       </div>
 
       <div className="max-w-2xl w-full">

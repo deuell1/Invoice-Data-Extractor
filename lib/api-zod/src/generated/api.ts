@@ -2591,6 +2591,35 @@ export const CreateAccuracyRunBody = zod.object({
 
 
 /**
+ * @summary A single Clerk user with their current AP role
+ */
+export const AppUser = zod.object({
+  "userId": zod.string(),
+  "email": zod.string(),
+  "firstName": zod.string().nullable(),
+  "lastName": zod.string().nullable(),
+  "role": zod.enum(["AP_MANAGER", "AP_CLERK"]),
+})
+
+/**
+ * @summary List all users with their roles
+ */
+export const ListUsersResponse = zod.array(AppUser)
+
+/**
+ * @summary Body for patching a user's role
+ */
+export const PatchUserRoleBody = zod.object({
+  "role": zod.enum(["AP_MANAGER", "AP_CLERK"]),
+})
+
+/**
+ * @summary Response after patching a user's role
+ */
+export const PatchUserRoleResponse = AppUser
+
+
+/**
  * @summary Get internal configuration (safe defaults applied)
  */
 export const GetSettingsResponse = zod.object({

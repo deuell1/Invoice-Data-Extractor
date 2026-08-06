@@ -1136,6 +1136,22 @@ export interface AccuracyRunListResponse {
   measured: boolean;
 }
 
+export type AppRole = 'AP_MANAGER' | 'AP_CLERK';
+
+export interface AppUser {
+  userId: string;
+  email: string;
+  /** @nullable */
+  firstName?: string | null;
+  /** @nullable */
+  lastName?: string | null;
+  role: AppRole;
+}
+
+export interface UserRoleUpdate {
+  role: AppRole;
+}
+
 export interface Settings {
   /** Percent (0-100). Safe default 85. */
   extractionConfidenceThreshold: number;

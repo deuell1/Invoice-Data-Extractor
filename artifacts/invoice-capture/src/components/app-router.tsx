@@ -14,6 +14,7 @@ import { ExportsPage } from "@/pages/exports";
 import { SourceDocuments } from "@/pages/source-documents";
 import { AuditViewer } from "@/pages/audit-viewer";
 import { SettingsPage } from "@/pages/settings";
+import { SettingsUsersPage } from "@/pages/settings-users";
 import NotFound from "@/pages/not-found";
 
 export function AppRouter() {
@@ -39,6 +40,7 @@ export function AppRouter() {
         <Route path="/exports" component={ExportsPage} />
 
         <Route path="/audit" component={AuditViewer} />
+        <Route path="/settings/users" component={SettingsUsersPage} />
         <Route path="/settings" component={SettingsPage} />
 
         <Route component={NotFound} />
