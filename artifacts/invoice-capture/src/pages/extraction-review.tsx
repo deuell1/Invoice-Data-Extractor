@@ -160,11 +160,34 @@ export function ExtractionReview() {
   // reloads the form instead of leaving the previous invoice's values in place.
   const initializedKey = useRef<string | null>(null);
   const duplicateCheckedFor = useRef<number | null>(null);
+  // Set to true when the user triggers a re-extraction so we can auto-navigate
+  // once it settles (success → PENDING_APPROVAL, failure → FAILED).
+  const retryTriggered = useRef(false);
 
   // Reset the preview error state whenever we navigate to a different invoice.
   useEffect(() => {
     setPreviewError(false);
   }, [id]);
+
+  // Auto-transition after a clerk-triggered re-extraction settles.
+  useEffect(() => {
+    if (!retryTriggered.current || !invoice) return;
+
+    if (invoice.status === "PENDING_APPROVAL") {
+      // Extraction succeeded — navigate to the invoice list where this invoice
+      // now lives (PENDING_APPROVAL queue).
+      retryTriggered.current = false;
+      toast({
+        title: "Extraction complete",
+        description: "Invoice is now pending approval.",
+      });
+      setLocation("/invoices");
+    } else if (invoice.extractionStatus === "FAILED") {
+      // Extraction failed again — clear the flag so the banner updates with
+      // the new exceptionReason without triggering another navigation.
+      retryTriggered.current = false;
+    }
+  }, [invoice?.status, invoice?.extractionStatus]);
 
   const hasManualEdits = useMemo(
     () => (auditLogs ?? []).some((log) => log.action === "FIELD_UPDATED"),
@@ -303,6 +326,9 @@ export function ExtractionReview() {
     try {
       await extractInvoice.mutateAsync({ id });
       toast({ title: "Extraction restarted", description: "Re-running data extraction…" });
+      // Mark that the user triggered this so the auto-transition effect fires
+      // when polling detects the settled extractionStatus.
+      retryTriggered.current = true;
       // Force the form to re-seed once new extracted data arrives.
       initializedKey.current = null;
       queryClient.invalidateQueries({ queryKey: getGetInvoiceQueryKey(id) });
