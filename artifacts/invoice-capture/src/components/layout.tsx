@@ -59,7 +59,7 @@ export function Layout({ children }: LayoutProps) {
   const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
   return (
-    <div className="flex h-screen bg-gray-50/50 dark:bg-gray-900/50 overflow-hidden">
+    <div className="flex h-screen bg-background overflow-hidden">
       {/* Sidebar */}
       <div 
         className={cn(

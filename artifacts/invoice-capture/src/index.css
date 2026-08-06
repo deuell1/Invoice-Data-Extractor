@@ -40,76 +40,103 @@
   --color-destructive-foreground: hsl(var(--destructive-foreground));
   --color-destructive-border: var(--destructive-border);
 
-  --font-sans: 'Inter', sans-serif;
-  --radius: 0.5rem;
+  --font-sans: 'JetBrains Mono', monospace;
+  --font-mono: 'JetBrains Mono', monospace;
+  --radius: 0.25rem;
 }
 
+/* ─── Light theme (GitHub-style professional light derived from Mission Control tokens) ─── */
 :root {
-  --background: 0 0% 100%;
-  --foreground: 222.2 47.4% 11.2%;
-  --border: 214.3 31.8% 91.4%;
-  --input: 214.3 31.8% 91.4%;
-  --ring: 221.2 83.2% 53.3%;
-  --card: 0 0% 100%;
-  --card-foreground: 222.2 47.4% 11.2%;
-  --card-border: 214.3 31.8% 91.4%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 222.2 47.4% 11.2%;
-  --popover-border: 214.3 31.8% 91.4%;
-  --primary: 221.2 83.2% 53.3%;
-  --primary-foreground: 210 40% 98%;
-  --secondary: 210 40% 96.1%;
-  --secondary-foreground: 222.2 47.4% 11.2%;
-  --muted: 210 40% 96.1%;
-  --muted-foreground: 215.4 16.3% 46.9%;
-  --accent: 210 40% 96.1%;
-  --accent-foreground: 222.2 47.4% 11.2%;
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 210 40% 98%;
-  
-  --sidebar: 222.2 47.4% 11.2%;
-  --sidebar-foreground: 210 40% 98%;
-  --sidebar-border: 214.3 31.8% 91.4%;
-  --sidebar-primary: 221.2 83.2% 53.3%;
-  --sidebar-primary-foreground: 210 40% 98%;
-  --sidebar-accent: 216 34% 17%;
-  --sidebar-accent-foreground: 210 40% 98%;
-  --sidebar-ring: 221.2 83.2% 53.3%;
+  --background: 210 29% 97%;          /* #f6f8fa */
+  --foreground: 213 13% 14%;          /* #1f2328 */
+  --border: 210 18% 84%;              /* #d0d7de */
+  --input: 210 18% 84%;
+  --ring: 212 92% 44%;                /* #0969da */
 
-  --radius: 0.5rem;
+  --card: 0 0% 100%;                  /* #ffffff */
+  --card-foreground: 213 13% 14%;
+  --card-border: 210 18% 84%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 213 13% 14%;
+  --popover-border: 210 18% 84%;
+
+  --primary: 212 92% 44%;             /* #0969da — electric blue */
+  --primary-foreground: 0 0% 100%;
+  --primary-border: hsl(210 18% 84%);
+
+  --secondary: 210 24% 93%;           /* #eaeef2 */
+  --secondary-foreground: 213 13% 14%;
+  --secondary-border: hsl(210 18% 84%);
+
+  --muted: 220 14% 96%;               /* #f3f4f6 */
+  --muted-foreground: 212 10% 38%;    /* #57606a */
+  --muted-border: hsl(210 18% 84%);
+
+  --accent: 137 57% 41%;              /* #2da44e — circuit green */
+  --accent-foreground: 0 0% 100%;
+  --accent-border: hsl(210 18% 84%);
+
+  --destructive: 356 72% 47%;         /* #cf222e — alert red */
+  --destructive-foreground: 0 0% 100%;
+  --destructive-border: hsl(210 18% 84%);
+
+  --sidebar: 0 0% 100%;               /* white sidebar in light mode */
+  --sidebar-foreground: 213 13% 14%;
+  --sidebar-border: 210 18% 84%;
+  --sidebar-primary: 212 92% 44%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 210 24% 93%;
+  --sidebar-accent-foreground: 213 13% 14%;
+  --sidebar-ring: 212 92% 44%;
+
+  --radius: 0.25rem;
 }
 
+/* ─── Dark theme (source-faithful Mission Control dark palette) ─── */
 .dark {
-  --background: 222.2 84% 4.9%;
-  --foreground: 210 40% 98%;
-  --border: 217.2 32.6% 17.5%;
-  --input: 217.2 32.6% 17.5%;
-  --ring: 224.3 76.3% 48%;
-  --card: 222.2 84% 4.9%;
-  --card-foreground: 210 40% 98%;
-  --card-border: 217.2 32.6% 17.5%;
-  --popover: 222.2 84% 4.9%;
-  --popover-foreground: 210 40% 98%;
-  --popover-border: 217.2 32.6% 17.5%;
-  --primary: 217.2 91.2% 59.8%;
-  --primary-foreground: 222.2 47.4% 11.2%;
-  --secondary: 217.2 32.6% 17.5%;
-  --secondary-foreground: 210 40% 98%;
-  --muted: 217.2 32.6% 17.5%;
-  --muted-foreground: 215 20.2% 65.1%;
-  --accent: 217.2 32.6% 17.5%;
-  --accent-foreground: 210 40% 98%;
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 210 40% 98%;
-  
-  --sidebar: 222.2 84% 4.9%;
-  --sidebar-foreground: 210 40% 98%;
-  --sidebar-border: 217.2 32.6% 17.5%;
-  --sidebar-primary: 217.2 91.2% 59.8%;
-  --sidebar-primary-foreground: 222.2 47.4% 11.2%;
-  --sidebar-accent: 217.2 32.6% 17.5%;
-  --sidebar-accent-foreground: 210 40% 98%;
-  --sidebar-ring: 224.3 76.3% 48%;
+  --background: 225 31% 5%;           /* #090b11 — near-black with blue tint */
+  --foreground: 0 0% 98%;             /* #fafafa */
+  --border: 235 14% 16%;              /* #242530 */
+  --input: 235 14% 16%;
+  --ring: 212 100% 67%;               /* #58a6ff */
+
+  --card: 227 24% 7%;                 /* #0e1017 — elevated bento surface */
+  --card-foreground: 0 0% 98%;
+  --card-border: 235 14% 16%;
+
+  --popover: 227 24% 7%;
+  --popover-foreground: 0 0% 98%;
+  --popover-border: 235 14% 16%;
+
+  --primary: 212 100% 67%;            /* #58a6ff — neon electric blue */
+  --primary-foreground: 225 31% 5%;
+  --primary-border: hsl(235 14% 16%);
+
+  --secondary: 226 20% 13%;           /* #1a1d27 */
+  --secondary-foreground: 0 0% 98%;
+  --secondary-border: hsl(235 14% 16%);
+
+  --muted: 226 20% 13%;               /* #1a1d27 */
+  --muted-foreground: 212 9% 58%;     /* #8b949e — axis-label grey */
+  --muted-border: hsl(235 14% 16%);
+
+  --accent: 128 49% 49%;              /* #3fb950 — circuit green */
+  --accent-foreground: 225 31% 5%;
+  --accent-border: hsl(235 14% 16%);
+
+  --destructive: 11 90% 68%;          /* #f78166 — alert amber-red */
+  --destructive-foreground: 0 0% 98%;
+  --destructive-border: hsl(235 14% 16%);
+
+  --sidebar: 228 45% 4%;              /* #060810 — darkest surface */
+  --sidebar-foreground: 0 0% 98%;
+  --sidebar-border: 226 20% 13%;
+  --sidebar-primary: 212 100% 67%;
+  --sidebar-primary-foreground: 225 31% 5%;
+  --sidebar-accent: 226 20% 13%;
+  --sidebar-accent-foreground: 0 0% 98%;
+  --sidebar-ring: 212 100% 67%;
 }
 
 @layer base {
