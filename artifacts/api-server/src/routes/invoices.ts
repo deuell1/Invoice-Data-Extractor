@@ -1289,7 +1289,9 @@ router.post("/invoices/:id/approve", requireRole("AP_MANAGER"), async (req, res)
 });
 
 // ─── POST /invoices/:id/reject ───────────────────────────────────────────────
-router.post("/invoices/:id/reject", async (req, res): Promise<void> => {
+// Restricted to AP_MANAGER: sending an invoice back to EXCEPTION is a
+// managerial reversal decision, equivalent in authority to approve/post.
+router.post("/invoices/:id/reject", requireRole("AP_MANAGER"), async (req, res): Promise<void> => {
   const params = RejectInvoiceParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -1337,6 +1339,11 @@ router.post("/invoices/:id/reject", async (req, res): Promise<void> => {
 });
 
 // ─── POST /invoices/:id/submit ───────────────────────────────────────────────
+// No role restriction: submit is the clerk's action of sending their invoice
+// through validation into PENDING_APPROVAL (or EXCEPTION if blocking checks
+// fail). It is intentionally open to both AP_CLERK and AP_MANAGER so that
+// managers can also submit on behalf of a clerk when needed. The submittedBy
+// field records who performed the submit for queue-scoping purposes.
 router.post("/invoices/:id/submit", async (req, res): Promise<void> => {
   const params = SubmitInvoiceParams.safeParse(req.params);
   if (!params.success) {
