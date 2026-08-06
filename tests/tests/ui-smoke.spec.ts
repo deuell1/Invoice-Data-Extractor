@@ -139,6 +139,122 @@ test("exports page renders form and Generate Export button works", async ({
   ).toBeVisible();
 });
 
+// ─── 5. Invoice intake flow ───────────────────────────────────────────────────
+
+test("invoice intake: upload form submits and shows processing screen", async ({
+  page,
+}) => {
+  // ---- API mocks ----------------------------------------------------------
+  // Intercept the upload-URL request and return a fake presigned URL.
+  await page.route("**/api/storage/uploads/request-url**", async (route) => {
+    if (route.request().method() === "POST") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          uploadURL: "https://fake-storage.example.invalid/upload/test-object",
+          objectPath: "uploads/test-invoice.pdf",
+        }),
+      });
+    } else {
+      await route.continue();
+    }
+  });
+
+  // Intercept the PUT to the fake storage URL (external, not /api/).
+  await page.route(
+    "https://fake-storage.example.invalid/**",
+    async (route) => {
+      await route.fulfill({ status: 200 });
+    },
+  );
+
+  // Intercept source-document creation (POST) and return a fake record.
+  await page.route("**/api/source-documents", async (route) => {
+    if (route.request().method() === "POST") {
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          source: {
+            id: 9999,
+            status: "PENDING",
+            processingStatus: "PENDING",
+            originalFileName: "test-invoice.pdf",
+            invoices: [],
+          },
+        }),
+      });
+    } else {
+      // GET list — let the real server handle it.
+      await route.continue();
+    }
+  });
+
+  // Intercept GET for the newly created source document (used by
+  // SourceDocumentSummary for polling).  The API returns { source, invoices };
+  // processingStatus COMPLETE stops the poll loop so the component settles.
+  await page.route("**/api/source-documents/9999**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        source: {
+          id: 9999,
+          processingStatus: "COMPLETE",
+          originalFileName: "test-invoice.pdf",
+        },
+        invoices: [],
+      }),
+    });
+  });
+
+  // ---- Navigate to the intake page ----------------------------------------
+  await page.goto("/invoices/new");
+
+  await expect(page.getByTestId("button-upload")).toBeVisible({
+    timeout: 15_000,
+  });
+
+  // Upload button is initially disabled (no file selected yet).
+  await expect(page.getByTestId("button-upload")).toBeDisabled();
+
+  // ---- Attach a minimal valid PDF -----------------------------------------
+  const minimalPdf = Buffer.from(
+    "%PDF-1.4\n" +
+      "1 0 obj<</Type /Catalog /Pages 2 0 R>>endobj\n" +
+      "2 0 obj<</Type /Pages /Kids [3 0 R] /Count 1>>endobj\n" +
+      "3 0 obj<</Type /Page /MediaBox [0 0 612 792]>>endobj\n" +
+      "xref\n0 4\n" +
+      "0000000000 65535 f\n" +
+      "0000000009 00000 n\n" +
+      "0000000058 00000 n\n" +
+      "0000000115 00000 n\n" +
+      "trailer<</Size 4 /Root 1 0 R>>\n" +
+      "startxref\n192\n%%EOF\n",
+  );
+
+  await page.getByTestId("input-file").setInputFiles({
+    name: "test-invoice.pdf",
+    mimeType: "application/pdf",
+    buffer: minimalPdf,
+  });
+
+  // After selecting a file the button should become enabled.
+  await expect(page.getByTestId("button-upload")).toBeEnabled();
+
+  // ---- Submit -------------------------------------------------------------
+  await page.getByTestId("button-upload").click();
+
+  // The tracking / processing screen renders the "Upload Another File" button.
+  await expect(page.getByTestId("button-upload-another")).toBeVisible({
+    timeout: 15_000,
+  });
+
+  // Confirm the page is still intact — no unhandled crash.
+  await expect(page.locator("body")).not.toBeEmpty();
+});
+
 // ─── 4. Invoice List ─────────────────────────────────────────────────────────
 
 test("invoice list page renders with filter controls", async ({ page }) => {
