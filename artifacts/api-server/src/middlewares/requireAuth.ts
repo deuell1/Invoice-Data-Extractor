@@ -25,7 +25,13 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
       const bearer = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
       if (bearer === smokeKey) {
         (req as any).clerkUserId = "smoke-test";
-        (req as any).clerkUserRole = "AP_MANAGER" as UserRole;
+        // Allow role override for role-guard smoke tests: send X-Smoke-Role: AP_CLERK
+        // to simulate a clerk session without a real Clerk token.
+        // Only respected outside production alongside a valid smoke key.
+        const smokeRoleHeader = req.headers["x-smoke-role"];
+        const clerkRole: UserRole =
+          smokeRoleHeader === "AP_CLERK" ? "AP_CLERK" : "AP_MANAGER";
+        (req as any).clerkUserRole = clerkRole;
         next();
         return;
       }

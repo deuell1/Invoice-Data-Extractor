@@ -64,6 +64,22 @@ async function api(method, path, body) {
 }
 
 /**
+ * Same as `api` but sends X-Smoke-Role: AP_CLERK so the server treats this
+ * request as coming from an AP_CLERK — used solely by the role-guard suite.
+ */
+async function apiAsClerk(method, path, body) {
+  const headers = { "Content-Type": "application/json", "X-Smoke-Role": "AP_CLERK" };
+  if (SMOKE_API_KEY) headers["Authorization"] = `Bearer ${SMOKE_API_KEY}`;
+  const opts = { method, headers };
+  if (body !== undefined) opts.body = JSON.stringify(body);
+  const res = await fetch(`${BASE}${path}`, opts);
+  const text = await res.text();
+  let json;
+  try { json = JSON.parse(text); } catch { json = { _raw: text }; }
+  return { status: res.status, ok: res.ok, json, headers: res.headers };
+}
+
+/**
  * Poll `fn` until it returns a truthy value. Hard-fails the test if the
  * timeout is exceeded — there is no silent pass-on-timeout.
  */
@@ -786,6 +802,119 @@ console.log("══════════════════════�
   assert(status === 200, `GET /exports returns 200 (${status})`);
   assert(Array.isArray(json.data), "exports.data is an array");
   assert(json.data.length >= 1, `At least 1 export batch exists (${json.data.length})`);
+}
+
+// ─── Suite 10: Role-based access control ─────────────────────────────────────
+//
+// Covers every route guarded by requireRole("AP_MANAGER"):
+//   POST   /invoices/:id/approve
+//   POST   /invoices/bulk-approve
+//   PATCH  /invoices/:id/voucher
+//   GET    /invoices/export
+//   POST   /exports
+//   DELETE /exports/:id
+//   DELETE /vendors/:id
+//   DELETE /storage/objects/*path
+//
+// Strategy:
+//   • AP_CLERK (via X-Smoke-Role: AP_CLERK header) must get exactly 403 on all.
+//   • AP_MANAGER must get the expected business status (404, 200, or 201) — not
+//     403, 401, 400, or 5xx — proving the guard lets the request through.
+//
+// Non-mutating manager checks use a guaranteed-absent numeric ID (999999999) so
+// the role guard runs and the handler returns 404 without touching real data.
+// POST /exports actually creates a batch (tracked for cleanup).
+
+console.log("\n══════════════════════════════════════════");
+console.log("SUITE 10: Role-based access control (AP_CLERK vs AP_MANAGER)");
+console.log("  AP_CLERK  → must get 403 on all 8 manager-only routes");
+console.log("  AP_MANAGER → must get expected business status (no 403/401/5xx)");
+console.log("══════════════════════════════════════════");
+
+{
+  const GHOST_ID = 999999999; // Non-existent ID; role guard fires before DB lookup.
+
+  // ── 10a: AP_CLERK must receive exactly 403 on every manager-only route ───────
+  console.log("\n  [10a] AP_CLERK blocked (403) on all manager-only routes");
+
+  const clerkBlockedRoutes = [
+    ["POST",   `/invoices/${GHOST_ID}/approve`,              {}],
+    ["POST",   `/invoices/bulk-approve`,                     { ids: [GHOST_ID] }],
+    ["PATCH",  `/invoices/${GHOST_ID}/voucher`,              { voucherId: "VCH-ROLE-TEST" }],
+    ["GET",    `/invoices/export`,                           undefined],
+    ["POST",   `/exports`,                                   { exportType: "POSTED", format: "CSV", exportedBy: "role-test" }],
+    ["DELETE", `/exports/${GHOST_ID}`,                       undefined],
+    ["DELETE", `/vendors/${GHOST_ID}`,                       { confirm: true }],
+    ["DELETE", `/storage/objects/smoke-role-test/ghost.pdf`, undefined],
+  ];
+
+  for (const [method, routePath, body] of clerkBlockedRoutes) {
+    const { status: clerkStatus } = await apiAsClerk(method, routePath, body);
+    assert(
+      clerkStatus === 403,
+      `AP_CLERK: ${method} ${routePath} returns 403 (got ${clerkStatus})`,
+    );
+  }
+
+  // ── 10b: AP_MANAGER gets the expected business status on every guarded route ─
+  console.log("\n  [10b] AP_MANAGER reaches handler (no 403/401/5xx) on all guarded routes");
+
+  // Routes where the role guard passes and the handler returns 404 (resource absent).
+  const mgrExpect404 = [
+    ["POST",   `/invoices/${GHOST_ID}/approve`, {}],
+    ["PATCH",  `/invoices/${GHOST_ID}/voucher`, { voucherId: "VCH-ROLE-TEST" }],
+    ["DELETE", `/exports/${GHOST_ID}`,          undefined],
+    ["DELETE", `/vendors/${GHOST_ID}`,          { confirm: true }],
+  ];
+
+  for (const [method, routePath, body] of mgrExpect404) {
+    const { status: mgrStatus } = await api(method, routePath, body);
+    assert(
+      mgrStatus === 404,
+      `AP_MANAGER: ${method} ${routePath} returns 404 after passing guard (got ${mgrStatus})`,
+    );
+  }
+
+  // DELETE /storage/objects is idempotent — returns 200 even for non-existent paths.
+  {
+    const { status: storageS } = await api("DELETE", "/storage/objects/smoke-role-test/ghost.pdf");
+    assert(
+      storageS === 200,
+      `AP_MANAGER: DELETE /storage/objects/* returns 200 (idempotent) after passing guard (got ${storageS})`,
+    );
+  }
+
+  // bulk-approve with a non-existent ID → 200 with succeeded=0 (no 403/404).
+  {
+    const { status: baRoleS, json: baRoleJ } = await api("POST", "/invoices/bulk-approve", { ids: [GHOST_ID] });
+    assert(
+      baRoleS === 200,
+      `AP_MANAGER: POST /invoices/bulk-approve returns 200 after passing guard (got ${baRoleS})`,
+    );
+  }
+
+  // GET /invoices/export → 200 CSV (no invoice filter needed; returns whatever is posted).
+  {
+    const { status: exportRoleS } = await api("GET", "/invoices/export");
+    assert(
+      exportRoleS === 200,
+      `AP_MANAGER: GET /invoices/export returns 200 after passing guard (got ${exportRoleS})`,
+    );
+  }
+
+  // POST /exports → 201 (creates a real export batch; tracked for cleanup).
+  {
+    const { status: xRoleS, json: xRoleJ } = await api("POST", "/exports", {
+      exportType: "POSTED",
+      format: "CSV",
+      exportedBy: "role-smoke-test",
+    });
+    assert(
+      xRoleS === 201,
+      `AP_MANAGER: POST /exports returns 201 after passing guard (got ${xRoleS})`,
+    );
+    if (xRoleJ?.id) createdExportBatchIds.push(xRoleJ.id);
+  }
 }
 
 // ─── Summary ──────────────────────────────────────────────────────────────────
