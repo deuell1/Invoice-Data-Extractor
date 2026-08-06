@@ -19,11 +19,14 @@ import {
   User,
   ShieldCheck,
   Shield,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useRole } from "@/hooks/use-role";
+import { useTheme } from "@/hooks/use-theme";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -35,6 +38,7 @@ export function Layout({ children }: LayoutProps) {
   const { user } = useUser();
   const { signOut } = useClerk();
   const role = useRole();
+  const { theme, toggleTheme } = useTheme();
 
   const navigation = [
     { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -146,19 +150,36 @@ export function Layout({ children }: LayoutProps) {
               </div>
             </div>
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            className={cn(
-              "w-full text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-              !sidebarOpen && "px-0 justify-center"
-            )}
-            onClick={() => signOut({ redirectUrl: basePath || "/" })}
-            data-testid="button-sign-out"
-          >
-            <LogOut className="h-4 w-4 shrink-0" />
-            <span className={cn("ml-2", !sidebarOpen && "hidden")}>Sign out</span>
-          </Button>
+          <div className={cn("flex items-center gap-1", sidebarOpen ? "w-full" : "justify-center")}>
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                "text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+                sidebarOpen ? "flex-1" : "px-0",
+                !sidebarOpen && "justify-center"
+              )}
+              onClick={() => signOut({ redirectUrl: basePath || "/" })}
+              data-testid="button-sign-out"
+            >
+              <LogOut className="h-4 w-4 shrink-0" />
+              <span className={cn("ml-2", !sidebarOpen && "hidden")}>Sign out</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="shrink-0 text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground h-8 w-8"
+              onClick={toggleTheme}
+              data-testid="button-toggle-theme"
+              title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {theme === "dark" ? (
+                <Sun className="h-4 w-4" />
+              ) : (
+                <Moon className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
         </div>
       </div>
 
