@@ -1,11 +1,12 @@
 import { db, vendorIdTable, invoiceCaptureTable, invoiceAuditLogTable } from "@workspace/db";
+import type { InsertVendor, InsertInvoice } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
 async function seed() {
   console.log("Seeding database...");
 
   // Vendors
-  const vendors = [
+  const vendors: InsertVendor[] = [
     {
       vendorCode: "ACME-001",
       vendorName: "Acme Office Supplies Inc.",
@@ -60,9 +61,9 @@ async function seed() {
   const tech = insertedVendors.find((v) => v.vendorCode === "TECH-002");
   const fast = insertedVendors.find((v) => v.vendorCode === "FAST-003");
 
-  const invoices = [
+  const invoices: InsertInvoice[] = [
     {
-      status: "PENDING_EXTRACTION" as const,
+      status: "PENDING_EXTRACTION",
       vendorId: acme?.id ?? null,
       invoiceNumber: null,
       invoiceDate: null,
@@ -76,7 +77,7 @@ async function seed() {
       lowConfidenceFields: null,
     },
     {
-      status: "PENDING_APPROVAL" as const,
+      status: "PENDING_APPROVAL",
       vendorId: tech?.id ?? null,
       invoiceNumber: "INV-2025-8821",
       invoiceDate: "2025-10-15",
@@ -90,7 +91,7 @@ async function seed() {
       lowConfidenceFields: null,
     },
     {
-      status: "EXCEPTION" as const,
+      status: "EXCEPTION",
       vendorId: fast?.id ?? null,
       invoiceNumber: "FF-78432",
       invoiceDate: "2025-10-01",
@@ -105,7 +106,7 @@ async function seed() {
       exceptionReason: "Low confidence score: 0.55",
     },
     {
-      status: "APPROVED" as const,
+      status: "APPROVED",
       vendorId: acme?.id ?? null,
       invoiceNumber: "ACME-2025-4411",
       invoiceDate: "2025-09-28",
