@@ -8,11 +8,6 @@
 
 export interface VendorUpdate {
   /**
-     * Identified actor performing the update (required)
-     * @minLength 1
-     */
-  actor: string;
-  /**
      * Reason for the update (required for sensitive changes)
      * @nullable
      */

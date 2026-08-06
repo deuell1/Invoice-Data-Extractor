@@ -20,5 +20,9 @@ export interface AuditLogEntry {
   editorRole?: string | null;
   /** @nullable */
   note?: string | null;
+  /** Clerk userId of the authenticated user who performed the action. */
+  actorClerkId: string;
+  /** Human-readable display name resolved from Clerk at write time. */
+  actorName?: string | null;
   createdAt: Date;
 }

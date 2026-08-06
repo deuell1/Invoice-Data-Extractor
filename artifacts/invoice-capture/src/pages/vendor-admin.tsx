@@ -1,5 +1,4 @@
-import { useState, useEffect } from "react";
-import { useActorName } from "@/hooks/use-actor";
+import { useState } from "react";
 import { Link } from "wouter";
 import {
   useListVendors,
@@ -61,7 +60,6 @@ export function VendorAdmin() {
 
   const createVendor = useCreateVendor();
   const importVendors = useImportVendors();
-  const actorName = useActorName();
 
   // ── Add Vendor dialog ──────────────────────────────────────────────────────
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -69,25 +67,14 @@ export function VendorAdmin() {
     vendorCode: "", vendorName: "", legalName: "", dba: "",
     taxId: "", apEmail: "", contactEmail: "",
     paymentTerms: "", termsDays: "", currency: "",
-    vendorCategory: "", vendorType: "", notes: "", actor: "",
+    vendorCategory: "", vendorType: "", notes: "",
   });
-
-  // Pre-fill actor from authenticated identity when Clerk user loads
-  useEffect(() => {
-    if (actorName) {
-      setNewVendor((v) => (v.actor ? v : { ...v, actor: actorName }));
-    }
-  }, [actorName]);
   const [addError, setAddError] = useState<string | null>(null);
 
   const handleAdd = async () => {
     setAddError(null);
     if (!newVendor.vendorCode.trim() || !newVendor.vendorName.trim()) {
       setAddError("Vendor code and name are required");
-      return;
-    }
-    if (!newVendor.actor.trim()) {
-      setAddError("Your name (actor) is required to create a vendor");
       return;
     }
     const termsDaysNum = newVendor.termsDays.trim() ? parseInt(newVendor.termsDays.trim(), 10) : undefined;
@@ -111,7 +98,6 @@ export function VendorAdmin() {
           vendorCategory: newVendor.vendorCategory.trim() || undefined,
           vendorType: newVendor.vendorType.trim() || undefined,
           notes: newVendor.notes.trim() || undefined,
-          actor: newVendor.actor.trim(),
         },
       });
       toast({ title: "Vendor created", description: newVendor.vendorCode });
@@ -120,7 +106,7 @@ export function VendorAdmin() {
         vendorCode: "", vendorName: "", legalName: "", dba: "",
         taxId: "", apEmail: "", contactEmail: "",
         paymentTerms: "", termsDays: "", currency: "",
-        vendorCategory: "", vendorType: "", notes: "", actor: actorName,
+        vendorCategory: "", vendorType: "", notes: "",
       });
       queryClient.invalidateQueries({ queryKey: getListVendorsQueryKey() });
     } catch (e) {
@@ -487,11 +473,6 @@ export function VendorAdmin() {
             <div className="space-y-1">
               <Label>Tax ID</Label>
               <Input placeholder="12-3456789" value={newVendor.taxId} onChange={(e) => setNewVendor(v => ({ ...v, taxId: e.target.value }))} />
-            </div>
-            <div className="space-y-1">
-              <Label>Your Name (actor) *</Label>
-              <Input placeholder="e.g. Jane Smith" value={newVendor.actor} onChange={(e) => setNewVendor(v => ({ ...v, actor: e.target.value }))} />
-              <p className="text-xs text-muted-foreground">Required for audit trail — no authentication in pilot.</p>
             </div>
           </div>
           <DialogFooter>

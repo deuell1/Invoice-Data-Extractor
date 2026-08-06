@@ -10,6 +10,4 @@ export interface ExceptionReviewInput {
   reviewed?: boolean;
   /** @nullable */
   note?: string | null;
-  /** @nullable */
-  actor?: string | null;
 }

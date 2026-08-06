@@ -272,8 +272,6 @@ export const UpdateInvoiceParams = zod.object({
   "id": zod.coerce.number()
 })
 
-export const updateInvoiceBodyEditorRoleDefault = `AP_PROCESSOR`;
-
 export const UpdateInvoiceBody = zod.object({
   "vendorId": zod.number().nullish(),
   "invoiceNumber": zod.string().nullish(),
@@ -290,8 +288,7 @@ export const UpdateInvoiceBody = zod.object({
   "freightAmount": zod.number().nullish(),
   "discountAmount": zod.number().nullish(),
   "otherChargesAmount": zod.number().nullish(),
-  "paymentTerms": zod.string().nullish(),
-  "editorRole": zod.string().default(updateInvoiceBodyEditorRoleDefault)
+  "paymentTerms": zod.string().nullish()
 })
 
 export const updateInvoiceResponseCurrencyDefault = `USD`;
@@ -380,8 +377,7 @@ export const DeleteInvoiceParams = zod.object({
 })
 
 export const DeleteInvoiceBody = zod.object({
-  "confirm": zod.boolean().describe('Must be true to perform a permanent hard delete.'),
-  "actor": zod.string().nullish().describe('Actor performing the deletion (permissions deferred).')
+  "confirm": zod.boolean().describe('Must be true to perform a permanent hard delete.')
 })
 
 export const DeleteInvoiceResponse = zod.object({
@@ -405,8 +401,7 @@ export const VoidInvoiceParams = zod.object({
 
 export const VoidInvoiceBody = zod.object({
   "reason": zod.string().min(1).describe('Required reason for voiding\/removing the record.'),
-  "note": zod.string().nullish().describe('Optional free-text note.'),
-  "actor": zod.string().nullish().describe('Actor performing the removal (permissions deferred).')
+  "note": zod.string().nullish().describe('Optional free-text note.')
 })
 
 export const voidInvoiceResponseCurrencyDefault = `USD`;
@@ -1193,7 +1188,6 @@ export const createVendorBodyAliasesDefault = [];
 export const CreateVendorBody = zod.object({
   "vendorCode": zod.string().min(1),
   "vendorName": zod.string().min(1),
-  "actor": zod.string().nullish().describe('Identified actor performing the creation (required by the API route; no auth system in pilot)'),
   "legalName": zod.string().nullish(),
   "dba": zod.string().nullish(),
   "taxId": zod.string().nullish(),
@@ -1332,7 +1326,6 @@ export const UpdateVendorParams = zod.object({
 
 
 export const UpdateVendorBody = zod.object({
-  "actor": zod.string().min(1).describe('Identified actor performing the update (required)'),
   "reason": zod.string().nullish().describe('Reason for the update (required for sensitive changes)'),
   "vendorCode": zod.string().min(1).nullish().describe('Change vendor code; blocked if vendor is referenced by invoices or POs unless adminOverride is true'),
   "vendorName": zod.string().nullish(),
@@ -1489,6 +1482,8 @@ export const GetInvoiceAuditLogResponseItem = zod.object({
   "newValue": zod.string().nullish(),
   "editorRole": zod.string().nullish(),
   "note": zod.string().nullish(),
+  "actorClerkId": zod.string(),
+  "actorName": zod.string().nullish(),
   "createdAt": zod.coerce.date()
 })
 export const GetInvoiceAuditLogResponse = zod.array(GetInvoiceAuditLogResponseItem)
@@ -2044,8 +2039,7 @@ export const AddExceptionNoteParams = zod.object({
 
 
 export const AddExceptionNoteBody = zod.object({
-  "note": zod.string().min(1),
-  "actor": zod.string().nullish()
+  "note": zod.string().min(1)
 })
 
 
@@ -2061,8 +2055,7 @@ export const AssignExceptionParams = zod.object({
 
 export const AssignExceptionBody = zod.object({
   "owner": zod.string().min(1),
-  "ownerClerkId": zod.string().optional().describe('Clerk user ID of the assignee; stored for server-side scope enforcement'),
-  "actor": zod.string().nullish()
+  "ownerClerkId": zod.string().optional().describe('Clerk user ID of the assignee; stored for server-side scope enforcement')
 })
 
 export const assignExceptionResponseCurrencyDefault = `USD`;
@@ -2153,8 +2146,7 @@ export const reviewExceptionBodyReviewedDefault = true;
 
 export const ReviewExceptionBody = zod.object({
   "reviewed": zod.boolean().default(reviewExceptionBodyReviewedDefault),
-  "note": zod.string().nullish(),
-  "actor": zod.string().nullish()
+  "note": zod.string().nullish()
 })
 
 export const reviewExceptionResponseCurrencyDefault = `USD`;
@@ -2242,8 +2234,7 @@ export const ReturnExceptionToApprovalParams = zod.object({
 })
 
 export const ReturnExceptionToApprovalBody = zod.object({
-  "note": zod.string().nullish(),
-  "actor": zod.string().nullish()
+  "note": zod.string().nullish()
 })
 
 export const returnExceptionToApprovalResponseCurrencyDefault = `USD`;

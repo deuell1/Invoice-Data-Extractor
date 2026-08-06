@@ -137,6 +137,10 @@ export async function appendAudit(params: {
   newValue?: string | null;
   editorRole?: string | null;
   note?: string | null;
+  /** Clerk userId of the authenticated actor performing this action. */
+  actorClerkId: string;
+  /** Human-readable display name resolved from Clerk at write time. */
+  actorName?: string | null;
 }) {
   await db.insert(invoiceAuditLogTable).values({
     invoiceId: params.invoiceId,
@@ -146,6 +150,8 @@ export async function appendAudit(params: {
     newValue: params.newValue ?? null,
     editorRole: params.editorRole ?? null,
     note: params.note ?? null,
+    actorClerkId: params.actorClerkId,
+    actorName: params.actorName ?? null,
   });
 }
 

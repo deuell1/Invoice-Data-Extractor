@@ -174,13 +174,7 @@ router.post("/vendors", async (req, res): Promise<void> => {
     return;
   }
 
-  const actor = (parsed.data.actor ?? "").trim();
-  if (!actor) {
-    res
-      .status(400)
-      .json({ error: "actor is required to create a vendor (internal pilot — actor identifies who performed the action)" });
-    return;
-  }
+  const actor = ((req as any).clerkUserId as string | undefined) ?? "system";
 
   if (parsed.data.vendorName.trim().length === 0) {
     res.status(400).json({ error: "Vendor name cannot be blank" });
@@ -533,11 +527,7 @@ router.patch("/vendors/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  const actor = parsed.data.actor.trim();
-  if (!actor) {
-    res.status(400).json({ error: "actor is required to update a vendor" });
-    return;
-  }
+  const actor = ((req as any).clerkUserId as string | undefined) ?? "system";
 
   // Load current vendor for comparison
   const [current] = await db

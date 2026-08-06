@@ -17,9 +17,4 @@ export interface RemovalInput {
      * @nullable
      */
   note?: string | null;
-  /**
-     * Actor performing the removal (permissions deferred).
-     * @nullable
-     */
-  actor?: string | null;
 }

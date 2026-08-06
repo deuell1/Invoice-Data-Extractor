@@ -1,5 +1,4 @@
-import { useState, useEffect } from "react";
-import { useActorName } from "@/hooks/use-actor";
+import { useState } from "react";
 import { useParams, Link } from "wouter";
 import {
   useGetVendor,
@@ -38,7 +37,6 @@ type EditForm = {
   holdReason: string;
   notes: string;
   aliases: string[];
-  actor: string;
   reason: string;
 };
 
@@ -53,7 +51,6 @@ function buildEditForm(vendor: Vendor): EditForm {
     holdReason: vendor.holdReason ?? "",
     notes: vendor.notes ?? "",
     aliases: (vendor.aliases ?? []) as string[],
-    actor: "",
     reason: "",
   };
 }
@@ -196,7 +193,6 @@ export function VendorDetail() {
   });
 
   const updateVendor = useUpdateVendor();
-  const actorName = useActorName();
 
   const [isEditing, setIsEditing] = useState(false);
   const [form, setForm] = useState<EditForm | null>(null);
@@ -207,7 +203,7 @@ export function VendorDetail() {
   const openEdit = () => {
     if (!vendor) return;
     const base = buildEditForm(vendor);
-    setForm({ ...base, actor: actorName });
+    setForm({ ...base });
     setAliasDraft("");
     setSaveError(null);
     setFieldErrors({});
@@ -226,10 +222,6 @@ export function VendorDetail() {
     setSaveError(null);
     setFieldErrors({});
 
-    if (!form.actor.trim()) {
-      setSaveError("Your name (actor) is required to save changes");
-      return;
-    }
     if (!form.vendorName.trim()) {
       setSaveError("Vendor name cannot be blank");
       return;
@@ -248,7 +240,6 @@ export function VendorDetail() {
 
     const codeChanged = form.vendorCode.trim() !== vendor.vendorCode;
     const payload: VendorUpdate = {
-      actor: form.actor.trim(),
       reason: form.reason.trim() || null,
       ...(codeChanged ? { vendorCode: form.vendorCode.trim() } : {}),
       vendorName: form.vendorName.trim(),
@@ -397,30 +388,18 @@ export function VendorDetail() {
         </div>
       )}
 
-      {/* Actor + Reason (shown while editing) */}
+      {/* Reason (shown while editing) */}
       {isEditing && form && (
         <Card className="border-blue-200 bg-blue-50/50">
           <CardContent className="pt-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold text-blue-800">Your Name (actor) *</Label>
-                <Input
-                  placeholder="e.g. Jane Smith"
-                  value={form.actor}
-                  onChange={(e) => set("actor", e.target.value)}
-                  className="bg-white"
-                />
-                <p className="text-xs text-blue-600">Required for audit trail.</p>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs font-semibold text-blue-800">Reason for Change</Label>
-                <Input
-                  placeholder="Optional — note why this change was made"
-                  value={form.reason}
-                  onChange={(e) => set("reason", e.target.value)}
-                  className="bg-white"
-                />
-              </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-semibold text-blue-800">Reason for Change</Label>
+              <Input
+                placeholder="Optional — note why this change was made"
+                value={form.reason}
+                onChange={(e) => set("reason", e.target.value)}
+                className="bg-white"
+              />
             </div>
           </CardContent>
         </Card>

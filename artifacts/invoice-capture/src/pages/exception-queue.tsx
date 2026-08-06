@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { useUser } from "@clerk/react";
-import { useActorName } from "@/hooks/use-actor";
 import { useIsManager } from "@/hooks/use-role";
 import { Link } from "wouter";
 import {
@@ -235,30 +234,19 @@ function AssignOwnerModal({
   const queryClient = useQueryClient();
   const assignException = useAssignException();
   const [owner, setOwner] = useState(invoice.exceptionOwner ?? "");
-  const actorName = useActorName();
   const { user } = useUser();
   // ownerClerkId is auto-filled when assigning to self; manager can override for cross-user.
   const [ownerClerkId, setOwnerClerkId] = useState<string>("");
-  const [actor, setActor] = useState(actorName);
 
-  // Pre-fill actor and ownerClerkId when Clerk user loads
+  // Auto-fill ownerClerkId for self-assign
   useEffect(() => {
-    if (actorName && !actor) setActor(actorName);
-  }, [actorName]);
-
-  // Auto-fill ownerClerkId when owner matches the current user's name (self-assign)
-  useEffect(() => {
-    if (user?.id && owner.trim() === actorName) {
+    if (user?.id && owner.trim() && owner.trim() === (user.fullName ?? user.username ?? "")) {
       setOwnerClerkId(user.id);
-    } else if (owner.trim() !== actorName) {
-      // Clear auto-fill when owner changes away from self
-      setOwnerClerkId((prev) => (prev === user?.id ? "" : prev));
     }
-  }, [owner, actorName, user?.id]);
+  }, [owner, user?.id, user?.fullName, user?.username]);
 
   const handleAssign = async () => {
     if (!owner.trim()) return;
-    if (!actor.trim()) return;
     try {
       await assignException.mutateAsync({
         id: invoice.id,
@@ -267,7 +255,6 @@ function AssignOwnerModal({
           // ownerClerkId enables server-side "My work" scoping for the assignee.
           // It is required for the assignment to appear in the assignee's personal queue.
           ownerClerkId: ownerClerkId.trim() || undefined,
-          actor: actor.trim(),
         },
       });
       toast({ title: "Owner assigned", description: `Exception assigned to ${owner.trim()}` });
@@ -313,21 +300,12 @@ function AssignOwnerModal({
               className="font-mono text-xs"
             />
           </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Your Name (actor) *</Label>
-            <Input
-              placeholder="e.g. ap.manager"
-              value={actor}
-              onChange={(e) => setActor(e.target.value)}
-              data-testid="input-assign-actor"
-            />
-          </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button
             onClick={handleAssign}
-            disabled={!owner.trim() || !actor.trim() || assignException.isPending}
+            disabled={!owner.trim() || assignException.isPending}
             data-testid="button-assign-confirm"
           >
             {assignException.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}

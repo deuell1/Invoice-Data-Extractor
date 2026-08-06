@@ -175,7 +175,7 @@ router.post("/invoices/:id/exception/note", async (req, res): Promise<void> => {
     invoiceId: params.data.id,
     eventType: "NOTE",
     note: parsed.data.note,
-    actor: parsed.data.actor ?? null,
+    actor: (req as any).clerkUserId ?? null,
   });
 
   res.status(201).json(event);
@@ -209,11 +209,12 @@ router.post("/invoices/:id/exception/assign", async (req, res): Promise<void> =>
     })
     .where(eq(invoiceCaptureTable.id, params.data.id));
 
+  const assignActorId = (req as any).clerkUserId ?? "system";
   await appendExceptionEvent({
     invoiceId: params.data.id,
     eventType: "ASSIGNED",
     note: `Assigned to ${parsed.data.owner}`,
-    actor: parsed.data.actor ?? null,
+    actor: assignActorId,
   });
 
   await appendAudit({
@@ -222,7 +223,7 @@ router.post("/invoices/:id/exception/assign", async (req, res): Promise<void> =>
     fieldName: "exceptionOwner",
     oldValue: invoice.exceptionOwner ?? null,
     newValue: parsed.data.owner,
-    note: parsed.data.actor ? `Assigned by ${parsed.data.actor}` : null,
+    actorClerkId: assignActorId,
   });
 
   const updated = await getFullInvoiceById(params.data.id);
@@ -249,24 +250,25 @@ router.post("/invoices/:id/exception/review", async (req, res): Promise<void> =>
   }
 
   const reviewedAt = new Date();
-  const reviewer = parsed.data.actor ?? null;
+  const reviewActorId = (req as any).clerkUserId ?? "system";
 
   await db
     .update(invoiceCaptureTable)
-    .set({ exceptionReviewedAt: reviewedAt, exceptionReviewedBy: reviewer })
+    .set({ exceptionReviewedAt: reviewedAt, exceptionReviewedBy: reviewActorId })
     .where(eq(invoiceCaptureTable.id, params.data.id));
 
   await appendExceptionEvent({
     invoiceId: params.data.id,
     eventType: "REVIEWED",
     note: parsed.data.note ?? null,
-    actor: reviewer,
+    actor: reviewActorId,
   });
 
   await appendAudit({
     invoiceId: params.data.id,
     action: "EXCEPTION_REVIEWED",
-    note: reviewer ? `Reviewed by ${reviewer}` : "Exception reviewed",
+    actorClerkId: reviewActorId,
+    note: "Exception reviewed",
   });
 
   const updated = await getFullInvoiceById(params.data.id);
@@ -306,11 +308,12 @@ router.post(
       .set({ status: "PENDING_APPROVAL" })
       .where(eq(invoiceCaptureTable.id, params.data.id));
 
+    const returnActorId = (req as any).clerkUserId ?? "system";
     await appendExceptionEvent({
       invoiceId: params.data.id,
       eventType: "RETURNED_TO_APPROVAL",
       note: parsed.data.note ?? null,
-      actor: parsed.data.actor ?? null,
+      actor: returnActorId,
     });
 
     await appendAudit({
@@ -319,9 +322,8 @@ router.post(
       fieldName: "status",
       oldValue: "EXCEPTION",
       newValue: "PENDING_APPROVAL",
-      note: parsed.data.actor
-        ? `Returned to approval by ${parsed.data.actor}`
-        : "Returned to approval",
+      actorClerkId: returnActorId,
+      note: "Returned to approval",
     });
 
     const updated = await getFullInvoiceById(params.data.id);

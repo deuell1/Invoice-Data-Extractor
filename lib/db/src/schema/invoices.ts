@@ -96,6 +96,11 @@ export const invoiceCaptureTable = pgTable("invoice_capture", {
   role: invoiceRoleEnum("role").notNull().default("AP_PROCESSOR"),
   // ── Submission tracking (Clerk user ID of whoever submitted to PENDING_APPROVAL) ──
   submittedBy: text("submitted_by"),
+  // ── Approval / rejection identity stamps ──────────────────────────────────
+  approvedByClerkId: text("approved_by_clerk_id"),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+  rejectedByClerkId: text("rejected_by_clerk_id"),
+  rejectedAt: timestamp("rejected_at", { withTimezone: true }),
   removedAt: timestamp("removed_at", { withTimezone: true }),
   removedBy: text("removed_by"),
   removalReason: text("removal_reason"),

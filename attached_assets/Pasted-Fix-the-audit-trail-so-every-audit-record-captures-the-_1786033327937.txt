@@ -1,0 +1,27 @@
+Fix the audit trail so every audit record captures the authenticated user's real identity. Right now invoice_audit_log only stores a hardcoded editorRole text value, and some routes accept a client-supplied "actor" string from the request body. Identity must come only from the Clerk session.
+
+Make these changes:
+
+1. Schema change to invoice_audit_log (lib/db/src/schema/audit.ts):
+   - Add actor_clerk_id TEXT NOT NULL — the Clerk userId of the person performing the action.
+   - Add actor_name TEXT — display name/email resolved from Clerk at write time, for human-readable reports.
+   - Keep editor_role for the role the actor held at the time of the action.
+   - Push the schema change without losing existing audit rows. Backfill existing rows with actor_clerk_id = 'unattributed-legacy' so NOT NULL can be enforced.
+
+2. Update appendAudit (and its type) to require actorClerkId and accept actorName. Update EVERY call site in artifacts/api-server/src to pass (req as any).clerkUserId. Do not leave any call site passing a constant.
+
+3. In the approve handler (POST /invoices/:id/approve), replace editorRole: "AP_APPROVER" with the actual role from (req as any).clerkUserRole and record the actor's Clerk id and name.
+
+4. Remove the client-supplied "actor" field from all mutation request schemas and handlers (invoices, exceptions, exports, removal/reject inputs). Anywhere the code reads parsed.data.actor, replace it with the session identity. Update the Zod/OpenAPI schemas and regenerate the api-zod types so the field is gone from the contract. Update the frontend to stop sending actor — it should no longer prompt for or pre-fill a reviewer name on approve, reject, assign, return, or edit actions; identity is implicit from the signed-in session.
+
+5. Also stamp identity on the invoice record itself: when an invoice is approved, set approved_by_clerk_id and approved_at on invoice_capture; when rejected, set rejected_by_clerk_id and rejected_at. Add these columns if missing.
+
+6. Update the exception_event writes the same way: actor must be the Clerk userId, never free text.
+
+7. For the smoke-test bypass path in requireAuth, keep clerkUserId = "smoke-test" so smoke-generated audit rows are clearly attributable to the test harness.
+
+8. Extend the smoke test suite: after an approve action, fetch the audit log for that invoice and assert the APPROVED audit row contains the acting user's clerk id (i.e., "smoke-test") and correct role — not a hardcoded constant. Add the same assertion for reject and for an exception assignment.
+
+9. Typecheck the whole workspace and run the full smoke suite. All suites must pass.
+
+Do not change any validation logic, status transitions, or role guards in this task. This is identity attribution only.

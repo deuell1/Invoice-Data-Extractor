@@ -311,7 +311,6 @@ export interface InvoiceUpdate {
   otherChargesAmount?: number | null;
   /** @nullable */
   paymentTerms?: string | null;
-  editorRole?: string;
 }
 
 export type InvoiceStatusUpdateStatus = typeof InvoiceStatusUpdateStatus[keyof typeof InvoiceStatusUpdateStatus];
@@ -479,21 +478,11 @@ export interface RemovalInput {
      * @nullable
      */
   note?: string | null;
-  /**
-     * Actor performing the removal (permissions deferred).
-     * @nullable
-     */
-  actor?: string | null;
 }
 
 export interface HardDeleteInput {
   /** Must be true to perform a permanent hard delete. */
   confirm: boolean;
-  /**
-     * Actor performing the deletion (permissions deferred).
-     * @nullable
-     */
-  actor?: string | null;
 }
 
 export interface DeleteResult {
@@ -575,11 +564,6 @@ export interface VendorInput {
   vendorCode: string;
   /** @minLength 1 */
   vendorName: string;
-  /**
-     * Identified actor performing the creation (required by the API route; no auth system in pilot)
-     * @nullable
-     */
-  actor?: string | null;
   /** @nullable */
   legalName?: string | null;
   /** @nullable */
@@ -632,11 +616,6 @@ export interface VendorInput {
 }
 
 export interface VendorUpdate {
-  /**
-     * Identified actor performing the update (required)
-     * @minLength 1
-     */
-  actor: string;
   /**
      * Reason for the update (required for sensitive changes)
      * @nullable
@@ -774,6 +753,10 @@ export interface AuditLogEntry {
   editorRole?: string | null;
   /** @nullable */
   note?: string | null;
+  /** Clerk userId of the authenticated user who performed the action. */
+  actorClerkId: string;
+  /** Human-readable display name resolved from Clerk at write time. */
+  actorName?: string | null;
   createdAt: string;
 }
 
@@ -868,8 +851,6 @@ export interface ExceptionEvent {
 export interface ExceptionNoteInput {
   /** @minLength 1 */
   note: string;
-  /** @nullable */
-  actor?: string | null;
 }
 
 export interface ExceptionAssignInput {
@@ -877,23 +858,17 @@ export interface ExceptionAssignInput {
   owner: string;
   /** Clerk user ID of the assignee; stored for server-side scope enforcement */
   ownerClerkId?: string;
-  /** @nullable */
-  actor?: string | null;
 }
 
 export interface ExceptionReviewInput {
   reviewed?: boolean;
   /** @nullable */
   note?: string | null;
-  /** @nullable */
-  actor?: string | null;
 }
 
 export interface ExceptionReturnInput {
   /** @nullable */
   note?: string | null;
-  /** @nullable */
-  actor?: string | null;
 }
 
 export interface SourceDocumentSummary {

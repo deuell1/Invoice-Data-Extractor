@@ -9,6 +9,4 @@
 export interface ExceptionNoteInput {
   /** @minLength 1 */
   note: string;
-  /** @nullable */
-  actor?: string | null;
 }

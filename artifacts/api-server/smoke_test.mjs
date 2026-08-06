@@ -152,7 +152,6 @@ async function cleanup() {
     try {
       const { status } = await api("POST", `/invoices/${id}/void`, {
         reason: "Smoke-test cleanup — automated removal after run",
-        actor: "smoke-test",
       });
       if (status === 200 || status === 404) {
         // 200 = voided, 404 = already gone — both are fine
@@ -169,7 +168,6 @@ async function cleanup() {
     try {
       const { status } = await api("DELETE", `/invoices/${id}`, {
         confirm: true,
-        actor: "smoke-test",
       });
       if (status === 200 || status === 404) {
         console.log(`  ✓ deleted invoice ${id}`);
@@ -295,7 +293,6 @@ let pipelineVoucherId;
     vendorName,
     paymentTerms: "Net 30",
     isActive: true,
-    actor: "smoke-test",
   });
   assert(vs === 201, `POST /vendors returns 201 (got ${vs}: ${JSON.stringify(vj).slice(0, 200)})`);
   assert(vj.isActive === true, "vendor is active");
@@ -370,6 +367,21 @@ let pipelineVoucherId;
   );
   assert(as === 200, `POST /invoices/:id/approve returns 200 (got ${as}: ${JSON.stringify(aj).slice(0, 300)})`);
   assert(aj.status === "APPROVED", `invoice status=APPROVED after approval (got "${aj.status}")`);
+
+  // Verify audit log: APPROVED row has actorClerkId === "smoke-test" and correct role
+  const { status: apAlS, json: apAlJ } = await api("GET", `/invoices/${pipelineInvoiceId}/audit`);
+  assert(apAlS === 200, `GET audit-log returns 200 after approve (got ${apAlS})`);
+  const approvedRow = apAlJ.find((r) => r.action === "APPROVED");
+  assert(approvedRow, `APPROVED audit row exists in log`);
+  assert(
+    approvedRow.actorClerkId === "smoke-test",
+    `APPROVED audit row has actorClerkId="smoke-test" (got "${approvedRow.actorClerkId}")`,
+  );
+  assert(
+    ["AP_MANAGER", "AP_APPROVER"].includes(approvedRow.editorRole),
+    `APPROVED audit row has valid manager role (got "${approvedRow.editorRole}")`,
+  );
+  console.log(`  → approve audit verified: actorClerkId=${approvedRow.actorClerkId}, role=${approvedRow.editorRole}`);
 }
 
 // ── Stage 4: Post (voucher) → POSTED ─────────────────────────────────────────
@@ -462,7 +474,6 @@ console.log("══════════════════════�
       vendorName: pv.vendorName,
       paymentTerms: "Net 30",
       isActive: true,
-      actor: "smoke-test",
     });
     assert(pvS === 201, `Suite 4 vendor created: ${pv.vendorName} (got ${pvS}: ${JSON.stringify(pvJ).slice(0, 120)})`);
     createdVendorIds.push(pvJ.id);
@@ -660,7 +671,6 @@ console.log("══════════════════════�
     vendorName: excVendorName,
     paymentTerms: "Net 30",
     isActive: true,
-    actor: "smoke-test",
   });
   createdVendorIds.push(excV.id);
 
@@ -680,6 +690,46 @@ console.log("══════════════════════�
   const excId = excI.id;
   createdInvoiceIds.push(excId);
   assert(excI.vendorId != null, `Vendor matched for exception test invoice (vendorId=${excI.vendorId})`);
+
+  // ── Reject test + audit assertion ────────────────────────────────────────────
+  // Force to PENDING_APPROVAL so reject endpoint is valid, then reject and verify audit.
+  {
+    const { status: toPAS } = await api("PATCH", `/invoices/${excId}/status`, { status: "PENDING_APPROVAL" });
+    assert(toPAS === 200, `Force excId to PENDING_APPROVAL for reject test (got ${toPAS})`);
+    const { status: rejS, json: rejJ } = await api("POST", `/invoices/${excId}/reject`, {
+      reason: "Smoke test reject for audit coverage",
+    });
+    assert(rejS === 200, `POST /invoices/:id/reject returns 200 (got ${rejS})`);
+    assert(rejJ.status === "EXCEPTION", `invoice status=EXCEPTION after reject (got "${rejJ.status}")`);
+    const { status: rAlS, json: rAlJ } = await api("GET", `/invoices/${excId}/audit`);
+    assert(rAlS === 200, `GET audit-log returns 200 after reject (got ${rAlS})`);
+    const rejectedRow = rAlJ.find((r) => r.action === "REJECTED");
+    assert(rejectedRow, `REJECTED audit row exists in log`);
+    assert(
+      rejectedRow.actorClerkId === "smoke-test",
+      `REJECTED audit row has actorClerkId="smoke-test" (got "${rejectedRow.actorClerkId}")`,
+    );
+    console.log(`  → reject audit verified: actorClerkId=${rejectedRow.actorClerkId}`);
+  }
+
+  // ── Exception assign test + audit assertion ────────────────────────────────
+  // excId is already EXCEPTION after the reject above.
+  {
+    const { status: eaS } = await api("POST", `/invoices/${excId}/exception/assign`, {
+      owner: "smoke-tester",
+      ownerClerkId: "smoke-test",
+    });
+    assert(eaS === 200, `POST /invoices/:id/exception/assign returns 200 (got ${eaS})`);
+    const { status: eaAlS, json: eaAlJ } = await api("GET", `/invoices/${excId}/audit`);
+    assert(eaAlS === 200, `GET audit-log returns 200 after assign (got ${eaAlS})`);
+    const assignedRow = eaAlJ.find((r) => r.action === "EXCEPTION_ASSIGNED");
+    assert(assignedRow, `EXCEPTION_ASSIGNED audit row exists in log`);
+    assert(
+      assignedRow.actorClerkId === "smoke-test",
+      `EXCEPTION_ASSIGNED audit row has actorClerkId="smoke-test" (got "${assignedRow.actorClerkId}")`,
+    );
+    console.log(`  → exception assign audit verified: actorClerkId=${assignedRow.actorClerkId}`);
+  }
 
   // Force to EXCEPTION status using the status endpoint.
   const { status: forceS, json: forceJ } = await api(
@@ -735,7 +785,6 @@ console.log("══════════════════════�
     vendorName: bulkVendorName,
     paymentTerms: "Net 30",
     isActive: true,
-    actor: "smoke-test",
   });
   createdVendorIds.push(bulkV.id);
 

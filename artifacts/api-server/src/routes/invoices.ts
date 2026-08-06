@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { appendAudit } from "../services/invoiceShared";
 import { requireRole } from "../middlewares/requireAuth";
 import { applyVendorMatch, findBestVendorMatch } from "../services/vendorMatcher";
 import { triggerExtraction } from "../services/extractionService";
@@ -128,27 +129,6 @@ async function getInvoiceById(id: number) {
     .where(eq(invoiceCaptureTable.id, id))
     .limit(1);
   return row ?? null;
-}
-
-// ─── Helper: append audit log entry ─────────────────────────────────────────
-async function appendAudit(params: {
-  invoiceId: number;
-  action: string;
-  fieldName?: string;
-  oldValue?: string;
-  newValue?: string;
-  editorRole?: string;
-  note?: string;
-}) {
-  await db.insert(invoiceAuditLogTable).values({
-    invoiceId: params.invoiceId,
-    action: params.action,
-    fieldName: params.fieldName ?? null,
-    oldValue: params.oldValue ?? null,
-    newValue: params.newValue ?? null,
-    editorRole: params.editorRole ?? null,
-    note: params.note ?? null,
-  });
 }
 
 // ─── Helper: delete a stored file only when nothing else references it ───────
@@ -559,6 +539,7 @@ router.post("/invoices", async (req, res): Promise<void> => {
   await appendAudit({
     invoiceId: invoice.id,
     action: "CREATED",
+    actorClerkId: (req as any).clerkUserId ?? "system",
     note: `Invoice created from file: ${invoice.originalFileName}`,
   });
 
@@ -947,6 +928,8 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
       .set(updates)
       .where(eq(invoiceCaptureTable.id, params.data.id));
 
+    const patchActorId = (req as any).clerkUserId ?? "system";
+    const patchRole = (req as any).clerkUserRole ?? "AP_PROCESSOR";
     for (const entry of auditEntries) {
       await appendAudit({
         invoiceId: params.data.id,
@@ -954,7 +937,8 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
         fieldName: entry.field,
         oldValue: entry.old,
         newValue: entry.newVal,
-        editorRole: parsed.data.editorRole ?? "AP_PROCESSOR",
+        editorRole: patchRole,
+        actorClerkId: patchActorId,
       });
     }
 
@@ -1020,6 +1004,7 @@ router.patch("/invoices/:id/status", async (req, res): Promise<void> => {
     action: "STATUS_CHANGED",
     oldValue: existing.status,
     newValue: parsed.data.status,
+    actorClerkId: (req as any).clerkUserId ?? "system",
     note: parsed.data.reason ?? undefined,
   });
 
@@ -1054,13 +1039,13 @@ router.post("/invoices/:id/void", async (req, res): Promise<void> => {
     return;
   }
 
-  const actor = parsed.data.actor ?? null;
+  const voidActorId = (req as any).clerkUserId ?? "system";
   await db
     .update(invoiceCaptureTable)
     .set({
       status: "VOIDED",
       removedAt: new Date(),
-      removedBy: actor,
+      removedBy: voidActorId,
       removalReason: parsed.data.reason,
       removalNote: parsed.data.note ?? null,
     })
@@ -1071,7 +1056,8 @@ router.post("/invoices/:id/void", async (req, res): Promise<void> => {
     action: "VOIDED",
     oldValue: existing.status,
     newValue: "VOIDED",
-    editorRole: actor ?? undefined,
+    editorRole: (req as any).clerkUserRole ?? "AP_PROCESSOR",
+    actorClerkId: voidActorId,
     note: parsed.data.note ? `${parsed.data.reason} — ${parsed.data.note}` : parsed.data.reason,
   });
 
@@ -1185,6 +1171,7 @@ router.patch("/invoices/:id/voucher", requireRole("AP_MANAGER"), async (req, res
     action: "VOUCHER_SET",
     oldValue: existing.status,
     newValue: parsed.data.voucherId,
+    actorClerkId: (req as any).clerkUserId ?? "system",
   });
 
   const row = await getInvoiceById(params.data.id);
@@ -1268,9 +1255,17 @@ router.post("/invoices/:id/approve", requireRole("AP_MANAGER"), async (req, res)
     return;
   }
 
+  const approveActorId = (req as any).clerkUserId ?? "system";
+  const approveRole = (req as any).clerkUserRole ?? "AP_MANAGER";
+  const approveNow = new Date();
   await db
     .update(invoiceCaptureTable)
-    .set({ status: "APPROVED", overallReviewStatus: "APPROVED" })
+    .set({
+      status: "APPROVED",
+      overallReviewStatus: "APPROVED",
+      approvedByClerkId: approveActorId,
+      approvedAt: approveNow,
+    })
     .where(eq(invoiceCaptureTable.id, params.data.id));
 
   await appendAudit({
@@ -1278,7 +1273,8 @@ router.post("/invoices/:id/approve", requireRole("AP_MANAGER"), async (req, res)
     action: "APPROVED",
     oldValue: existing.status,
     newValue: "APPROVED",
-    editorRole: "AP_APPROVER",
+    editorRole: approveRole,
+    actorClerkId: approveActorId,
     note: isExceptionApproval
       ? `Exception override. Reason: ${reason}${outcome.blocking.length > 0 ? ` | Overridden: ${outcome.blocking.join("; ")}` : ""}`
       : reason || undefined,
@@ -1317,11 +1313,16 @@ router.post("/invoices/:id/reject", requireRole("AP_MANAGER"), async (req, res):
     return;
   }
 
+  const rejectActorId = (req as any).clerkUserId ?? "system";
+  const rejectRole = (req as any).clerkUserRole ?? "AP_MANAGER";
+  const rejectNow = new Date();
   await db
     .update(invoiceCaptureTable)
     .set({
       status: "EXCEPTION",
       exceptionReason: parsed.data.reason,
+      rejectedByClerkId: rejectActorId,
+      rejectedAt: rejectNow,
     })
     .where(eq(invoiceCaptureTable.id, params.data.id));
 
@@ -1331,7 +1332,8 @@ router.post("/invoices/:id/reject", requireRole("AP_MANAGER"), async (req, res):
     oldValue: existing.status,
     newValue: "EXCEPTION",
     note: parsed.data.reason,
-    editorRole: "AP_APPROVER",
+    editorRole: rejectRole,
+    actorClerkId: rejectActorId,
   });
 
   const row = await getInvoiceById(params.data.id);
@@ -1385,6 +1387,7 @@ router.post("/invoices/:id/submit", async (req, res): Promise<void> => {
     action: "SUBMITTED",
     oldValue: existing.status,
     newValue: outcome.blocking.length > 0 ? "EXCEPTION" : "PENDING_APPROVAL",
+    actorClerkId: (req as any).clerkUserId ?? "system",
   });
 
   const row = await getInvoiceById(params.data.id);
@@ -1431,16 +1434,25 @@ router.post("/invoices/bulk-approve", requireRole("AP_MANAGER"), async (req, res
         continue;
       }
 
+      const bulkActorId = (req as any).clerkUserId ?? "system";
+      const bulkRole = (req as any).clerkUserRole ?? "AP_MANAGER";
+      const bulkNow = new Date();
       await db
         .update(invoiceCaptureTable)
-        .set({ status: "APPROVED", overallReviewStatus: "APPROVED" })
+        .set({
+          status: "APPROVED",
+          overallReviewStatus: "APPROVED",
+          approvedByClerkId: bulkActorId,
+          approvedAt: bulkNow,
+        })
         .where(eq(invoiceCaptureTable.id, id));
       await appendAudit({
         invoiceId: id,
         action: "APPROVED",
         oldValue: row.status,
         newValue: "APPROVED",
-        editorRole: "AP_APPROVER",
+        editorRole: bulkRole,
+        actorClerkId: bulkActorId,
       });
       succeeded++;
     } catch (err) {

@@ -27,8 +27,6 @@ import { useToast } from "@/hooks/use-toast";
 import { getApiErrorMessage } from "@/lib/utils";
 import { Ban, Trash2, Loader2 } from "lucide-react";
 
-const ACTOR = "AP_PROCESSOR";
-
 /** Invalidate every query whose data can be affected by a cleanup action. */
 function useInvalidateCleanupQueries() {
   const queryClient = useQueryClient();
@@ -223,7 +221,7 @@ export function InvoiceCleanupActions({
 
   const handleVoid = async (reason: string, note: string) => {
     try {
-      await voidInvoice.mutateAsync({ id: invoiceId, data: { reason, note: note || null, actor: ACTOR } });
+      await voidInvoice.mutateAsync({ id: invoiceId, data: { reason, note: note || null } });
       toast({ title: "Invoice voided", description: "It's been removed from active queues." });
       setVoidOpen(false);
       invalidate({ invoiceId });
@@ -235,7 +233,7 @@ export function InvoiceCleanupActions({
 
   const handleDelete = async () => {
     try {
-      await deleteInvoice.mutateAsync({ id: invoiceId, data: { confirm: true, actor: ACTOR } });
+      await deleteInvoice.mutateAsync({ id: invoiceId, data: { confirm: true } });
       toast({ title: "Invoice deleted", description: "The record was permanently removed." });
       setDeleteOpen(false);
       invalidate({ invoiceId });
@@ -323,7 +321,7 @@ export function SourceDocumentCleanupActions({
     try {
       await removeSourceDocument.mutateAsync({
         id: sourceDocumentId,
-        data: { reason, note: note || null, actor: ACTOR },
+        data: { reason, note: note || null },
       });
       toast({ title: "File removed", description: "All of its invoices were voided." });
       setRemoveOpen(false);
@@ -336,7 +334,7 @@ export function SourceDocumentCleanupActions({
 
   const handleDelete = async () => {
     try {
-      await deleteSourceDocument.mutateAsync({ id: sourceDocumentId, data: { confirm: true, actor: ACTOR } });
+      await deleteSourceDocument.mutateAsync({ id: sourceDocumentId, data: { confirm: true } });
       toast({ title: "File deleted", description: "The file and all its invoices were permanently removed." });
       setDeleteOpen(false);
       invalidate({ sourceDocumentId });
