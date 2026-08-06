@@ -1,0 +1,19 @@
+Execute Exit Gate EG-1: end-to-end UAT with a real labeled invoice pack, measured against ground truth.
+
+The labeled invoice pack is already assembled. I will place the invoice files in uat/extraction-accuracy/pack/ and the completed ground-truth.csv in uat/extraction-accuracy/ (matching ground-truth.template.csv's columns). Do not modify run-accuracy.mjs's validateGroundTruth blocking behavior or its exact ISO currency matching — if the ground truth fails validation, report the rows that failed so I can fix the CSV; do not weaken the harness.
+
+Then do the following:
+
+1. Verify the pack: confirm every file referenced in ground-truth.csv exists in pack/, and every file in pack/ has ground-truth rows. Report any mismatches and stop if found.
+
+2. Run the accuracy harness: node run-accuracy.mjs ground-truth.csv 95 (or the documented invocation in uat/extraction-accuracy/README.md if it differs). Write the output to uat/extraction-accuracy/results/ with a dated filename. Record the run in the accuracy_run table via the existing accuracy endpoint so it appears in-app.
+
+3. Report results against the Phase 1 target: overall required-field capture rate vs the 80% target, accuracy by field, accuracy by vendor, and the worst-performing fields. Do not tune prompts or thresholds to make the number pass — report what it measures.
+
+4. Run the full AP cycle UAT against the pack through the real UI/API as two identities: an AP_CLERK (upload → extraction → review/edit → submit) and an AP_MANAGER (exception handling → approve → export → voucher/post). Cover at minimum: one clean invoice end to end, one exception routed and returned, one exception approved with a documented reason, one duplicate correctly hard-blocked, and one rejection. For every action, verify the audit log records the acting user's clerk id and role.
+
+5. Produce uat/EG1_Exit_Report.md containing: pack composition (invoice count, vendor count), accuracy results with the pass/fail call against 80%, the AP-cycle test matrix with actual vs expected results, audit-attribution verification evidence, defects found, and an explicit EG-1 PASS / FAIL / CONDITIONAL determination with rationale.
+
+6. Housekeeping in the same pass: correct uat/Phase2_Status_Report.md — the po_header table was removed from the schema in commit d1a1252, so the "po_header extensions ✅" claim is no longer true. Update it to state that po_header was removed and PO validation is deferred, and add a dated correction note rather than silently rewriting history.
+
+Do not mark Phase 1 as PASS in any document — that determination is mine after reviewing the exit report.

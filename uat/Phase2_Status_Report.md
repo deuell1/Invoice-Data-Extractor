@@ -29,7 +29,7 @@ All schema additions pushed cleanly to PostgreSQL. Existing records intact.
 | `accuracy_run` | ✅ New table | Records labeled test pack measurement results |
 | `exception_event` | ✅ New table | Tracks notes, assignments, and review actions on exceptions |
 | `vendor_audit_log` | ✅ New table | Immutable field-level change log for vendor profile edits |
-| `po_header` extensions | ✅ | Added `poDate`, `buyer`, `importBatchId` |
+| `po_header` extensions | ❌ Removed | ~~Added `poDate`, `buyer`, `importBatchId`~~ — **Correction (2026-08-06):** the `po_header` table was subsequently removed from the schema in commit `d1a1252`. PO validation is deferred. See the Correction Log at the end of this report. |
 | `vendor_id` extensions | ✅ | Added `importBatchId`, `lastImportedAt`, `createdBy`, `updatedBy`, plus 15+ profile fields (legalName, dba, taxId, address fields, contacts, termsDays, vendorCategory, vendorType, aliases, requiresPO, notes) |
 
 ### 2.2 OpenAPI Contract + Codegen (T002)
@@ -192,7 +192,7 @@ Settings are served from code defaults until a user saves (0 rows in `app_settin
 |---|---|---|---|---|
 | 1 | Low | `GET /api/audit` (top-level, global) returns 404 — no route registered. The Audit Viewer UI calls `GET /invoices/:id/audit-log` (per-invoice) and is fully functional. | None | Add a global audit feed route in Phase 3 if cross-invoice audit browsing is desired |
 | 2 | Low | `invoice_status` DB enum is missing `PENDING_REVIEW` and `EXPORTED` values that appear in the TypeScript enum definition. All SQL comparisons against these values use `::text` cast and remain safe. | None | Add the missing enum values in the next scheduled migration window |
-| 3 | Info | 0 PO headers in DB. PO matching will always route to EXCEPTION until a PO Reference CSV is imported. | Expected — no PO data loaded | Import a PO CSV via the Imports page |
+| 3 | Info | ~~0 PO headers in DB. PO matching will always route to EXCEPTION until a PO Reference CSV is imported.~~ **Correction (2026-08-06):** the `po_header` table was removed in commit `d1a1252`; PO validation is deferred and there is no PO Reference import path in the current schema. | None — PO validation out of scope | Reintroduce a PO data model if/when PO matching is scheduled |
 | 4 | Info | 0 accuracy runs recorded. Accuracy page shows "Not measured". | Expected — no labeled test pack | Record a run via "Record Run" when a labeled ground-truth pack is available |
 
 ---
@@ -264,4 +264,12 @@ No Phase 3 credentials, endpoints, or webhooks are configured in this deployment
 
 ---
 
-*End of Phase 2 Status Report — 2026-06-29*
+## Correction Log
+
+| Date | Section(s) | Correction |
+|---|---|---|
+| 2026-08-06 | §2.1 Data Layer, §6 Known Issues #3 | The original report claimed "`po_header` extensions ✅ (Added `poDate`, `buyer`, `importBatchId`)". This is no longer true: the `po_header` table was removed from the schema in commit `d1a1252` ("Remove unused vendor cleanup logic and refactor related services"). PO validation is deferred; invoices carrying a PO number are captured as free-text `poNumber` only, with no PO matching against a reference table. The original rows are struck through above rather than deleted, to preserve the historical record. |
+
+---
+
+*End of Phase 2 Status Report — 2026-06-29 (corrected 2026-08-06, see Correction Log)*
