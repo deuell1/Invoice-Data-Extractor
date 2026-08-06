@@ -29,10 +29,16 @@ function resolveChromiumPath(): string | undefined {
 const systemChromium = resolveChromiumPath();
 
 /**
- * Port for the E2E test dev server.
+ * Port for the E2E test dev server (Clerk bypassed — used by ui-smoke tests).
  * Must not clash with the managed workflows (8080 = API, 8081 = UI, 20658 = mockup).
  */
 const E2E_UI_PORT = 8089;
+
+/**
+ * Port for the sign-in theme dev server (real Clerk — used by sign-in-theme tests).
+ * Must not clash with the managed workflows or the bypass server above.
+ */
+const E2E_SIGNIN_PORT = 8090;
 
 /**
  * The API server is assumed to be running at its standard port (started by
@@ -40,6 +46,12 @@ const E2E_UI_PORT = 8089;
  * invoice-capture's vite.config.ts forwards /api → http://localhost:8080.
  */
 const BASE_URL = `http://localhost:${E2E_UI_PORT}`;
+const SIGNIN_BASE_URL = `http://localhost:${E2E_SIGNIN_PORT}`;
+
+const chromiumLaunchOptions = {
+  executablePath: systemChromium,
+  args: ["--no-sandbox", "--disable-setuid-sandbox"],
+};
 
 export default defineConfig({
   testDir: "./tests",
@@ -70,40 +82,79 @@ export default defineConfig({
   },
 
   projects: [
+    /**
+     * Main smoke tests — Clerk bypassed so pages render without a real session.
+     * Only runs tests in ui-smoke.spec.ts.
+     */
     {
       name: "chromium",
+      testMatch: /ui-smoke\.spec\.ts/,
       use: {
         ...devices["Desktop Chrome"],
-        launchOptions: {
-          executablePath: systemChromium,
-          args: ["--no-sandbox", "--disable-setuid-sandbox"],
-        },
+        baseURL: BASE_URL,
+        launchOptions: chromiumLaunchOptions,
+      },
+    },
+
+    /**
+     * Sign-in theme tests — real Clerk so the sign-in card actually renders.
+     * Uses a separate dev server without VITE_E2E_BYPASS so Clerk loads its UI.
+     */
+    {
+      name: "sign-in-theme",
+      testMatch: /sign-in-theme\.spec\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        baseURL: SIGNIN_BASE_URL,
+        launchOptions: chromiumLaunchOptions,
       },
     },
   ],
 
-  /**
-   * Spin up a dedicated Vite dev server for tests.
-   *
-   * Key flags:
-   *   VITE_E2E_BYPASS=true   — aliases @clerk/react to a local mock so the app
-   *                            renders without a real Clerk session.
-   *   BASE_PATH=/            — required by vite.config.ts validation.
-   *   PORT=<E2E_UI_PORT>     — required by vite.config.ts validation.
-   */
-  webServer: {
-    command: [
-      `PORT=${E2E_UI_PORT}`,
-      `BASE_PATH=/`,
-      `VITE_E2E_BYPASS=true`,
-      `pnpm --filter @workspace/invoice-capture run dev`,
-    ].join(" "),
-    port: E2E_UI_PORT,
-    reuseExistingServer: false,
-    timeout: 60_000,
-    // Show dev-server output so failures are diagnosable.
-    stdout: "pipe",
-    stderr: "pipe",
-    cwd: path.resolve(__dirname, ".."),
-  },
+  webServer: [
+    /**
+     * Bypass server for ui-smoke tests.
+     *
+     * Key flags:
+     *   VITE_E2E_BYPASS=true   — aliases @clerk/react to a local mock so the app
+     *                            renders without a real Clerk session.
+     *   BASE_PATH=/            — required by vite.config.ts validation.
+     *   PORT=<E2E_UI_PORT>     — required by vite.config.ts validation.
+     */
+    {
+      command: [
+        `PORT=${E2E_UI_PORT}`,
+        `BASE_PATH=/`,
+        `VITE_E2E_BYPASS=true`,
+        `pnpm --filter @workspace/invoice-capture run dev`,
+      ].join(" "),
+      port: E2E_UI_PORT,
+      reuseExistingServer: false,
+      timeout: 60_000,
+      stdout: "pipe",
+      stderr: "pipe",
+      cwd: path.resolve(__dirname, ".."),
+    },
+
+    /**
+     * Real-Clerk server for sign-in-theme tests.
+     *
+     * VITE_E2E_BYPASS is intentionally absent so the real @clerk/react package
+     * is used and the sign-in card renders with the Mission Control appearance.
+     * The VITE_CLERK_PUBLISHABLE_KEY secret must be present in the environment.
+     */
+    {
+      command: [
+        `PORT=${E2E_SIGNIN_PORT}`,
+        `BASE_PATH=/`,
+        `pnpm --filter @workspace/invoice-capture run dev`,
+      ].join(" "),
+      port: E2E_SIGNIN_PORT,
+      reuseExistingServer: false,
+      timeout: 60_000,
+      stdout: "pipe",
+      stderr: "pipe",
+      cwd: path.resolve(__dirname, ".."),
+    },
+  ],
 });
