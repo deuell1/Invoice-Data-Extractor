@@ -106,6 +106,10 @@ const RUN_ID = `smoke-${Date.now()}`;
 
 const createdVendorIds = [];
 const createdInvoiceIds = [];
+const createdSourceDocIds = [];
+// Object paths uploaded via presigned PUT but not yet linked to a tracked source
+// document — must be cleaned up directly when source-doc creation fails.
+const orphanedObjectPaths = [];
 
 /**
  * Best-effort cleanup: void then delete every invoice created this run,
@@ -114,7 +118,12 @@ const createdInvoiceIds = [];
  */
 async function cleanup() {
   console.log("\n── Cleanup: removing smoke-test data ──────────────────────");
-  if (createdInvoiceIds.length === 0 && createdVendorIds.length === 0) {
+  if (
+    createdInvoiceIds.length === 0 &&
+    createdVendorIds.length === 0 &&
+    createdSourceDocIds.length === 0 &&
+    orphanedObjectPaths.length === 0
+  ) {
     console.log("  (nothing to clean up)");
     return;
   }
@@ -154,7 +163,41 @@ async function cleanup() {
     }
   }
 
-  // Step 3: delete all vendors (invoices are gone so the FK check passes).
+  // Step 3: hard-delete source documents (invoices are gone so the cascade is safe).
+  for (const id of createdSourceDocIds) {
+    try {
+      const { status } = await api("DELETE", `/source-documents/${id}`, { confirm: true });
+      if (status === 200 || status === 404) {
+        console.log(`  ✓ deleted source document ${id}`);
+      } else {
+        warn(`delete source document ${id} returned ${status}`);
+      }
+    } catch (err) {
+      warn(`delete source document ${id} failed: ${err.message}`);
+    }
+  }
+
+  // Step 4: delete any object paths that were uploaded but never linked to a
+  // source document (orphan uploads from runs that failed mid-way through
+  // Stage 1c of Suite 4).  Source-doc-linked blobs are already cleaned up by
+  // Step 3, so this only fires when that step was skipped.
+  for (const objPath of orphanedObjectPaths) {
+    try {
+      // objPath is already the /objects/... form; strip the leading /objects/
+      // to match the wildcard route DELETE /storage/objects/*path.
+      const routePath = objPath.replace(/^\/objects\//, "");
+      const { status } = await api("DELETE", `/storage/objects/${routePath}`, undefined);
+      if (status === 200 || status === 404) {
+        console.log(`  ✓ deleted orphaned object ${objPath}`);
+      } else {
+        warn(`delete orphaned object ${objPath} returned ${status}`);
+      }
+    } catch (err) {
+      warn(`delete orphaned object ${objPath} failed: ${err.message}`);
+    }
+  }
+
+  // Step 5: delete all vendors (invoices are gone so the FK check passes).
   for (const id of createdVendorIds) {
     try {
       const { status } = await api("DELETE", `/vendors/${id}`, { confirm: true });
@@ -432,6 +475,9 @@ console.log("══════════════════════�
     headers: { "Content-Type": "application/pdf" },
   });
   assert(putRes.ok, `PDF uploaded via PUT to presigned URL (status=${putRes.status})`);
+  // Track the objectPath immediately after a successful PUT. If source-document
+  // creation below fails, cleanup() will delete this orphaned file directly.
+  orphanedObjectPaths.push(objectPath);
 
   // Stage 1c: Create source document.
   const { status: csS, json: csJ } = await api("POST", "/source-documents", {
@@ -445,6 +491,10 @@ console.log("══════════════════════�
   );
   const sourceId = csJ.source?.id;
   assert(typeof sourceId === "number", `source document id returned (id=${sourceId})`);
+  createdSourceDocIds.push(sourceId);
+  // Source document now owns the blob — remove from orphan list to avoid
+  // double deletion (deleteSourceDocument handles file removal).
+  orphanedObjectPaths.splice(orphanedObjectPaths.indexOf(objectPath), 1);
   console.log(`  → source document id=${sourceId}`);
 
   // Stage 2: Poll until at least 1 invoice is detected (PENDING_EXTRACTION).

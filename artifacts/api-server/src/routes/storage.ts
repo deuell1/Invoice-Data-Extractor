@@ -5,6 +5,7 @@ import {
   RequestUploadUrlResponse,
 } from "@workspace/api-zod";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
+import { requireRole } from "../middlewares/requireAuth";
 import { ObjectPermission } from "../lib/objectAcl";
 
 const router: IRouter = Router();
@@ -234,6 +235,29 @@ router.get("/storage/objects/*path", async (req: Request, res: Response) => {
     }
     req.log.error({ err: error }, "Error serving object");
     res.status(500).json({ error: "Failed to serve object" });
+  }
+});
+
+/**
+ * DELETE /storage/objects/*
+ *
+ * Hard-delete a stored object by its /objects/... path.
+ * Restricted to AP_MANAGER (smoke-test API key is granted AP_MANAGER) so
+ * ordinary AP Clerks cannot call this endpoint.
+ * Used exclusively by the smoke-test cleanup path to remove uploaded files that
+ * were never linked to a source document (orphan uploads from failed runs).
+ * Missing objects are treated as already-deleted (idempotent).
+ */
+router.delete("/storage/objects/*path", requireRole("AP_MANAGER"), async (req: Request, res: Response) => {
+  try {
+    const raw = req.params.path;
+    const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
+    const objectPath = `/objects/${wildcardPath}`;
+    await objectStorageService.deleteObject(objectPath);
+    res.json({ deleted: true, objectPath });
+  } catch (error) {
+    req.log.error({ err: error }, "Error deleting object");
+    res.status(500).json({ error: "Failed to delete object" });
   }
 });
 
