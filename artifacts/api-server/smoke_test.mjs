@@ -407,6 +407,9 @@ console.log("══════════════════════�
   // uncaught exception that bypasses the harness.
   const { readFileSync } = await import("node:fs");
   const pdf = readFileSync("/tmp/multi_invoice.pdf");
+  const meta = JSON.parse(readFileSync("/tmp/multi_invoice_meta.json", "utf8"));
+  const expectedInvoiceCount = meta.expectedInvoiceCount;
+  console.log(`  → expecting exactly ${expectedInvoiceCount} invoice(s) from gen_pdf.mjs`);
 
   // Stage 1a: Request presigned upload URL.
   const urlRes = await api("POST", "/storage/uploads/request-url", {
@@ -469,8 +472,11 @@ console.log("══════════════════════�
   }
 
   const detectedInvoices = afterDetection.invoices ?? [];
-  assert(detectedInvoices.length >= 1, `At least 1 invoice detected from source doc (got ${detectedInvoices.length})`);
-  console.log(`  → detected ${detectedInvoices.length} invoice(s)`);
+  assert(
+    detectedInvoices.length === expectedInvoiceCount,
+    `Detected invoice count matches PDF page count: expected ${expectedInvoiceCount}, got ${detectedInvoices.length} (pages may have been silently dropped)`,
+  );
+  console.log(`  → detected ${detectedInvoices.length} invoice(s) (expected ${expectedInvoiceCount})`);
 
   // Track all detected invoices for cleanup.
   for (const inv of detectedInvoices) {

@@ -1,6 +1,11 @@
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { writeFileSync } from "node:fs";
 
+// Export the expected invoice count so callers can assert exact detection.
+// This is the single source of truth — if you add or remove an invoice here,
+// the smoke-test assertion automatically stays in sync.
+export const EXPECTED_INVOICE_COUNT = 3;
+
 // Vendor names MUST match names in scripts/src/seed.ts within the 85% fuzzy-match
 // threshold so that vendor matching succeeds during smoke-test extraction.
 //
@@ -39,4 +44,10 @@ for (const inv of invoices) {
 
 const bytes = await doc.save();
 writeFileSync("/tmp/multi_invoice.pdf", bytes);
+// Write machine-readable metadata so smoke_test.mjs can assert exact page counts
+// without parsing stdout or duplicating the invoice list.
+writeFileSync(
+  "/tmp/multi_invoice_meta.json",
+  JSON.stringify({ expectedInvoiceCount: EXPECTED_INVOICE_COUNT }),
+);
 console.log("wrote /tmp/multi_invoice.pdf", bytes.length, "bytes,", invoices.length, "pages");
