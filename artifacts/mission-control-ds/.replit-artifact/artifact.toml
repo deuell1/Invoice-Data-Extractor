@@ -1,0 +1,19 @@
+kind = "design-system"
+previewPath = "/mission-control-ds/"
+title = "Mission Control Design System"
+description = "A dark-first, monospace-led design system extracted from the Mission Control bento dashboard. Built around a terminal/ops aesthetic with a GitHub-inspired neon palette — electric blue, circuit green, soft purple, and amber — on near-black surfaces. Typography is exclusively monospace. Intended for use in AP dashboards, ops tooling, and data-dense interfaces."
+version = "1.0.0"
+id = "artifacts/mission-control-ds"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/mission-control-ds/" ]
+localPort = 20022
+
+[services.development]
+run = "pnpm --filter @workspace/mission-control-ds run dev"
+
+[services.env]
+PORT = "20022"
+BASE_PATH = "/mission-control-ds/"
