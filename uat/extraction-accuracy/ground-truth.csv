@@ -1,0 +1,6 @@
+testCaseId,sourceFileName,invoiceNumber,vendorRawName,invoiceDate,dueDate,paymentTerms,poNumber,subtotal,taxAmount,freightAmount,totalAmount,currency
+TP-001,invoice_Ingestor_5_invoice_test_1786035375284.pdf,19237741,Automation Direct,5/21/2026,6/20/2026,2% 10 Net 30,PO-24532,10013.25,0,0,10013.25,USD
+TP-002,invoice_Ingestor_5_invoice_test_1786035375284.pdf,215,"BzRhino Consulting, LLC",5/18/2026,6/2/2026,Net 15,,125,0,0,125,USD
+TP-003,invoice_Ingestor_5_invoice_test_1786035375284.pdf,S014432461.002,"Van Meter, Inc.",5/27/2026,7/11/2026,1% 1 Days Net 45 NSC,PO-24527,56351.8,0,0,56351.8,USD
+TP-004,invoice_Ingestor_5_invoice_test_1786035375284.pdf,5438211,Rick Lake Weighing Systems,4/10/2026,5/10/2026,Net 30,PO-24270,17820,0,142.03,17962.03,USD
+TP-005,invoice_Ingestor_5_invoice_test_1786035375284.pdf,9504895965,BDI,4/7/2026,5/7/2026,Net 30 days,24299,10620.69,0,339.12,10959.81,USD
