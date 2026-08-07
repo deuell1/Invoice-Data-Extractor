@@ -159,6 +159,7 @@ export async function processSourceDocument(
       await db.insert(invoiceAuditLogTable).values({
         invoiceId: invoice.id,
         action: "CREATED",
+        actorClerkId: "system-pipeline",
         note:
           `Invoice ${detected.invoiceSequence} of ${detection.invoiceCount} from ${doc.originalFileName}` +
           ` (pages ${detected.pageStart}-${detected.pageEnd})`,
@@ -171,6 +172,7 @@ export async function processSourceDocument(
         await db.insert(invoiceAuditLogTable).values({
           invoiceId: invoice.id,
           action: "ROUTED_TO_EXCEPTION",
+          actorClerkId: "system-pipeline",
           note: detection.exceptionReason,
         });
       } else {
@@ -232,6 +234,8 @@ export interface RemovalInput {
   reason: string;
   note?: string | null;
   actor?: string | null;
+  /** Role of the authenticated actor (e.g. AP_CLERK / AP_MANAGER). */
+  actorRole?: string | null;
 }
 
 /**
@@ -291,7 +295,8 @@ export async function removeSourceDocument(
         action: "VOIDED",
         oldValue: child.status,
         newValue: "VOIDED",
-        editorRole: actor,
+        actorClerkId: actor ?? "system-pipeline",
+        editorRole: input.actorRole ?? null,
         note: note ? `${input.reason} — ${note}` : input.reason,
       });
     }

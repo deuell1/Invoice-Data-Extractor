@@ -397,6 +397,21 @@ let pipelineVoucherId;
   assert(ps === 200, `PATCH /invoices/:id/voucher returns 200 (got ${ps}: ${JSON.stringify(pj).slice(0, 300)})`);
   assert(pj.status === "POSTED", `invoice status=POSTED (got "${pj.status}")`);
   assert(pj.voucherId === pipelineVoucherId, `voucherId stored (${pj.voucherId})`);
+
+  // Verify audit log: VOUCHER_SET row carries the actor AND their role.
+  const { status: vAlS, json: vAlJ } = await api("GET", `/invoices/${pipelineInvoiceId}/audit`);
+  assert(vAlS === 200, `GET audit-log returns 200 after voucher set (got ${vAlS})`);
+  const voucherRow = vAlJ.find((r) => r.action === "VOUCHER_SET");
+  assert(voucherRow, `VOUCHER_SET audit row exists in log`);
+  assert(
+    voucherRow.actorClerkId === "smoke-test",
+    `VOUCHER_SET audit row has actorClerkId="smoke-test" (got "${voucherRow.actorClerkId}")`,
+  );
+  assert(
+    ["AP_MANAGER", "AP_CLERK"].includes(voucherRow.editorRole),
+    `VOUCHER_SET audit row has editorRole populated (got "${voucherRow.editorRole}")`,
+  );
+  console.log(`  → voucher audit verified: actorClerkId=${voucherRow.actorClerkId}, role=${voucherRow.editorRole}`);
 }
 
 // ── Stage 5: Export → CSV verified ────────────────────────────────────────────
@@ -691,6 +706,27 @@ console.log("══════════════════════�
   createdInvoiceIds.push(excId);
   assert(excI.vendorId != null, `Vendor matched for exception test invoice (vendorId=${excI.vendorId})`);
 
+  // ── Submit test + audit assertion ───────────────────────────────────────────
+  // Submit the invoice through validation and verify the SUBMITTED audit row
+  // records both the actor and their role.
+  {
+    const { status: subS } = await api("POST", `/invoices/${excId}/submit`, {});
+    assert(subS === 200, `POST /invoices/:id/submit returns 200 (got ${subS})`);
+    const { status: sAlS, json: sAlJ } = await api("GET", `/invoices/${excId}/audit`);
+    assert(sAlS === 200, `GET audit-log returns 200 after submit (got ${sAlS})`);
+    const submittedRow = sAlJ.find((r) => r.action === "SUBMITTED");
+    assert(submittedRow, `SUBMITTED audit row exists in log`);
+    assert(
+      submittedRow.actorClerkId === "smoke-test",
+      `SUBMITTED audit row has actorClerkId="smoke-test" (got "${submittedRow.actorClerkId}")`,
+    );
+    assert(
+      ["AP_MANAGER", "AP_CLERK"].includes(submittedRow.editorRole),
+      `SUBMITTED audit row has editorRole populated (got "${submittedRow.editorRole}")`,
+    );
+    console.log(`  → submit audit verified: actorClerkId=${submittedRow.actorClerkId}, role=${submittedRow.editorRole}`);
+  }
+
   // ── Reject test + audit assertion ────────────────────────────────────────────
   // Force to PENDING_APPROVAL so reject endpoint is valid, then reject and verify audit.
   {
@@ -728,7 +764,32 @@ console.log("══════════════════════�
       assignedRow.actorClerkId === "smoke-test",
       `EXCEPTION_ASSIGNED audit row has actorClerkId="smoke-test" (got "${assignedRow.actorClerkId}")`,
     );
-    console.log(`  → exception assign audit verified: actorClerkId=${assignedRow.actorClerkId}`);
+    assert(
+      ["AP_MANAGER", "AP_CLERK"].includes(assignedRow.editorRole),
+      `EXCEPTION_ASSIGNED audit row has editorRole populated (got "${assignedRow.editorRole}")`,
+    );
+    console.log(`  → exception assign audit verified: actorClerkId=${assignedRow.actorClerkId}, role=${assignedRow.editorRole}`);
+  }
+
+  // ── Exception review + audit assertion ──────────────────────────────────────
+  {
+    const { status: erS } = await api("POST", `/invoices/${excId}/exception/review`, {
+      note: "Smoke test exception review",
+    });
+    assert(erS === 200, `POST /invoices/:id/exception/review returns 200 (got ${erS})`);
+    const { status: erAlS, json: erAlJ } = await api("GET", `/invoices/${excId}/audit`);
+    assert(erAlS === 200, `GET audit-log returns 200 after exception review (got ${erAlS})`);
+    const reviewedRow = erAlJ.find((r) => r.action === "EXCEPTION_REVIEWED");
+    assert(reviewedRow, `EXCEPTION_REVIEWED audit row exists in log`);
+    assert(
+      reviewedRow.actorClerkId === "smoke-test",
+      `EXCEPTION_REVIEWED audit row has actorClerkId="smoke-test" (got "${reviewedRow.actorClerkId}")`,
+    );
+    assert(
+      ["AP_MANAGER", "AP_CLERK"].includes(reviewedRow.editorRole),
+      `EXCEPTION_REVIEWED audit row has editorRole populated (got "${reviewedRow.editorRole}")`,
+    );
+    console.log(`  → exception review audit verified: actorClerkId=${reviewedRow.actorClerkId}, role=${reviewedRow.editorRole}`);
   }
 
   // Force to EXCEPTION status using the status endpoint.

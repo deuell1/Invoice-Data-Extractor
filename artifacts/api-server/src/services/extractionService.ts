@@ -753,6 +753,7 @@ export async function runExtraction(invoiceId: number): Promise<void> {
     await db.insert(invoiceAuditLogTable).values({
       invoiceId,
       action: "EXTRACTED",
+      actorClerkId: "system-pipeline",
       note: `Extraction completed via ${usingMock ? "development mock" : "OpenAI"} (confidence ${(fields.confidenceScore * 100).toFixed(0)}%)`,
     });
 
@@ -804,6 +805,7 @@ export async function runExtraction(invoiceId: number): Promise<void> {
     await db.insert(invoiceAuditLogTable).values({
       invoiceId,
       action: "EXTRACTION_FAILED",
+      actorClerkId: "system-pipeline",
       note: `[${category}] ${message}`.slice(0, 500),
     });
   }

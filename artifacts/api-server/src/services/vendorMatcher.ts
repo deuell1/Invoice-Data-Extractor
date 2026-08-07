@@ -209,6 +209,7 @@ export async function applyVendorMatch(
     await db.insert(invoiceAuditLogTable).values({
       invoiceId,
       action: "VENDOR_MATCH_FAILED",
+      actorClerkId: "system-pipeline",
       note: `No vendor found in vendor_id table matching "${vendorRawName}"`,
     });
 
@@ -231,6 +232,7 @@ export async function applyVendorMatch(
     await db.insert(invoiceAuditLogTable).values({
       invoiceId,
       action: "VENDOR_MATCH_LOW_CONFIDENCE",
+      actorClerkId: "system-pipeline",
       fieldName: "vendorMatchScore",
       newValue: scoreStr,
       note: `Best match "${match.vendorName}" scored ${(match.score * 100).toFixed(1)}% — below 85% threshold`,
@@ -256,6 +258,7 @@ export async function applyVendorMatch(
     await db.insert(invoiceAuditLogTable).values({
       invoiceId,
       action: "VENDOR_MATCH_INACTIVE",
+      actorClerkId: "system-pipeline",
       fieldName: "vendorId",
       newValue: String(match.vendorId),
       note: `Matched vendor "${match.vendorName}" (score ${(match.score * 100).toFixed(1)}%) is inactive`,
@@ -281,6 +284,7 @@ export async function applyVendorMatch(
     await db.insert(invoiceAuditLogTable).values({
       invoiceId,
       action: "VENDOR_MATCH_ON_HOLD",
+      actorClerkId: "system-pipeline",
       fieldName: "vendorId",
       newValue: String(match.vendorId),
       note: `Matched vendor "${match.vendorName}" (score ${(match.score * 100).toFixed(1)}%) is on hold`,
@@ -318,6 +322,7 @@ export async function applyVendorMatch(
   await db.insert(invoiceAuditLogTable).values({
     invoiceId,
     action: "VENDOR_MATCHED",
+    actorClerkId: "system-pipeline",
     fieldName: "vendorId",
     newValue: String(match.vendorId),
     note: `Matched to "${match.vendorName}" (${match.matchedAlias ? `alias: "${match.matchedAlias}", ` : ""}score ${(match.score * 100).toFixed(1)}%)${isVendorException ? " — cleared vendor exception" : ""}`,

@@ -224,6 +224,7 @@ router.post("/invoices/:id/exception/assign", async (req, res): Promise<void> =>
     oldValue: invoice.exceptionOwner ?? null,
     newValue: parsed.data.owner,
     actorClerkId: assignActorId,
+    editorRole: (req as any).clerkUserRole ?? null,
   });
 
   const updated = await getFullInvoiceById(params.data.id);
@@ -268,6 +269,7 @@ router.post("/invoices/:id/exception/review", async (req, res): Promise<void> =>
     invoiceId: params.data.id,
     action: "EXCEPTION_REVIEWED",
     actorClerkId: reviewActorId,
+    editorRole: (req as any).clerkUserRole ?? null,
     note: "Exception reviewed",
   });
 
@@ -323,6 +325,7 @@ router.post(
       oldValue: "EXCEPTION",
       newValue: "PENDING_APPROVAL",
       actorClerkId: returnActorId,
+      editorRole: (req as any).clerkUserRole ?? null,
       note: "Returned to approval",
     });
 

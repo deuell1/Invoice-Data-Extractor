@@ -540,6 +540,7 @@ router.post("/invoices", async (req, res): Promise<void> => {
     invoiceId: invoice.id,
     action: "CREATED",
     actorClerkId: (req as any).clerkUserId ?? "system",
+    editorRole: (req as any).clerkUserRole ?? null,
     note: `Invoice created from file: ${invoice.originalFileName}`,
   });
 
@@ -1005,6 +1006,7 @@ router.patch("/invoices/:id/status", async (req, res): Promise<void> => {
     oldValue: existing.status,
     newValue: parsed.data.status,
     actorClerkId: (req as any).clerkUserId ?? "system",
+    editorRole: (req as any).clerkUserRole ?? null,
     note: parsed.data.reason ?? undefined,
   });
 
@@ -1172,6 +1174,7 @@ router.patch("/invoices/:id/voucher", requireRole("AP_MANAGER"), async (req, res
     oldValue: existing.status,
     newValue: parsed.data.voucherId,
     actorClerkId: (req as any).clerkUserId ?? "system",
+    editorRole: (req as any).clerkUserRole ?? null,
   });
 
   const row = await getInvoiceById(params.data.id);
@@ -1388,6 +1391,7 @@ router.post("/invoices/:id/submit", async (req, res): Promise<void> => {
     oldValue: existing.status,
     newValue: outcome.blocking.length > 0 ? "EXCEPTION" : "PENDING_APPROVAL",
     actorClerkId: (req as any).clerkUserId ?? "system",
+    editorRole: (req as any).clerkUserRole ?? null,
   });
 
   const row = await getInvoiceById(params.data.id);

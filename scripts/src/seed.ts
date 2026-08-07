@@ -133,6 +133,7 @@ async function seed() {
       await db.insert(invoiceAuditLogTable).values({
         invoiceId: inserted.id,
         action: "CREATED",
+        actorClerkId: "system-pipeline",
         note: `Seeded invoice: ${inv.originalFileName}`,
       });
       console.log(`  Created invoice: ${inv.originalFileName}`);

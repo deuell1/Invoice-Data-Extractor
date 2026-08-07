@@ -562,18 +562,21 @@ export async function validateInvoice(invoiceId: number): Promise<ValidationOutc
       await db.insert(invoiceAuditLogTable).values({
         invoiceId,
         action: "ROUTED_TO_EXCEPTION",
+        actorClerkId: "system-pipeline",
         note: blocking.join("; ").slice(0, 500),
       });
     } else if (warnings.length > 0) {
       await db.insert(invoiceAuditLogTable).values({
         invoiceId,
         action: "NEEDS_REVIEW",
+        actorClerkId: "system-pipeline",
         note: warnings.join("; ").slice(0, 500),
       });
     } else {
       await db.insert(invoiceAuditLogTable).values({
         invoiceId,
         action: "VALIDATED",
+        actorClerkId: "system-pipeline",
         note: "Passed validation; routed to pending approval.",
       });
     }
@@ -583,6 +586,7 @@ export async function validateInvoice(invoiceId: number): Promise<ValidationOutc
     await db.insert(invoiceAuditLogTable).values({
       invoiceId,
       action: "FIELD_UPDATED",
+      actorClerkId: "system-pipeline",
       fieldName: "dueDate",
       newValue: derivedDueDate,
       note: "Derived from vendor payment terms",

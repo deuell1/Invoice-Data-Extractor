@@ -145,7 +145,8 @@ router.post("/source-documents/:id/remove", async (req, res): Promise<void> => {
   const data = await removeSourceDocument(params.data.id, {
     reason: parsed.data.reason,
     note: parsed.data.note ?? null,
-    actor: parsed.data.actor ?? null,
+    actor: (req as any).clerkUserId ?? parsed.data.actor ?? null,
+    actorRole: (req as any).clerkUserRole ?? null,
   });
   if (!data) {
     res.status(404).json({ error: "Source document not found" });
