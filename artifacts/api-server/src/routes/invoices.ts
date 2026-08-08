@@ -11,6 +11,7 @@ import {
   invoiceAuditLogTable,
   vendorIdTable,
   sourceDocumentsTable,
+  exceptionEventTable,
 } from "@workspace/db";
 import { ObjectStorageService } from "../lib/objectStorage";
 import {
@@ -1097,14 +1098,31 @@ router.delete("/invoices/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  // Delete the audit trail and invoice atomically so a mid-operation failure
-  // cannot leave dangling audit rows or a half-deleted record.
-  await db.transaction(async (tx) => {
-    await tx
-      .delete(invoiceAuditLogTable)
-      .where(eq(invoiceAuditLogTable.invoiceId, params.data.id));
-    await tx.delete(invoiceCaptureTable).where(eq(invoiceCaptureTable.id, params.data.id));
-  });
+  // Delete all dependent rows (audit trail + exception events) and the invoice
+  // atomically so a mid-operation failure cannot leave dangling rows or a
+  // half-deleted record. Exception events exist for any invoice that went
+  // through the exception workflow (e.g. approved via exception override).
+  try {
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(invoiceAuditLogTable)
+        .where(eq(invoiceAuditLogTable.invoiceId, params.data.id));
+      await tx
+        .delete(exceptionEventTable)
+        .where(eq(exceptionEventTable.invoiceId, params.data.id));
+      await tx.delete(invoiceCaptureTable).where(eq(invoiceCaptureTable.id, params.data.id));
+    });
+  } catch (err) {
+    // Safety net: a dependent row we don't know about still references this
+    // invoice. Surface a clean conflict instead of a raw 500 so cleanup can
+    // report it without a server error.
+    res.status(409).json({
+      error:
+        "Invoice cannot be hard-deleted because dependent records still reference it.",
+      detail: err instanceof Error ? err.message : String(err),
+    });
+    return;
+  }
 
   // Only attempt to delete the stored file when this invoice is not tied to a
   // source document. Source-document files are owned by the source document and

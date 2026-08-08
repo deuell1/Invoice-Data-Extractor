@@ -35,3 +35,5 @@ silently re-pollutes those surfaces.
   guard — see `deleteFileIfUnreferenced` in routes/invoices.ts and the inline
   guard in `deleteSourceDocument`). File deletion is best-effort and happens
   after the DB transaction commits.
+
+**Lesson — hard deletes and FK dependents:** every code path that hard-deletes an invoice (direct delete AND source-document cascade) must clear all FK-dependent rows in the same transaction; when a new invoice-linked table is added, all delete paths must be updated together or cleanup regresses to 500s. Unknown FK failures should surface as clean conflicts, never raw DB errors. VOIDED invoices still hold their vendor FK, so "no active references" is not "no references" — referenced vendors are deactivated, never deleted.

@@ -3,6 +3,7 @@ import {
   invoiceCaptureTable,
   invoiceAuditLogTable,
   sourceDocumentsTable,
+  exceptionEventTable,
 } from "@workspace/db";
 import { eq, asc } from "drizzle-orm";
 import { logger } from "../lib/logger";
@@ -345,19 +346,41 @@ export async function deleteSourceDocument(
     };
   }
 
-  // Remove child audit logs (FK), then child invoices, then the source document,
-  // atomically so a mid-operation failure cannot leave dangling rows.
-  await db.transaction(async (tx) => {
-    for (const child of children) {
+  // Remove child FK dependents (audit logs + exception events), then child
+  // invoices, then the source document, atomically so a mid-operation failure
+  // cannot leave dangling rows. Exception events exist for any child invoice
+  // that went through the exception workflow.
+  try {
+    await db.transaction(async (tx) => {
+      for (const child of children) {
+        await tx
+          .delete(invoiceAuditLogTable)
+          .where(eq(invoiceAuditLogTable.invoiceId, child.id));
+        await tx
+          .delete(exceptionEventTable)
+          .where(eq(exceptionEventTable.invoiceId, child.id));
+      }
       await tx
-        .delete(invoiceAuditLogTable)
-        .where(eq(invoiceAuditLogTable.invoiceId, child.id));
-    }
-    await tx
-      .delete(invoiceCaptureTable)
-      .where(eq(invoiceCaptureTable.sourceDocumentId, sourceDocumentId));
-    await tx.delete(sourceDocumentsTable).where(eq(sourceDocumentsTable.id, sourceDocumentId));
-  });
+        .delete(invoiceCaptureTable)
+        .where(eq(invoiceCaptureTable.sourceDocumentId, sourceDocumentId));
+      await tx.delete(sourceDocumentsTable).where(eq(sourceDocumentsTable.id, sourceDocumentId));
+    });
+  } catch (err) {
+    // Safety net: an unknown dependent row still references a child invoice.
+    // Report a clean blocked result instead of surfacing a raw 500.
+    logger.warn(
+      { sourceDocumentId, err: (err as Error)?.message },
+      "deleteSourceDocument: delete transaction blocked by dependent records",
+    );
+    return {
+      deleted: false,
+      deletedInvoiceIds: [],
+      deletedSourceDocumentId: null,
+      fileDeleted: false,
+      blockedReason:
+        "Source document cannot be hard-deleted because dependent records still reference its invoices.",
+    };
+  }
 
   // Now that all rows for this source are gone, delete the stored file — but only
   // if no other invoice or source document still references the same object

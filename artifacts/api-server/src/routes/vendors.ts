@@ -926,11 +926,48 @@ router.delete("/vendors/:id", requireRole("AP_MANAGER"), async (req, res): Promi
     return;
   }
 
+  // VOIDED invoices still hold an FK to the vendor, so a hard delete would
+  // fail at the DB layer. Documented behavior: a referenced vendor is
+  // deactivated, never deleted.
+  const [voidedRef] = await db
+    .select({ id: invoiceCaptureTable.id })
+    .from(invoiceCaptureTable)
+    .where(eq(invoiceCaptureTable.vendorId, id))
+    .limit(1);
+
+  const actor = ((req as any).clerkUserId as string | undefined) ?? "system";
+
+  if (voidedRef) {
+    await db
+      .update(vendorIdTable)
+      .set({ isActive: false, updatedBy: actor, updatedAt: new Date() })
+      .where(eq(vendorIdTable.id, id));
+    await db.insert(vendorAuditLogTable).values({
+      vendorId: id,
+      action: "VENDOR_DEACTIVATED",
+      actor,
+      newValue: `Deactivated instead of deleted: voided invoices still reference this vendor (${vendor.vendorCode})`,
+    });
+    res.json({ deleted: false, deactivated: true, deletedVendorId: id });
+    return;
+  }
+
   // Delete audit log rows then the vendor row.
-  await db.transaction(async (tx) => {
-    await tx.delete(vendorAuditLogTable).where(eq(vendorAuditLogTable.vendorId, id));
-    await tx.delete(vendorIdTable).where(eq(vendorIdTable.id, id));
-  });
+  try {
+    await db.transaction(async (tx) => {
+      await tx.delete(vendorAuditLogTable).where(eq(vendorAuditLogTable.vendorId, id));
+      await tx.delete(vendorIdTable).where(eq(vendorIdTable.id, id));
+    });
+  } catch (err) {
+    // Safety net: an unknown dependent row still references this vendor.
+    // Fall back to deactivate-never-delete instead of surfacing a raw 500.
+    await db
+      .update(vendorIdTable)
+      .set({ isActive: false, updatedBy: actor, updatedAt: new Date() })
+      .where(eq(vendorIdTable.id, id));
+    res.json({ deleted: false, deactivated: true, deletedVendorId: id });
+    return;
+  }
 
   res.json({ deleted: true, deletedVendorId: id });
 });
