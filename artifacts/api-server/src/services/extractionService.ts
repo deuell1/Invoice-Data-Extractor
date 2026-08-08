@@ -415,7 +415,9 @@ const SYSTEM_PROMPT =
   "charges/fees/surcharges in addition to the invoice total; report discountAmount as a " +
   "positive number representing the discount or credit reduction; report otherChargesAmount " +
   "for miscellaneous charges, fees, or surcharges (use a negative value only for a credit); " +
-  "leave any amount null when it is not shown on the invoice; all " +
+  "leave any amount null ONLY when it is not shown on the invoice at all — a printed " +
+  "zero amount (e.g. 'Sales Tax $0.00', 'TAXES 0.00', 'Freight 0.00') IS a shown value " +
+  "and must be returned as 0.00, never as null; all " +
   "confidence scores are 0 to 100; the low-confidence threshold is 85; if multiple " +
   "totals appear, select the final amount due / total payable for amountDue and explain " +
   "briefly in extractionNotes.";

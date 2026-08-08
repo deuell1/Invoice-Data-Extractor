@@ -5,6 +5,9 @@ description: OpenAI extraction conventions, confidence scaling, and post-extract
 
 # Live OpenAI invoice extraction
 
+## Printed-zero amounts
+The prompt must state that a printed zero (e.g. "Sales Tax $0.00") IS a shown value returned as 0.00 — otherwise "never guess 0 / null when not shown" makes the model return null for printed zeros, costing manual corrections. Re-extraction with the fixed prompt is needed for already-ingested invoices (harness reads stored values).
+
 ## OpenAI Responses API Structured Outputs shape
 For `client.responses.create`, strict JSON schema goes under `text.format` with
 `type`, `name`, `strict`, and `schema` at that level — NOT nested under a
