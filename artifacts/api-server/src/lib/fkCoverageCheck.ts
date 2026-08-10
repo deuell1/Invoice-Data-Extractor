@@ -18,8 +18,10 @@
  *   2. Add the Postgres table name to INVOICE_FK_COVERED below.
  *
  * vendor_id child tables (DELETE /vendors/:id):
- *   1. Either delete the rows in the transaction OR add a pre-check that blocks
- *      deletion while any rows in the new table still reference the vendor.
+ *   1. Either add ON DELETE CASCADE to the FK (preferred — DB handles cleanup
+ *      automatically), delete the rows explicitly in the transaction, OR add a
+ *      pre-check that blocks deletion while any rows in the new table still
+ *      reference the vendor.
  *   2. Add the Postgres table name to VENDOR_FK_COVERED below.
  * ─────────────────────────────────────────────────────────────────────────────
  */
@@ -45,6 +47,9 @@ const INVOICE_FK_COVERED = new Set([
  * invoice_capture: the route refuses to delete a vendor that still has
  * active (non-VOIDED) invoices and deactivates instead of deleting when
  * voided-only invoices remain, so no FK violation can occur.
+ *
+ * vendor_audit_log: FK is ON DELETE CASCADE — the DB removes audit rows
+ * automatically when the vendor row is deleted; no explicit delete needed.
  */
 const VENDOR_FK_COVERED = new Set([
   "invoice_capture",

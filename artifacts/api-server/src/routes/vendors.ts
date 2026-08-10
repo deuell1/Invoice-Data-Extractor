@@ -952,10 +952,9 @@ router.delete("/vendors/:id", requireRole("AP_MANAGER"), async (req, res): Promi
     return;
   }
 
-  // Delete audit log rows then the vendor row.
+  // Delete the vendor row; audit log rows are removed automatically via ON DELETE CASCADE.
   try {
     await db.transaction(async (tx) => {
-      await tx.delete(vendorAuditLogTable).where(eq(vendorAuditLogTable.vendorId, id));
       await tx.delete(vendorIdTable).where(eq(vendorIdTable.id, id));
     });
   } catch (err) {

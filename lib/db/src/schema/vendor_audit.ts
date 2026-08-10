@@ -5,7 +5,7 @@ import { vendorIdTable } from "./vendors";
 
 export const vendorAuditLogTable = pgTable("vendor_audit_log", {
   id: serial("id").primaryKey(),
-  vendorId: integer("vendor_id").notNull().references(() => vendorIdTable.id),
+  vendorId: integer("vendor_id").notNull().references(() => vendorIdTable.id, { onDelete: "cascade" }),
   action: text("action").notNull(),
   fieldName: text("field_name"),
   oldValue: text("old_value"),
