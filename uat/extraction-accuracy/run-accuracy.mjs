@@ -229,6 +229,106 @@ const FIELDS = [
   { col: "currency", key: "currency", kind: "currency", cat: "currency" },
 ];
 
+// ─── baseline-corrections preflight ──────────────────────────────────────────
+// Mirrors the corrections defined in apply-task36-corrections.sql.
+//
+// After fetching actuals, we inspect the known test-pack invoices. If any still
+// hold a pre-correction value we exit before scoring so the developer sees a
+// clear actionable message rather than a misleading accuracy failure.
+//
+// The check is intentionally skipped when the test-pack file is not present in
+// the DB at all — that is a different problem (nothing uploaded) and the score
+// will show all cases as unmatched, which is its own clear signal.
+
+const BASELINE_PACK_FILE =
+  "invoice_Ingestor_5_invoice_test_1786035375284.pdf";
+
+// Each entry encodes one detectable pre-correction state.
+//   matchNumbers  — invoice_number value(s) the invoice might carry (pre- or
+//                   post-correction) so we can locate it in actuals.
+//   field         — the API response field to inspect.
+//   badCheck(v)   — returns true when the value is still the un-corrected one.
+//   correction    — human-readable description of what the patch fixes.
+const BASELINE_PREFLIGHT = [
+  {
+    label: "TP-001",
+    matchNumbers: ["19237741"],
+    field: "vendorRawName",
+    badCheck: (v) =>
+      v != null && normStr(String(v)) !== normStr("Automation Direct"),
+    correction: 'vendorRawName → "Automation Direct"',
+  },
+  {
+    // If the rename hasn't been applied the invoice still carries "00215".
+    label: "TP-002",
+    matchNumbers: ["00215"],
+    field: "invoiceNumber",
+    badCheck: (v) => normStr(String(v ?? "")) === "00215",
+    correction: 'invoiceNumber "00215" → "215"',
+  },
+  {
+    // taxAmount must be 0, not null, for the TP-002 invoice.
+    label: "TP-002",
+    matchNumbers: ["215", "00215"],
+    field: "taxAmount",
+    badCheck: (v) => v == null,
+    correction: "taxAmount NULL → 0",
+  },
+  {
+    label: "TP-002",
+    matchNumbers: ["215", "00215"],
+    field: "freightAmount",
+    badCheck: (v) => v == null,
+    correction: "freightAmount NULL → 0",
+  },
+  {
+    label: "TP-003",
+    matchNumbers: ["S014432461.002"],
+    field: "taxAmount",
+    badCheck: (v) => v == null,
+    correction: "taxAmount NULL → 0",
+  },
+  {
+    label: "TP-004",
+    matchNumbers: ["5438211"],
+    field: "taxAmount",
+    badCheck: (v) => v == null,
+    correction: "taxAmount NULL → 0",
+  },
+  {
+    label: "TP-005",
+    matchNumbers: ["9504895965"],
+    field: "vendorRawName",
+    badCheck: (v) => v != null && normStr(String(v)) !== normStr("BDI"),
+    correction: 'vendorRawName → "BDI"',
+  },
+];
+
+// Returns an array of human-readable violation strings (empty = all good).
+function checkBaselineCorrections(actuals) {
+  const packInvoices = actuals.filter(
+    (a) => normStr(a.originalFileName || "") === normStr(BASELINE_PACK_FILE),
+  );
+  // If the file isn't uploaded yet there is nothing to check.
+  if (packInvoices.length === 0) return [];
+
+  const violations = [];
+  for (const check of BASELINE_PREFLIGHT) {
+    const candidates = packInvoices.filter((a) =>
+      check.matchNumbers.some(
+        (n) => normStr(a.invoiceNumber || "") === normStr(n),
+      ),
+    );
+    for (const inv of candidates) {
+      if (check.badCheck(inv[check.field])) {
+        violations.push(`  ${check.label}: ${check.correction}`);
+        break; // one violation per check entry is sufficient
+      }
+    }
+  }
+  return violations;
+}
+
 // ─── scoring ─────────────────────────────────────────────────────────────────
 function scoreCase(gt, actual) {
   const results = [];
@@ -272,6 +372,25 @@ try {
   actuals = await fetchActuals();
 } catch (e) {
   console.error(`ERROR: could not fetch actual invoices from ${API_BASE}: ${e.message}`);
+  process.exit(2);
+}
+
+// ── preflight: baseline corrections ─────────────────────────────────────────
+// If the test-pack invoices are present but still carry pre-correction values
+// (i.e. apply-task36-corrections.mjs has not been run since the last DB reset),
+// stop immediately so the developer sees a clear message instead of a silent
+// accuracy failure.
+const baselineViolations = checkBaselineCorrections(actuals);
+if (baselineViolations.length > 0) {
+  console.error("ERROR: baseline corrections not applied — run apply-task36-corrections.mjs first.");
+  console.error("");
+  console.error("The following task-36 corrections are still missing from the database:");
+  for (const v of baselineViolations) console.error(v);
+  console.error("");
+  console.error("Apply them with:");
+  console.error("  node uat/extraction-accuracy/apply-task36-corrections.mjs");
+  console.error("");
+  console.error("Then re-run the accuracy harness.");
   process.exit(2);
 }
 
