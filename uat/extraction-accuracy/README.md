@@ -83,6 +83,36 @@ Paste the summary metrics block into **section 4 (Extraction Accuracy Scorecard)
 of `Phase1_UAT_Exit_Report.md` and update the verdict. Mark the accuracy item
 **closed** only if overall accuracy meets the agreed threshold.
 
+## Keeping the patch script in sync after future runs
+
+Every time you publish a new results report that contains a non-empty
+"Corrections applied in this run" table, run the sync check to confirm the
+SQL patch script still covers all documented corrections:
+
+```bash
+node uat/extraction-accuracy/check-corrections-sync.mjs
+```
+
+The script automatically picks the most-recent file in `results/`. To check
+against a specific report:
+
+```bash
+node uat/extraction-accuracy/check-corrections-sync.mjs \
+  --report uat/extraction-accuracy/results/accuracy-YYYY-MM-DD.md
+```
+
+**Exit codes:**
+- `0` — patch script is in sync (or the report has no corrections).
+- `1` — one or more corrections in the report are not in the SQL; the script
+  prints exactly which `(case, field)` pairs are missing.
+- `2` — usage / file-not-found error.
+
+When the script exits `1`, add the missing `UPDATE` statements to
+`apply-task36-corrections.sql` (following the existing `-- TP-NNN · field:`
+comment convention) and re-run the check until it exits `0`.
+
+---
+
 ## Restoring the task-36 baseline after a database reset
 
 A set of manual corrections was applied during the task-36 UAT run to reach
