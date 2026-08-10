@@ -420,7 +420,13 @@ const SYSTEM_PROMPT =
   "and must be returned as 0.00, never as null; all " +
   "confidence scores are 0 to 100; the low-confidence threshold is 85; if multiple " +
   "totals appear, select the final amount due / total payable for amountDue and explain " +
-  "briefly in extractionNotes.";
+  "briefly in extractionNotes; for vendorRawName use the primary trade or brand name as " +
+  "it appears most prominently on the invoice header — do NOT append branch or regional " +
+  "qualifiers (e.g. '- Princeton', '(West)'), web domain suffixes (e.g. '.com', '.net'), " +
+  "or legal-entity suffixes (e.g. 'Inc.', 'LLC', 'Corp.') unless they are the only " +
+  "identifier on the document; strip leading zeros from invoiceNumber unless they are " +
+  "clearly part of the invoice's formatted identifier (e.g. alphanumeric codes like " +
+  "'S014432461.002' keep their structure, but a plain '00215' should be returned as '215').";
 
 type RawModelOutput = {
   vendorRawName?: unknown;
