@@ -27,6 +27,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { VendorCombobox } from "@/components/vendor-combobox";
 import { StatusBadge } from "@/components/status-badge";
 import { InvoiceCleanupActions } from "@/components/cleanup-actions";
+import { AuditActor } from "@/components/audit-actor";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, AlertCircle, CheckCircle2, AlertTriangle, RefreshCw, Clock, FileText, Info, ExternalLink, Download, FileWarning, ChevronLeft, ChevronRight } from "lucide-react";
 import {
@@ -1081,7 +1082,14 @@ export function ExtractionReview() {
                             {format(new Date(log.createdAt), "MMM d HH:mm")}
                           </span>
                           <div>
-                            <span className="font-medium">{log.action}</span>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-medium">{log.action}</span>
+                              <AuditActor
+                                actorClerkId={log.actorClerkId}
+                                actorName={log.actorName}
+                                editorRole={log.editorRole}
+                              />
+                            </div>
                             {log.fieldName && (
                               <span className="text-muted-foreground ml-1">
                                 on {log.fieldName}: {log.oldValue || "empty"} → {log.newValue || "empty"}

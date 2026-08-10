@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, History, Search, FileQuestion } from "lucide-react";
+import { AuditActor } from "@/components/audit-actor";
 import { format } from "date-fns";
 
 export function AuditViewer() {
@@ -100,11 +101,13 @@ export function AuditViewer() {
                     {format(new Date(log.createdAt), "MMM d, yyyy HH:mm")}
                   </div>
                   <div className="space-y-1 text-sm">
-                    <div>
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-medium">{log.action}</span>
-                      {log.editorRole && (
-                        <span className="text-muted-foreground ml-2 text-xs">{log.editorRole}</span>
-                      )}
+                      <AuditActor
+                        actorClerkId={log.actorClerkId}
+                        actorName={log.actorName}
+                        editorRole={log.editorRole}
+                      />
                     </div>
                     {log.fieldName && (
                       <div className="text-xs text-muted-foreground">
