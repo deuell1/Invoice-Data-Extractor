@@ -1132,25 +1132,106 @@ console.log("══════════════════════�
     assert(false, `Suite 11: ground-truth CSV is missing required column(s): ${missingCols.join(", ")} (headers found: ${gtHeaders.join(", ")})`);
   }
 
+  // ── Numeric cell parser (validates raw string before conversion) ─────────────
+  // Using Number("") === 0, which is isFinite — blank cells would silently become
+  // zero and corrupt expected totals.  This helper rejects blank/non-numeric raw
+  // values with a descriptive error before the SNAPSHOT is built.
+  const parseRequiredFinite = (rawCell, field, rowRef) => {
+    const trimmed = (rawCell ?? "").trim();
+    if (trimmed === "") {
+      throw new Error(`Suite 11 ground-truth ${rowRef}: ${field} is blank — must be a number`);
+    }
+    const n = Number(trimmed);
+    if (!Number.isFinite(n)) {
+      throw new Error(`Suite 11 ground-truth ${rowRef}: ${field} is not a finite number (got "${trimmed}")`);
+    }
+    return n;
+  };
+
   // Build the snapshot from CSV rows.
   // invoiceDate stays in M/D/YYYY (ground-truth format) — normDate normalises both
   // sides of the comparison, so no pre-conversion is needed here.
-  const SNAPSHOT = gtLines.slice(1).filter(Boolean).map((line) => {
+  const SNAPSHOT = gtLines.slice(1).filter(Boolean).map((line, lineIdx) => {
     const row = parseCsvRow(line);
+    const rowRef = `row ${lineIdx + 2} (line ${lineIdx + 2} of CSV)`;
     return {
       testCaseId:    row[col("testCaseId")].trim(),
       invoiceNumber: row[col("invoiceNumber")].trim(),
       vendorRawName: row[col("vendorRawName")].trim(),
       invoiceDate:   row[col("invoiceDate")].trim(),
       dueDate:       row[col("dueDate")].trim(),
-      subtotal:      Number(row[col("subtotal")]),
-      totalAmount:   Number(row[col("totalAmount")]),
+      subtotal:      parseRequiredFinite(row[col("subtotal")], "subtotal", rowRef),
+      totalAmount:   parseRequiredFinite(row[col("totalAmount")], "totalAmount", rowRef),
       currency:      row[col("currency")].trim(),
     };
   });
 
   if (SNAPSHOT.length === 0) {
     assert(false, "Suite 11: ground-truth CSV contains no data rows — cannot build snapshot");
+  }
+
+  // ── Strict calendar-date validator ──────────────────────────────────────────
+  // `new Date("2/30/2026")` silently normalises to March 2 and would pass an
+  // isNaN check.  Instead we parse the M/D/YYYY parts explicitly and round-trip
+  // through the 3-argument Date constructor so any day-of-month overflow is
+  // detected (month/day would differ from what we supplied).
+  const isValidCalendarDate = (s) => {
+    if (!s || typeof s !== "string") return false;
+    // Accept M/D/YYYY or MM/DD/YYYY (the format used in ground-truth.csv)
+    const m = s.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (!m) return false;
+    const month = Number(m[1]);
+    const day   = Number(m[2]);
+    const year  = Number(m[3]);
+    if (month < 1 || month > 12) return false;
+    if (day   < 1 || day   > 31) return false;
+    if (year  < 1900 || year > 2100) return false;
+    // Round-trip: if day overflows the month (e.g. Feb 30) the Date rolls
+    // forward and the parts no longer match what we supplied.
+    const d = new Date(year, month - 1, day);
+    return d.getFullYear() === year && d.getMonth() === month - 1 && d.getDate() === day;
+  };
+
+  // ── Per-row integrity checks ─────────────────────────────────────────────────
+  // Validate each parsed row before any upload so that a malformed CSV produces
+  // a loud, descriptive error rather than a silent mismatch downstream.
+  for (const row of SNAPSHOT) {
+    const loc = `Suite 11 ground-truth row testCaseId="${row.testCaseId}"`;
+    assert(
+      row.testCaseId.length > 0,
+      `${loc}: testCaseId must not be empty`,
+    );
+    assert(
+      row.invoiceNumber.length > 0,
+      `${loc}: invoiceNumber must not be empty`,
+    );
+    assert(
+      row.vendorRawName.length > 0,
+      `${loc}: vendorRawName must not be empty`,
+    );
+    assert(
+      isValidCalendarDate(row.invoiceDate),
+      `${loc}: invoiceDate must be a valid M/D/YYYY calendar date (got "${row.invoiceDate}")`,
+    );
+    assert(
+      isValidCalendarDate(row.dueDate),
+      `${loc}: dueDate must be a valid M/D/YYYY calendar date (got "${row.dueDate}")`,
+    );
+    // subtotal and totalAmount are already guaranteed finite by parseRequiredFinite
+    // (called during SNAPSHOT construction above), but re-assert here so failures
+    // are reported with the row label rather than as a thrown Error.
+    assert(
+      Number.isFinite(row.subtotal),
+      `${loc}: subtotal must be a finite number (got "${row.subtotal}")`,
+    );
+    assert(
+      Number.isFinite(row.totalAmount),
+      `${loc}: totalAmount must be a finite number (got "${row.totalAmount}")`,
+    );
+    assert(
+      /^[A-Za-z]{3}$/.test(row.currency),
+      `${loc}: currency must be a 3-letter code (got "${row.currency}")`,
+    );
   }
   console.log(`  → Snapshot loaded from ground-truth CSV: ${SNAPSHOT.length} test case(s) (${gtCsvPath})`);
   const ACCURACY_THRESHOLD = 95; // percent — fail if overall accuracy drops below this
