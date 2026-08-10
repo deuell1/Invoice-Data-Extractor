@@ -1047,10 +1047,11 @@ console.log("══════════════════════�
 // ─── Suite 11: Extraction accuracy regression guard ───────────────────────────
 //
 // Uploads the real UAT test PDF (TP-001–TP-005), waits for all 5 invoices to
-// extract, then checks every invoice's vendorRawName and invoiceNumber against
-// the known-correct snapshot values embedded below.  Fails if:
+// extract, then checks every invoice's vendorRawName, invoiceNumber, invoiceDate,
+// totalAmount, and currency against the known-correct snapshot values embedded
+// below.  Fails if:
 //   • any guarded field is missing or doesn't match the snapshot
-//   • overall field accuracy across vendorRawName + invoiceNumber drops below 95%
+//   • overall field accuracy across all 5 REQUIRED_ALWAYS fields drops below 95%
 //
 // This suite is the automated regression guard described in the accuracy harness
 // README: it fires on every smoke-test run so field-level drift is caught before
@@ -1059,22 +1060,25 @@ console.log("══════════════════════�
 console.log("\n══════════════════════════════════════════");
 console.log("SUITE 11: Extraction accuracy regression guard");
 console.log("  Uploads UAT test PDF → waits for 5 extractions");
-console.log("  Checks vendorRawName + invoiceNumber against known-correct snapshot");
+console.log("  Checks vendorRawName, invoiceNumber, invoiceDate, totalAmount, currency");
+console.log("  against known-correct snapshot for TP-001–TP-005");
 console.log("══════════════════════════════════════════");
 
 {
   // ── Known-correct snapshot (2026-08-10 verified baseline) ───────────────────
   // Values from the last committed accuracy run (uat/extraction-accuracy/results/
   // accuracy-2026-08-10-task36.md "Actual" column), which scored 100%.
+  // invoiceDate is ISO YYYY-MM-DD (ground-truth CSV uses M/D/YYYY; converted here).
+  // totalAmount is the numeric value from ground-truth.csv.
   // This is the REGRESSION BASELINE — the guard fails when a previously-correct
   // field goes null or drifts to something meaningfully different.
   // Update when extraction is intentionally improved and a new accuracy run confirms it.
   const SNAPSHOT = [
-    { testCaseId: "TP-001", invoiceNumber: "19237741",       vendorRawName: "Automation Direct" },
-    { testCaseId: "TP-002", invoiceNumber: "215",             vendorRawName: "BzRhino Consulting, LLC" },
-    { testCaseId: "TP-003", invoiceNumber: "S014432461.002", vendorRawName: "Van Meter Inc." },
-    { testCaseId: "TP-004", invoiceNumber: "5438211",         vendorRawName: "Rice Lake Weighing Systems" },
-    { testCaseId: "TP-005", invoiceNumber: "9504895965",      vendorRawName: "BDI" },
+    { testCaseId: "TP-001", invoiceNumber: "19237741",       vendorRawName: "Automation Direct",        invoiceDate: "2026-05-21", totalAmount: 10013.25, currency: "USD" },
+    { testCaseId: "TP-002", invoiceNumber: "215",             vendorRawName: "BzRhino Consulting, LLC",  invoiceDate: "2026-05-18", totalAmount: 125,      currency: "USD" },
+    { testCaseId: "TP-003", invoiceNumber: "S014432461.002", vendorRawName: "Van Meter Inc.",            invoiceDate: "2026-05-27", totalAmount: 56351.8,  currency: "USD" },
+    { testCaseId: "TP-004", invoiceNumber: "5438211",         vendorRawName: "Rice Lake Weighing Systems", invoiceDate: "2026-04-10", totalAmount: 17962.03, currency: "USD" },
+    { testCaseId: "TP-005", invoiceNumber: "9504895965",      vendorRawName: "BDI",                      invoiceDate: "2026-04-07", totalAmount: 10959.81, currency: "USD" },
   ];
   const ACCURACY_THRESHOLD = 95; // percent — fail if overall accuracy drops below this
 
@@ -1234,11 +1238,39 @@ console.log("══════════════════════�
     for (const inv of s11Invoices) {
       const fin = await waitForExtraction(inv.id, 120_000);
       s11Finals.push(fin);
-      console.log(`  → invoice ${inv.id}: status=${fin.status} invoiceNumber=${fin.invoiceNumber ?? "(none)"} vendorRawName=${fin.vendorRawName ?? "(none)"}`);
+      console.log(
+        `  → invoice ${inv.id}: status=${fin.status}` +
+        ` invoiceNumber=${fin.invoiceNumber ?? "(none)"}` +
+        ` vendorRawName=${fin.vendorRawName ?? "(none)"}` +
+        ` invoiceDate=${fin.invoiceDate ?? "(none)"}` +
+        ` totalAmount=${fin.totalAmount ?? "(none)"}` +
+        ` currency=${fin.currency ?? "(none)"}`,
+      );
     }
+
+    // ── Date normalization ────────────────────────────────────────────────────
+    // Convert any reasonable date string to YYYY-MM-DD for comparison.
+    // Handles ISO (2026-05-21), M/D/YYYY (5/21/2026), and MM/DD/YYYY (05/21/2026).
+    // Returns null for unparseable input so the comparison loop can flag it.
+    const normDate = (v) => {
+      if (v == null || v === "") return null;
+      const s = String(v).trim();
+      // Already ISO: YYYY-MM-DD or YYYY-MM-DDT...
+      const isoMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+      if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+      // M/D/YYYY or MM/DD/YYYY
+      const mdyMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (mdyMatch) {
+        const mm = mdyMatch[1].padStart(2, "0");
+        const dd = mdyMatch[2].padStart(2, "0");
+        return `${mdyMatch[3]}-${mm}-${dd}`;
+      }
+      return null;
+    };
 
     // Stage 6: Check every invoice against the snapshot.
     // Match by normalized invoiceNumber; anything unmatched counts as missing.
+    // Guarded fields: vendorRawName, invoiceNumber, invoiceDate, totalAmount, currency.
     let s11Correct = 0;
     let s11Total = 0;
     const s11Diffs = [];
@@ -1268,6 +1300,49 @@ console.log("══════════════════════�
         // Match itself proves invoiceNumber is correct — it was used to find the row.
         s11Correct++;
       }
+
+      // — invoiceDate —
+      s11Total++;
+      if (!match) {
+        s11Diffs.push(`${snap.testCaseId} invoiceDate: no extracted invoice matched invoiceNumber="${snap.invoiceNumber}" (expected "${snap.invoiceDate}")`);
+      } else {
+        const extractedDate = normDate(match.invoiceDate);
+        const expectedDate  = normDate(snap.invoiceDate);
+        if (extractedDate !== null && extractedDate === expectedDate) {
+          s11Correct++;
+        } else {
+          s11Diffs.push(`${snap.testCaseId} invoiceDate: expected "${snap.invoiceDate}" got "${match.invoiceDate ?? "(null)"}"`);
+        }
+      }
+
+      // — totalAmount —
+      s11Total++;
+      if (!match) {
+        s11Diffs.push(`${snap.testCaseId} totalAmount: no extracted invoice matched invoiceNumber="${snap.invoiceNumber}" (expected ${snap.totalAmount})`);
+      } else {
+        const extractedAmount = Number(match.totalAmount);
+        const expectedAmount  = snap.totalAmount;
+        // Allow ±0.02 tolerance for floating-point rounding in extraction.
+        if (!isNaN(extractedAmount) && Math.abs(extractedAmount - expectedAmount) <= 0.02) {
+          s11Correct++;
+        } else {
+          s11Diffs.push(`${snap.testCaseId} totalAmount: expected ${snap.totalAmount} got "${match.totalAmount ?? "(null)"}"`);
+        }
+      }
+
+      // — currency —
+      s11Total++;
+      if (!match) {
+        s11Diffs.push(`${snap.testCaseId} currency: no extracted invoice matched invoiceNumber="${snap.invoiceNumber}" (expected "${snap.currency}")`);
+      } else {
+        const extractedCurrency = String(match.currency ?? "").trim().toUpperCase();
+        const expectedCurrency  = snap.currency.toUpperCase();
+        if (extractedCurrency === expectedCurrency) {
+          s11Correct++;
+        } else {
+          s11Diffs.push(`${snap.testCaseId} currency: expected "${snap.currency}" got "${match.currency ?? "(null)"}"`);
+        }
+      }
     }
 
     const s11Accuracy = s11Total > 0 ? (s11Correct / s11Total) * 100 : 0;
@@ -1280,13 +1355,13 @@ console.log("══════════════════════�
 
     assert(
       s11Diffs.length === 0,
-      `Suite 11: vendorRawName/invoiceNumber match known-correct snapshot for all TP-001–TP-005 (${s11Diffs.length} drift(s): ${s11Diffs.join("; ")})`,
+      `Suite 11: vendorRawName/invoiceNumber/invoiceDate/totalAmount/currency match known-correct snapshot for all TP-001–TP-005 (${s11Diffs.length} drift(s): ${s11Diffs.join("; ")})`,
     );
     assert(
       s11Accuracy >= ACCURACY_THRESHOLD,
       `Suite 11: overall extraction accuracy ${s11Accuracy.toFixed(1)}% >= ${ACCURACY_THRESHOLD}% threshold`,
     );
-    console.log(`  ✓ All TP-001–TP-005 vendorRawName + invoiceNumber match snapshot, accuracy=${s11Accuracy.toFixed(1)}%`);
+    console.log(`  ✓ All TP-001–TP-005 fields (vendorRawName, invoiceNumber, invoiceDate, totalAmount, currency) match snapshot, accuracy=${s11Accuracy.toFixed(1)}%`);
   }
 }
 
