@@ -1224,6 +1224,91 @@ console.log("══════════════════════�
     return /^[0-9 ]+$/.test(s) ? s.replace(/^0+/, "") || "0" : s;
   };
 
+  // ── Date normalization ────────────────────────────────────────────────────────
+  // Convert any reasonable date string to YYYY-MM-DD for comparison.
+  // Handles ISO (2026-05-21), M/D/YYYY (5/21/2026), and MM/DD/YYYY (05/21/2026).
+  // Returns null for unparseable input so the comparison loop can flag it.
+  const normDate = (v) => {
+    if (v == null || v === "") return null;
+    const s = String(v).trim();
+    // Already ISO: YYYY-MM-DD or YYYY-MM-DDT...
+    const isoMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+    // M/D/YYYY or MM/DD/YYYY
+    const mdyMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (mdyMatch) {
+      const mm = mdyMatch[1].padStart(2, "0");
+      const dd = mdyMatch[2].padStart(2, "0");
+      return `${mdyMatch[3]}-${mm}-${dd}`;
+    }
+    return null;
+  };
+
+  // ── Self-test normDate before uploading anything ──────────────────────────────
+  const ndTests = [
+    // ISO YYYY-MM-DD
+    ["2026-05-21",           "2026-05-21", "ISO YYYY-MM-DD → canonical"],
+    // ISO with time component
+    ["2026-05-21T00:00:00Z", "2026-05-21", "ISO datetime → date-only"],
+    // M/D/YYYY (single-digit month and day)
+    ["5/21/2026",            "2026-05-21", "M/D/YYYY → canonical"],
+    // MM/DD/YYYY (zero-padded)
+    ["05/21/2026",           "2026-05-21", "MM/DD/YYYY → canonical"],
+    // null and empty string → null
+    [null,                   null,         "null → null"],
+    ["",                     null,         "empty string → null"],
+    // unparseable → null
+    ["not-a-date",           null,         "unparseable string → null"],
+  ];
+  for (const [input, want, label] of ndTests) {
+    const got = normDate(input);
+    assert(got === want, `normDate self-test: ${label} (got ${JSON.stringify(got)}, want ${JSON.stringify(want)})`);
+  }
+
+  // ── Total-amount comparison (±0.02 tolerance) ─────────────────────────────────
+  // Allow small floating-point rounding differences from extraction.
+  // Returns true only for finite, non-NaN amounts within tolerance.
+  // IMPORTANT: null, undefined, and blank strings are explicitly rejected BEFORE
+  // Number() conversion — Number(null) and Number("") both coerce to 0, which
+  // would silently mark a missing extracted amount as correct when expected is 0.
+  const amountMatch = (extractedRaw, expectedNum) => {
+    if (extractedRaw == null) return false;               // null or undefined
+    if (typeof extractedRaw === "string" && extractedRaw.trim() === "") return false; // blank string
+    const extracted = Number(extractedRaw);
+    if (!isFinite(extracted)) return false;               // NaN, Infinity, -Infinity
+    return Math.abs(extracted - expectedNum) <= 0.02;
+  };
+
+  // ── Self-test amountMatch before uploading anything ───────────────────────────
+  const amTests = [
+    // exact match
+    [1234.56,        1234.56, true,  "exact match"],
+    // within ±0.02 tolerance
+    [1234.57,        1234.56, true,  "within +0.01 tolerance"],
+    [1234.55,        1234.56, true,  "within -0.01 tolerance"],
+    [1234.58,        1234.56, true,  "within +0.02 tolerance (boundary)"],
+    [1234.54,        1234.56, true,  "within -0.02 tolerance (boundary)"],
+    // out of tolerance
+    [1234.59,        1234.56, false, "out of +0.03 tolerance"],
+    [1234.53,        1234.56, false, "out of -0.03 tolerance"],
+    [0,              1234.56, false, "zero vs non-zero → mismatch"],
+    // null / undefined / blank vs nonzero expected → mismatch
+    [null,           1234.56, false, "null extracted (nonzero expected) → mismatch"],
+    [undefined,      1234.56, false, "undefined extracted (nonzero expected) → mismatch"],
+    ["",             1234.56, false, "blank string extracted (nonzero expected) → mismatch"],
+    // null / blank vs ZERO expected — must still be mismatch (regression guard)
+    [null,           0,       false, "null extracted (zero expected) → mismatch"],
+    ["",             0,       false, "blank string extracted (zero expected) → mismatch"],
+    // non-finite / non-numeric
+    [NaN,            1234.56, false, "NaN extracted → mismatch"],
+    [Infinity,       1234.56, false, "Infinity extracted → mismatch"],
+    ["not-a-number", 100,     false, "non-numeric string → mismatch"],
+  ];
+  for (const [extractedRaw, expectedNum, want, label] of amTests) {
+    const got = amountMatch(extractedRaw, expectedNum);
+    assert(got === want, `amountMatch self-test: ${label} (got ${got}, want ${want})`);
+  }
+
   // Locate the UAT test PDF (two levels up from artifacts/api-server/).
   const uatPdfPath = path.resolve(__dirname, "../../uat/extraction-accuracy/pack/invoice_Ingestor_5_invoice_test_1786035375284.pdf");
 
@@ -1320,26 +1405,6 @@ console.log("══════════════════════�
       );
     }
 
-    // ── Date normalization ────────────────────────────────────────────────────
-    // Convert any reasonable date string to YYYY-MM-DD for comparison.
-    // Handles ISO (2026-05-21), M/D/YYYY (5/21/2026), and MM/DD/YYYY (05/21/2026).
-    // Returns null for unparseable input so the comparison loop can flag it.
-    const normDate = (v) => {
-      if (v == null || v === "") return null;
-      const s = String(v).trim();
-      // Already ISO: YYYY-MM-DD or YYYY-MM-DDT...
-      const isoMatch = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-      if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
-      // M/D/YYYY or MM/DD/YYYY
-      const mdyMatch = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-      if (mdyMatch) {
-        const mm = mdyMatch[1].padStart(2, "0");
-        const dd = mdyMatch[2].padStart(2, "0");
-        return `${mdyMatch[3]}-${mm}-${dd}`;
-      }
-      return null;
-    };
-
     // Stage 6: Check every invoice against the snapshot.
     // Match by normalized invoiceNumber; anything unmatched counts as missing.
     // Guarded fields: vendorRawName, invoiceNumber, invoiceDate, totalAmount, currency.
@@ -1392,10 +1457,8 @@ console.log("══════════════════════�
       if (!match) {
         s11Diffs.push(`${snap.testCaseId} totalAmount: no extracted invoice matched invoiceNumber="${snap.invoiceNumber}" (expected ${snap.totalAmount})`);
       } else {
-        const extractedAmount = Number(match.totalAmount);
-        const expectedAmount  = snap.totalAmount;
         // Allow ±0.02 tolerance for floating-point rounding in extraction.
-        if (!isNaN(extractedAmount) && Math.abs(extractedAmount - expectedAmount) <= 0.02) {
+        if (amountMatch(match.totalAmount, snap.totalAmount)) {
           s11Correct++;
         } else {
           s11Diffs.push(`${snap.testCaseId} totalAmount: expected ${snap.totalAmount} got "${match.totalAmount ?? "(null)"}"`);
