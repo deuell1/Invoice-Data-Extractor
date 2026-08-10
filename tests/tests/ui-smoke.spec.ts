@@ -523,6 +523,120 @@ test("audit viewer: 404 from audit API shows error message and does not crash", 
   await expect(page.locator("body")).not.toBeEmpty();
 });
 
+// ─── 11. Audit Viewer — FIELD_EDIT content columns ───────────────────────────
+
+test("audit viewer: FIELD_EDIT row shows fieldName, oldValue, and newValue", async ({
+  page,
+}) => {
+  // Mock the audit API for invoice #10 with a single FIELD_EDIT row.
+  await page.route("**/api/invoices/10/audit**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          id: 1001,
+          invoiceId: 10,
+          action: "FIELD_EDIT",
+          actorClerkId: "user_clerk_editor",
+          actorName: "Sam Editor",
+          editorRole: "AP_CLERK",
+          fieldName: "invoiceNumber",
+          oldValue: "INV-001",
+          newValue: "INV-002",
+          note: null,
+          createdAt: "2026-03-15T08:30:00.000Z",
+        },
+      ]),
+    });
+  });
+
+  await page.goto("/audit");
+
+  await expect(
+    page.getByRole("heading", { name: /audit log viewer/i }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  await page.getByTestId("input-invoice-id").fill("10");
+  await page.getByTestId("button-load-audit").click();
+
+  await expect(page.getByTestId("audit-timeline")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // The field-change row must be present.
+  await expect(page.getByTestId("audit-field-change-1001")).toBeVisible();
+
+  // fieldName must appear.
+  await expect(page.getByTestId("audit-field-name-1001")).toContainText(
+    "invoiceNumber",
+  );
+
+  // oldValue must appear.
+  await expect(page.getByTestId("audit-old-value-1001")).toContainText(
+    "INV-001",
+  );
+
+  // newValue must appear.
+  await expect(page.getByTestId("audit-new-value-1001")).toContainText(
+    "INV-002",
+  );
+
+  await expect(page.locator("body")).not.toBeEmpty();
+});
+
+// ─── 12. Audit Viewer — STATUS_CHANGE note column ────────────────────────────
+
+test("audit viewer: STATUS_CHANGE row shows note text", async ({ page }) => {
+  // Mock the audit API for invoice #11 with a single STATUS_CHANGE row that
+  // has a note but no field-change columns.
+  await page.route("**/api/invoices/11/audit**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          id: 1101,
+          invoiceId: 11,
+          action: "STATUS_CHANGE",
+          actorClerkId: "user_clerk_approver",
+          actorName: "Kim Approver",
+          editorRole: "AP_MANAGER",
+          fieldName: null,
+          oldValue: null,
+          newValue: null,
+          note: "Approved after second review",
+          createdAt: "2026-04-01T14:00:00.000Z",
+        },
+      ]),
+    });
+  });
+
+  await page.goto("/audit");
+
+  await expect(
+    page.getByRole("heading", { name: /audit log viewer/i }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  await page.getByTestId("input-invoice-id").fill("11");
+  await page.getByTestId("button-load-audit").click();
+
+  await expect(page.getByTestId("audit-timeline")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // The note must appear with the correct text.
+  await expect(page.getByTestId("audit-note-1101")).toBeVisible();
+  await expect(page.getByTestId("audit-note-1101")).toContainText(
+    "Approved after second review",
+  );
+
+  // No field-change row should appear (fieldName is null).
+  await expect(page.getByTestId("audit-field-change-1101")).not.toBeVisible();
+
+  await expect(page.locator("body")).not.toBeEmpty();
+});
+
 // ─── 4. Invoice List ─────────────────────────────────────────────────────────
 
 test("invoice list page renders with filter controls", async ({ page }) => {

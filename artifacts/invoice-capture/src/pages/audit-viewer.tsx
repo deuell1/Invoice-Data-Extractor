@@ -110,13 +110,14 @@ export function AuditViewer() {
                       />
                     </div>
                     {log.fieldName && (
-                      <div className="text-xs text-muted-foreground">
-                        <span className="font-medium text-foreground">{log.fieldName}:</span>{" "}
-                        {log.oldValue || "empty"} → {log.newValue || "empty"}
+                      <div className="text-xs text-muted-foreground" data-testid={`audit-field-change-${log.id}`}>
+                        <span className="font-medium text-foreground" data-testid={`audit-field-name-${log.id}`}>{log.fieldName}:</span>{" "}
+                        <span data-testid={`audit-old-value-${log.id}`}>{log.oldValue || "empty"}</span>{" → "}
+                        <span data-testid={`audit-new-value-${log.id}`}>{log.newValue || "empty"}</span>
                       </div>
                     )}
                     {log.note && (
-                      <div className="text-xs text-muted-foreground italic">{log.note}</div>
+                      <div className="text-xs text-muted-foreground italic" data-testid={`audit-note-${log.id}`}>{log.note}</div>
                     )}
                   </div>
                 </div>
