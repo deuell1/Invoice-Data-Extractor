@@ -456,6 +456,73 @@ test("audit viewer: human actor with unrecognised editorRole shows no role badge
   await expect(page.locator("body")).not.toBeEmpty();
 });
 
+// ─── 9. Audit Viewer — empty array ───────────────────────────────────────────
+
+test("audit viewer: empty audit log shows empty-state message and does not crash", async ({
+  page,
+}) => {
+  // Mock the audit API for invoice #4 returning an empty array.
+  await page.route("**/api/invoices/4/audit**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([]),
+    });
+  });
+
+  await page.goto("/audit");
+
+  await expect(
+    page.getByRole("heading", { name: /audit log viewer/i }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  await page.getByTestId("input-invoice-id").fill("4");
+  await page.getByTestId("button-load-audit").click();
+
+  // The empty-state element must appear; the timeline must not.
+  await expect(page.getByTestId("audit-empty")).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect(page.getByTestId("audit-timeline")).not.toBeVisible();
+
+  // The page must remain intact — no crash.
+  await expect(page.locator("body")).not.toBeEmpty();
+});
+
+// ─── 10. Audit Viewer — 404 invoice ──────────────────────────────────────────
+
+test("audit viewer: 404 from audit API shows error message and does not crash", async ({
+  page,
+}) => {
+  // Mock the audit API for invoice #5 returning 404.
+  await page.route("**/api/invoices/5/audit**", async (route) => {
+    await route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "Invoice not found" }),
+    });
+  });
+
+  await page.goto("/audit");
+
+  await expect(
+    page.getByRole("heading", { name: /audit log viewer/i }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  await page.getByTestId("input-invoice-id").fill("5");
+  await page.getByTestId("button-load-audit").click();
+
+  // The error element must appear; neither the timeline nor the empty state.
+  await expect(page.getByTestId("audit-error")).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect(page.getByTestId("audit-timeline")).not.toBeVisible();
+  await expect(page.getByTestId("audit-empty")).not.toBeVisible();
+
+  // The page must remain intact — no crash.
+  await expect(page.locator("body")).not.toBeEmpty();
+});
+
 // ─── 4. Invoice List ─────────────────────────────────────────────────────────
 
 test("invoice list page renders with filter controls", async ({ page }) => {
