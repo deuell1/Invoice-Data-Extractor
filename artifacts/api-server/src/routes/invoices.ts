@@ -541,6 +541,7 @@ router.post("/invoices", async (req, res): Promise<void> => {
     invoiceId: invoice.id,
     action: "CREATED",
     actorClerkId: (req as any).clerkUserId ?? "system",
+    actorName: (req as any).clerkActorName ?? null,
     editorRole: (req as any).clerkUserRole ?? null,
     note: `Invoice created from file: ${invoice.originalFileName}`,
   });
@@ -932,6 +933,7 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
 
     const patchActorId = (req as any).clerkUserId ?? "system";
     const patchRole = (req as any).clerkUserRole ?? "AP_PROCESSOR";
+    const patchActorName = (req as any).clerkActorName ?? null;
     for (const entry of auditEntries) {
       await appendAudit({
         invoiceId: params.data.id,
@@ -941,6 +943,7 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
         newValue: entry.newVal,
         editorRole: patchRole,
         actorClerkId: patchActorId,
+        actorName: patchActorName,
       });
     }
 
@@ -1007,6 +1010,7 @@ router.patch("/invoices/:id/status", async (req, res): Promise<void> => {
     oldValue: existing.status,
     newValue: parsed.data.status,
     actorClerkId: (req as any).clerkUserId ?? "system",
+    actorName: (req as any).clerkActorName ?? null,
     editorRole: (req as any).clerkUserRole ?? null,
     note: parsed.data.reason ?? undefined,
   });
@@ -1061,6 +1065,7 @@ router.post("/invoices/:id/void", async (req, res): Promise<void> => {
     newValue: "VOIDED",
     editorRole: (req as any).clerkUserRole ?? "AP_PROCESSOR",
     actorClerkId: voidActorId,
+    actorName: (req as any).clerkActorName ?? null,
     note: parsed.data.note ? `${parsed.data.reason} — ${parsed.data.note}` : parsed.data.reason,
   });
 
@@ -1192,6 +1197,7 @@ router.patch("/invoices/:id/voucher", requireRole("AP_MANAGER"), async (req, res
     oldValue: existing.status,
     newValue: parsed.data.voucherId,
     actorClerkId: (req as any).clerkUserId ?? "system",
+    actorName: (req as any).clerkActorName ?? null,
     editorRole: (req as any).clerkUserRole ?? null,
   });
 
@@ -1296,6 +1302,7 @@ router.post("/invoices/:id/approve", requireRole("AP_MANAGER"), async (req, res)
     newValue: "APPROVED",
     editorRole: approveRole,
     actorClerkId: approveActorId,
+    actorName: (req as any).clerkActorName ?? null,
     note: isExceptionApproval
       ? `Exception override. Reason: ${reason}${outcome.blocking.length > 0 ? ` | Overridden: ${outcome.blocking.join("; ")}` : ""}`
       : reason || undefined,
@@ -1355,6 +1362,7 @@ router.post("/invoices/:id/reject", requireRole("AP_MANAGER"), async (req, res):
     note: parsed.data.reason,
     editorRole: rejectRole,
     actorClerkId: rejectActorId,
+    actorName: (req as any).clerkActorName ?? null,
   });
 
   const row = await getInvoiceById(params.data.id);
@@ -1409,6 +1417,7 @@ router.post("/invoices/:id/submit", async (req, res): Promise<void> => {
     oldValue: existing.status,
     newValue: outcome.blocking.length > 0 ? "EXCEPTION" : "PENDING_APPROVAL",
     actorClerkId: (req as any).clerkUserId ?? "system",
+    actorName: (req as any).clerkActorName ?? null,
     editorRole: (req as any).clerkUserRole ?? null,
   });
 
@@ -1475,6 +1484,7 @@ router.post("/invoices/bulk-approve", requireRole("AP_MANAGER"), async (req, res
         newValue: "APPROVED",
         editorRole: bulkRole,
         actorClerkId: bulkActorId,
+        actorName: (req as any).clerkActorName ?? null,
       });
       succeeded++;
     } catch (err) {
