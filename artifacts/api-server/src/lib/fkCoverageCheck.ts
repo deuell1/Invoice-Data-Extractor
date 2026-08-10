@@ -48,6 +48,7 @@ const INVOICE_FK_COVERED = new Set([
  */
 const VENDOR_FK_COVERED = new Set([
   "invoice_capture",
+  "vendor_audit_log",
 ]);
 
 type FkRow = {

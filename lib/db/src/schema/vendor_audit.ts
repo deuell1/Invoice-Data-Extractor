@@ -1,10 +1,11 @@
 import { pgTable, serial, integer, text, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { vendorIdTable } from "./vendors";
 
 export const vendorAuditLogTable = pgTable("vendor_audit_log", {
   id: serial("id").primaryKey(),
-  vendorId: integer("vendor_id").notNull(),
+  vendorId: integer("vendor_id").notNull().references(() => vendorIdTable.id),
   action: text("action").notNull(),
   fieldName: text("field_name"),
   oldValue: text("old_value"),

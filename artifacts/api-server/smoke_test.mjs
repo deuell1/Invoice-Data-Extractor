@@ -1065,8 +1065,10 @@ console.log("══════════════════════�
   // Strip ALL whitespace and punctuation so that minor AI formatting variations
   // ("AutomationDirect" vs "Automation Direct", "VAN METER INC" vs "Van Meter Inc.")
   // compare equal while still catching real regressions (null, completely wrong name).
+  // Strip common TLD suffixes first (.com, .net, .org, .io) so that
+  // "AutomationDirect.com" and "AutomationDirect" both normalize identically.
   const normVendor = (v) =>
-    String(v ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    String(v ?? "").toLowerCase().replace(/\.(com|net|org|io)\b/g, "").replace(/[^a-z0-9]/g, "");
 
   // Strip a single trailing legal-entity token if present.
   // This allows "BzRhino Consulting" to match "BzRhino Consulting, LLC" when the
@@ -1108,8 +1110,9 @@ console.log("══════════════════════�
     // legal-suffix omission should pass
     ["BzRhino Consulting",   "BzRhino Consulting, LLC",    true,  "missing LLC suffix → match"],
     ["Van Meter",            "Van Meter Inc.",              true,  "missing Inc suffix → match"],
-    // spacing / case variations should pass
+    // spacing / case / TLD variations should pass
     ["AutomationDirect",     "Automation Direct",           true,  "no-space vs spaced → match"],
+    ["AutomationDirect.com", "Automation Direct",           true,  ".com TLD stripped → match"],
     ["VAN METER INC",        "Van Meter Inc.",              true,  "all-caps vs mixed → match"],
     // completely wrong names must fail
     ["Wrong Company",        "BDI",                        false, "wrong name → mismatch"],
