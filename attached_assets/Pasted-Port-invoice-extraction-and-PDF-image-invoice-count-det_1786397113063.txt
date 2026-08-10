@@ -1,0 +1,57 @@
+Port invoice extraction and PDF/image invoice-count detection from the
+OpenAI Responses API to the Claude API, using the attached
+anthropicStructured.ts as the shared helper and CLAUDE_API_PORT.md as the
+exact instructions for each call site. Do not deviate from that document's
+before/after code — it was written against verified SDK 0.116.0 behavior,
+including two error-shape differences (constructor.name instead of .name;
+requestID instead of request_id) that silently break error handling if
+skipped.
+
+1. Add the attached anthropicStructured.ts to
+   artifacts/api-server/src/services/. Fix the logger import path if it
+   doesn't match this repo's convention.
+
+2. Run: pnpm add @anthropic-ai/sdk (inside artifacts/api-server).
+
+3. Add environment variables per CLAUDE_API_PORT.md section 0:
+   ANTHROPIC_API_KEY, ANTHROPIC_MODEL, EXTRACTION_PROVIDER=anthropic,
+   ANTHROPIC_TIMEOUT_MS. For ANTHROPIC_MODEL, use a dated model snapshot
+   string, not a bare alias — confirm the current dated identifier before
+   setting it; do not guess.
+
+4. Apply sections 1a through 1e of CLAUDE_API_PORT.md to
+   extractionService.ts exactly as written, including the error-categorizer
+   fix in 1b and the request-id fix in 1c — these are not optional
+   cleanup, they are functional bugs if skipped.
+
+5. Apply sections 2a through 2c to documentDetectionService.ts, including
+   the isDetectionConfigured() change in 2c. Without 2c, detection silently
+   falls back to treating every multi-invoice PDF as one invoice once the
+   OpenAI key is removed — confirm this function now checks
+   EXTRACTION_PROVIDER / ANTHROPIC_API_KEY.
+
+6. Keep the OpenAI code path in place, gated behind
+   process.env.EXTRACTION_PROVIDER === "openai". Do not delete it.
+
+7. Run pnpm run typecheck and fix any errors before proceeding.
+
+8. Verify per CLAUDE_API_PORT.md section 4:
+   - Upload the EG-1 pack (uat/extraction-accuracy/pack/) through the real
+     UI. Detection must report 5 of 5 invoices across 13 pages.
+   - Temporarily set ANTHROPIC_TIMEOUT_MS=1, trigger one extraction, confirm
+     the invoice lands in TIMEOUT status (not PROVIDER_ERROR), then restore
+     the real timeout value.
+   - Upload one .jpg test file, confirm no 400 error.
+   - Run the full smoke suite. Suite 11 will very likely fail since its
+     snapshot was baselined against OpenAI output — this is expected, report
+     it, do not touch the snapshot yet.
+   - grep repo logs for "sk-ant" to confirm no key material is logged.
+
+9. Do NOT re-score extraction accuracy in this task. Do NOT touch
+   ground-truth.csv, the Suite 11 snapshot values, or any accuracy results
+   file. That comparison happens in a separate task against the control
+   number already on record.
+
+10. Report: typecheck status, the 5-of-5 detection result, the timeout-path
+    result, the jpg-upload result, and full smoke pass/fail counts including
+    Suite 11's failure detail. Stop there.
