@@ -1065,21 +1065,68 @@ console.log("  against known-correct snapshot for TP-001–TP-005");
 console.log("══════════════════════════════════════════");
 
 {
-  // ── Known-correct snapshot (2026-08-10 verified baseline) ───────────────────
-  // Values from the last committed accuracy run (uat/extraction-accuracy/results/
-  // accuracy-2026-08-10-task36.md "Actual" column), which scored 100%.
-  // invoiceDate is ISO YYYY-MM-DD (ground-truth CSV uses M/D/YYYY; converted here).
-  // totalAmount is the numeric value from ground-truth.csv.
-  // This is the REGRESSION BASELINE — the guard fails when a previously-correct
-  // field goes null or drifts to something meaningfully different.
-  // Update when extraction is intentionally improved and a new accuracy run confirms it.
-  const SNAPSHOT = [
-    { testCaseId: "TP-001", invoiceNumber: "19237741",       vendorRawName: "Automation Direct",        invoiceDate: "2026-05-21", totalAmount: 10013.25, currency: "USD" },
-    { testCaseId: "TP-002", invoiceNumber: "215",             vendorRawName: "BzRhino Consulting, LLC",  invoiceDate: "2026-05-18", totalAmount: 125,      currency: "USD" },
-    { testCaseId: "TP-003", invoiceNumber: "S014432461.002", vendorRawName: "Van Meter Inc.",            invoiceDate: "2026-05-27", totalAmount: 56351.8,  currency: "USD" },
-    { testCaseId: "TP-004", invoiceNumber: "5438211",         vendorRawName: "Rice Lake Weighing Systems", invoiceDate: "2026-04-10", totalAmount: 17962.03, currency: "USD" },
-    { testCaseId: "TP-005", invoiceNumber: "9504895965",      vendorRawName: "BDI",                      invoiceDate: "2026-04-07", totalAmount: 10959.81, currency: "USD" },
-  ];
+  // ── Build snapshot from ground-truth CSV ─────────────────────────────────────
+  // Suite 11 reads uat/extraction-accuracy/ground-truth.csv at runtime so that
+  // the regression guard is always checked against the same source of truth used
+  // by the accuracy harness.  A CSV update that is NOT reflected here produces an
+  // immediate, visible error before any upload happens — preventing silent drift.
+  const gtCsvPath = path.resolve(__dirname, "../../uat/extraction-accuracy/ground-truth.csv");
+  if (!existsSync(gtCsvPath)) {
+    assert(false, `Suite 11: ground-truth CSV not found at ${gtCsvPath} — cannot build snapshot`);
+  }
+  const { readFileSync: readFileSyncGt } = await import("node:fs");
+  const gtCsvText = readFileSyncGt(gtCsvPath, "utf8");
+
+  // Minimal RFC-4180-compatible CSV parser — handles double-quoted fields with
+  // embedded commas (e.g. "BzRhino Consulting, LLC", "Van Meter, Inc.").
+  const parseCsvRow = (line) => {
+    const fields = [];
+    let field = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuotes && line[i + 1] === '"') { field += '"'; i++; } // escaped ""
+        else inQuotes = !inQuotes;
+      } else if (ch === "," && !inQuotes) {
+        fields.push(field);
+        field = "";
+      } else {
+        field += ch;
+      }
+    }
+    fields.push(field);
+    return fields;
+  };
+
+  const gtLines = gtCsvText.trim().split(/\r?\n/);
+  const gtHeaders = parseCsvRow(gtLines[0]);
+  const col = (name) => gtHeaders.indexOf(name);
+  const REQUIRED_CSV_COLS = ["testCaseId", "invoiceNumber", "vendorRawName", "invoiceDate", "totalAmount", "currency"];
+  const missingCols = REQUIRED_CSV_COLS.filter((h) => col(h) === -1);
+  if (missingCols.length > 0) {
+    assert(false, `Suite 11: ground-truth CSV is missing required column(s): ${missingCols.join(", ")} (headers found: ${gtHeaders.join(", ")})`);
+  }
+
+  // Build the snapshot from CSV rows.
+  // invoiceDate stays in M/D/YYYY (ground-truth format) — normDate normalises both
+  // sides of the comparison, so no pre-conversion is needed here.
+  const SNAPSHOT = gtLines.slice(1).filter(Boolean).map((line) => {
+    const row = parseCsvRow(line);
+    return {
+      testCaseId:    row[col("testCaseId")].trim(),
+      invoiceNumber: row[col("invoiceNumber")].trim(),
+      vendorRawName: row[col("vendorRawName")].trim(),
+      invoiceDate:   row[col("invoiceDate")].trim(),
+      totalAmount:   Number(row[col("totalAmount")]),
+      currency:      row[col("currency")].trim(),
+    };
+  });
+
+  if (SNAPSHOT.length === 0) {
+    assert(false, "Suite 11: ground-truth CSV contains no data rows — cannot build snapshot");
+  }
+  console.log(`  → Snapshot loaded from ground-truth CSV: ${SNAPSHOT.length} test case(s) (${gtCsvPath})`);
   const ACCURACY_THRESHOLD = 95; // percent — fail if overall accuracy drops below this
 
   // ── Vendor-name normalization ────────────────────────────────────────────────
