@@ -255,6 +255,98 @@ test("invoice intake: upload form submits and shows processing screen", async ({
   await expect(page.locator("body")).not.toBeEmpty();
 });
 
+// ─── 6. Audit Viewer — AuditActor badge rendering ────────────────────────────
+
+test("audit viewer renders all three actor types correctly", async ({
+  page,
+}) => {
+  // Mock the audit-log API for invoice #1 with one entry per actor type.
+  await page.route("**/api/invoices/1/audit**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          id: 101,
+          invoiceId: 1,
+          action: "EXTRACTION_COMPLETE",
+          actorClerkId: "system-pipeline",
+          actorName: null,
+          editorRole: null,
+          fieldName: null,
+          oldValue: null,
+          newValue: null,
+          note: "Automated extraction step",
+          createdAt: "2026-01-01T10:00:00.000Z",
+        },
+        {
+          id: 102,
+          invoiceId: 1,
+          action: "STATUS_CHANGE",
+          actorClerkId: "unattributed-legacy",
+          actorName: null,
+          editorRole: null,
+          fieldName: "status",
+          oldValue: "PENDING",
+          newValue: "APPROVED",
+          note: null,
+          createdAt: "2026-01-02T11:00:00.000Z",
+        },
+        {
+          id: 103,
+          invoiceId: 1,
+          action: "FIELD_EDIT",
+          actorClerkId: "user_clerk_abc123",
+          actorName: "Jane Manager",
+          editorRole: "AP_MANAGER",
+          fieldName: "vendorId",
+          oldValue: "42",
+          newValue: "55",
+          note: null,
+          createdAt: "2026-01-03T12:00:00.000Z",
+        },
+      ]),
+    });
+  });
+
+  await page.goto("/audit");
+
+  // Wait for the page heading.
+  await expect(
+    page.getByRole("heading", { name: /audit log viewer/i }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  // Enter invoice ID and load.
+  await page.getByTestId("input-invoice-id").fill("1");
+  await page.getByTestId("button-load-audit").click();
+
+  // Wait for the timeline to appear.
+  await expect(page.getByTestId("audit-timeline")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // ── system-pipeline → "System" badge ──────────────────────────────────────
+  await expect(page.getByTestId("badge-actor-system")).toBeVisible();
+  await expect(page.getByTestId("badge-actor-system")).toContainText("System");
+
+  // ── unattributed-legacy → "Unknown (legacy)" label ────────────────────────
+  await expect(page.getByTestId("label-actor-legacy")).toBeVisible();
+  await expect(page.getByTestId("label-actor-legacy")).toContainText(
+    "Unknown (legacy)",
+  );
+
+  // ── real Clerk user → name + role badge ───────────────────────────────────
+  await expect(page.getByTestId("label-actor-human")).toBeVisible();
+  await expect(page.getByTestId("label-actor-human")).toContainText(
+    "Jane Manager",
+  );
+  await expect(page.getByTestId("badge-actor-role")).toBeVisible();
+  await expect(page.getByTestId("badge-actor-role")).toContainText("Manager");
+
+  // Confirm the page is still intact.
+  await expect(page.locator("body")).not.toBeEmpty();
+});
+
 // ─── 4. Invoice List ─────────────────────────────────────────────────────────
 
 test("invoice list page renders with filter controls", async ({ page }) => {
