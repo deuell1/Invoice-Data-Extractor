@@ -485,6 +485,9 @@ console.log("  Stage 2: Detection         → invoices in PENDING_EXTRACTION");
 console.log("  Stage 3: Extraction done   → PENDING_APPROVAL or EXCEPTION");
 console.log("══════════════════════════════════════════");
 
+// Captured for use in Suite 12 (actor-attribution end-to-end check).
+let suite4SourceId;
+
 {
   // Create vendors whose names exactly match those embedded in the test PDF so
   // that vendor matching succeeds after real OpenAI extraction.  We use a
@@ -563,6 +566,8 @@ console.log("══════════════════════�
   const sourceId = csJ.source?.id;
   assert(typeof sourceId === "number", `source document id returned (id=${sourceId})`);
   createdSourceDocIds.push(sourceId);
+  // Expose to Suite 12 (actor-attribution end-to-end check).
+  suite4SourceId = sourceId;
   // Source document now owns the blob — remove from orphan list to avoid
   // double deletion (deleteSourceDocument handles file removal).
   orphanedObjectPaths.splice(orphanedObjectPaths.indexOf(objectPath), 1);
@@ -1283,6 +1288,74 @@ console.log("══════════════════════�
     );
     console.log(`  ✓ All TP-001–TP-005 vendorRawName + invoiceNumber match snapshot, accuracy=${s11Accuracy.toFixed(1)}%`);
   }
+}
+
+// ─── Suite 12: Actor attribution end-to-end — GET /source-documents/:id/audit ─
+//
+// Verifies that actorClerkId and actorName survive the full stack from DB write
+// through the API response shape.  Uses the source document created in Suite 4,
+// which accumulates audit rows from:
+//   • "system-pipeline" — written by detection, vendor-matching, and extraction
+//   • "smoke-test"      — written by the approve and voucher actions in Suite 4
+//
+// A regression at any serialization layer (Drizzle select → Zod parse → JSON)
+// that strips or overwrites either field will fail this suite.
+
+console.log("\n══════════════════════════════════════════");
+console.log("SUITE 12: Actor attribution end-to-end");
+console.log("  GET /source-documents/:id/audit → actorClerkId + actorName");
+console.log("  Covers system-pipeline case and human-actor (smoke-test) case");
+console.log("══════════════════════════════════════════");
+
+if (suite4SourceId == null) {
+  // Suite 4 failed to create the source document — skip gracefully rather than
+  // producing a misleading 404.
+  assert(false, "Suite 12 SKIPPED — suite4SourceId not set (Suite 4 must have failed earlier)");
+} else {
+  const { status: auditS, json: auditJ } = await api("GET", `/source-documents/${suite4SourceId}/audit`);
+  assert(auditS === 200, `GET /source-documents/${suite4SourceId}/audit returns 200 (got ${auditS})`);
+  assert(Array.isArray(auditJ), `audit response is an array (got ${typeof auditJ})`);
+  assert(auditJ.length >= 1, `audit trail has at least one entry (got ${auditJ.length})`);
+
+  // Every row must carry actorClerkId (non-empty string) and actorName (key present).
+  for (const row of auditJ) {
+    assert(
+      typeof row.actorClerkId === "string" && row.actorClerkId.length > 0,
+      `audit row id=${row.id} action=${row.action}: actorClerkId is a non-empty string (got ${JSON.stringify(row.actorClerkId)})`,
+    );
+    assert(
+      Object.prototype.hasOwnProperty.call(row, "actorName"),
+      `audit row id=${row.id} action=${row.action}: actorName key present in response (field not stripped)`,
+    );
+  }
+
+  // System-pipeline case: at least one row written by the automated pipeline.
+  const sysPipelineRows = auditJ.filter((r) => r.actorClerkId === "system-pipeline");
+  assert(
+    sysPipelineRows.length >= 1,
+    `At least one audit row has actorClerkId="system-pipeline" (detection/extraction writes these; got ${sysPipelineRows.length})`,
+  );
+  console.log(`  → system-pipeline rows: ${sysPipelineRows.length} (actions: ${sysPipelineRows.map((r) => r.action).join(", ")})`);
+
+  // Human-actor case: at least one row written by the smoke-test user (approve/voucher).
+  const humanRows = auditJ.filter((r) => r.actorClerkId === "smoke-test");
+  assert(
+    humanRows.length >= 1,
+    `At least one audit row has actorClerkId="smoke-test" (approve/voucher in Suite 4 Stage 4/5; got ${humanRows.length})`,
+  );
+  console.log(`  → smoke-test (human) rows: ${humanRows.length} (actions: ${humanRows.map((r) => r.action).join(", ")})`);
+
+  // actorName is nullable for system actions but must be the correct type when set.
+  for (const row of auditJ) {
+    if (row.actorName !== null && row.actorName !== undefined) {
+      assert(
+        typeof row.actorName === "string",
+        `audit row id=${row.id}: actorName is string when non-null (got ${typeof row.actorName})`,
+      );
+    }
+  }
+
+  console.log(`  → actor attribution verified: ${auditJ.length} total rows, actorClerkId + actorName present on all`);
 }
 
 // ─── Summary ──────────────────────────────────────────────────────────────────
