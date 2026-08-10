@@ -311,6 +311,7 @@ export interface InvoiceUpdate {
   otherChargesAmount?: number | null;
   /** @nullable */
   paymentTerms?: string | null;
+  editorRole?: string;
 }
 
 export type InvoiceStatusUpdateStatus = typeof InvoiceStatusUpdateStatus[keyof typeof InvoiceStatusUpdateStatus];
@@ -478,11 +479,21 @@ export interface RemovalInput {
      * @nullable
      */
   note?: string | null;
+  /**
+     * Actor performing the removal (permissions deferred).
+     * @nullable
+     */
+  actor?: string | null;
 }
 
 export interface HardDeleteInput {
   /** Must be true to perform a permanent hard delete. */
   confirm: boolean;
+  /**
+     * Actor performing the deletion (permissions deferred).
+     * @nullable
+     */
+  actor?: string | null;
 }
 
 export interface DeleteResult {
@@ -564,6 +575,11 @@ export interface VendorInput {
   vendorCode: string;
   /** @minLength 1 */
   vendorName: string;
+  /**
+     * Identified actor performing the creation (required by the API route; no auth system in pilot)
+     * @nullable
+     */
+  actor?: string | null;
   /** @nullable */
   legalName?: string | null;
   /** @nullable */
@@ -616,6 +632,11 @@ export interface VendorInput {
 }
 
 export interface VendorUpdate {
+  /**
+     * Actor performing the update; resolved server-side from Clerk auth when not provided
+     * @nullable
+     */
+  actor?: string | null;
   /**
      * Reason for the update (required for sensitive changes)
      * @nullable
@@ -753,9 +774,12 @@ export interface AuditLogEntry {
   editorRole?: string | null;
   /** @nullable */
   note?: string | null;
-  /** Clerk userId of the authenticated user who performed the action. */
+  /** Clerk userId of the authenticated user who performed the action. Special values: "system-pipeline" (automated step), "unattributed-legacy" (rows written before actor attribution was added). */
   actorClerkId: string;
-  /** Human-readable display name resolved from Clerk at write time. */
+  /**
+     * Human-readable display name resolved from Clerk at write time.
+     * @nullable
+     */
   actorName?: string | null;
   createdAt: string;
 }
@@ -851,6 +875,8 @@ export interface ExceptionEvent {
 export interface ExceptionNoteInput {
   /** @minLength 1 */
   note: string;
+  /** @nullable */
+  actor?: string | null;
 }
 
 export interface ExceptionAssignInput {
@@ -858,17 +884,23 @@ export interface ExceptionAssignInput {
   owner: string;
   /** Clerk user ID of the assignee; stored for server-side scope enforcement */
   ownerClerkId?: string;
+  /** @nullable */
+  actor?: string | null;
 }
 
 export interface ExceptionReviewInput {
   reviewed?: boolean;
   /** @nullable */
   note?: string | null;
+  /** @nullable */
+  actor?: string | null;
 }
 
 export interface ExceptionReturnInput {
   /** @nullable */
   note?: string | null;
+  /** @nullable */
+  actor?: string | null;
 }
 
 export interface SourceDocumentSummary {
@@ -1111,8 +1143,20 @@ export interface AccuracyRunListResponse {
   measured: boolean;
 }
 
-export type AppRole = 'AP_MANAGER' | 'AP_CLERK';
+/**
+ * AP role assigned to a Clerk user.
+ */
+export type AppRole = typeof AppRole[keyof typeof AppRole];
 
+
+export const AppRole = {
+  AP_MANAGER: 'AP_MANAGER',
+  AP_CLERK: 'AP_CLERK',
+} as const;
+
+/**
+ * A single Clerk user with their current AP role
+ */
 export interface AppUser {
   userId: string;
   email: string;
@@ -1123,6 +1167,14 @@ export interface AppUser {
   role: AppRole;
 }
 
+/**
+ * List of users with their AP roles
+ */
+export type AppUserList = AppUser[];
+
+/**
+ * Body for patching a user's role
+ */
 export interface UserRoleUpdate {
   role: AppRole;
 }
@@ -1211,7 +1263,7 @@ confidenceMin?: number | null;
  */
 confidenceMax?: number | null;
 /**
- * Filter PENDING_APPROVAL invoices by the Clerk user ID of who submitted them (managers only; clerks are auto-scoped server-side)
+ * Filter PENDING_APPROVAL invoices by the Clerk user ID of who submitted them
  */
 assignedTo?: string;
 sortBy?: ListInvoicesSortBy;
@@ -1435,7 +1487,7 @@ owner?: string;
  */
 reviewed?: boolean | null;
 /**
- * Filter by Clerk user ID assigned as exception owner; unassigned items always included (managers only; clerks are auto-scoped server-side)
+ * Filter by actor name assigned as exception owner; unassigned items always included
  */
 assignedTo?: string;
 sortBy?: ListExceptionsSortBy;

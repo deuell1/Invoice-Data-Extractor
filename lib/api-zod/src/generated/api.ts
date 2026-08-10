@@ -272,6 +272,8 @@ export const UpdateInvoiceParams = zod.object({
   "id": zod.coerce.number()
 })
 
+export const updateInvoiceBodyEditorRoleDefault = `AP_PROCESSOR`;
+
 export const UpdateInvoiceBody = zod.object({
   "vendorId": zod.number().nullish(),
   "invoiceNumber": zod.string().nullish(),
@@ -288,7 +290,8 @@ export const UpdateInvoiceBody = zod.object({
   "freightAmount": zod.number().nullish(),
   "discountAmount": zod.number().nullish(),
   "otherChargesAmount": zod.number().nullish(),
-  "paymentTerms": zod.string().nullish()
+  "paymentTerms": zod.string().nullish(),
+  "editorRole": zod.string().default(updateInvoiceBodyEditorRoleDefault)
 })
 
 export const updateInvoiceResponseCurrencyDefault = `USD`;
@@ -377,7 +380,8 @@ export const DeleteInvoiceParams = zod.object({
 })
 
 export const DeleteInvoiceBody = zod.object({
-  "confirm": zod.boolean().describe('Must be true to perform a permanent hard delete.')
+  "confirm": zod.boolean().describe('Must be true to perform a permanent hard delete.'),
+  "actor": zod.string().nullish().describe('Actor performing the deletion (permissions deferred).')
 })
 
 export const DeleteInvoiceResponse = zod.object({
@@ -401,7 +405,8 @@ export const VoidInvoiceParams = zod.object({
 
 export const VoidInvoiceBody = zod.object({
   "reason": zod.string().min(1).describe('Required reason for voiding\/removing the record.'),
-  "note": zod.string().nullish().describe('Optional free-text note.')
+  "note": zod.string().nullish().describe('Optional free-text note.'),
+  "actor": zod.string().nullish().describe('Actor performing the removal (permissions deferred).')
 })
 
 export const voidInvoiceResponseCurrencyDefault = `USD`;
@@ -1188,6 +1193,7 @@ export const createVendorBodyAliasesDefault = [];
 export const CreateVendorBody = zod.object({
   "vendorCode": zod.string().min(1),
   "vendorName": zod.string().min(1),
+  "actor": zod.string().nullish().describe('Identified actor performing the creation (required by the API route; no auth system in pilot)'),
   "legalName": zod.string().nullish(),
   "dba": zod.string().nullish(),
   "taxId": zod.string().nullish(),
@@ -1324,8 +1330,8 @@ export const UpdateVendorParams = zod.object({
 
 
 
-
 export const UpdateVendorBody = zod.object({
+  "actor": zod.string().nullish().describe('Actor performing the update; resolved server-side from Clerk auth when not provided'),
   "reason": zod.string().nullish().describe('Reason for the update (required for sensitive changes)'),
   "vendorCode": zod.string().min(1).nullish().describe('Change vendor code; blocked if vendor is referenced by invoices or POs unless adminOverride is true'),
   "vendorName": zod.string().nullish(),
@@ -1482,8 +1488,8 @@ export const GetInvoiceAuditLogResponseItem = zod.object({
   "newValue": zod.string().nullish(),
   "editorRole": zod.string().nullish(),
   "note": zod.string().nullish(),
-  "actorClerkId": zod.string(),
-  "actorName": zod.string().nullish(),
+  "actorClerkId": zod.string().describe('Clerk userId of the authenticated user who performed the action. Special values: \"system-pipeline\" (automated step), \"unattributed-legacy\" (rows written before actor attribution was added).'),
+  "actorName": zod.string().nullish().describe('Human-readable display name resolved from Clerk at write time.'),
   "createdAt": zod.coerce.date()
 })
 export const GetInvoiceAuditLogResponse = zod.array(GetInvoiceAuditLogResponseItem)
@@ -2039,7 +2045,8 @@ export const AddExceptionNoteParams = zod.object({
 
 
 export const AddExceptionNoteBody = zod.object({
-  "note": zod.string().min(1)
+  "note": zod.string().min(1),
+  "actor": zod.string().nullish()
 })
 
 
@@ -2055,7 +2062,8 @@ export const AssignExceptionParams = zod.object({
 
 export const AssignExceptionBody = zod.object({
   "owner": zod.string().min(1),
-  "ownerClerkId": zod.string().optional().describe('Clerk user ID of the assignee; stored for server-side scope enforcement')
+  "ownerClerkId": zod.string().optional().describe('Clerk user ID of the assignee; stored for server-side scope enforcement'),
+  "actor": zod.string().nullish()
 })
 
 export const assignExceptionResponseCurrencyDefault = `USD`;
@@ -2146,7 +2154,8 @@ export const reviewExceptionBodyReviewedDefault = true;
 
 export const ReviewExceptionBody = zod.object({
   "reviewed": zod.boolean().default(reviewExceptionBodyReviewedDefault),
-  "note": zod.string().nullish()
+  "note": zod.string().nullish(),
+  "actor": zod.string().nullish()
 })
 
 export const reviewExceptionResponseCurrencyDefault = `USD`;
@@ -2234,7 +2243,8 @@ export const ReturnExceptionToApprovalParams = zod.object({
 })
 
 export const ReturnExceptionToApprovalBody = zod.object({
-  "note": zod.string().nullish()
+  "note": zod.string().nullish(),
+  "actor": zod.string().nullish()
 })
 
 export const returnExceptionToApprovalResponseCurrencyDefault = `USD`;
@@ -2330,6 +2340,8 @@ export const GetSourceDocumentAuditResponseItem = zod.object({
   "newValue": zod.string().nullish(),
   "editorRole": zod.string().nullish(),
   "note": zod.string().nullish(),
+  "actorClerkId": zod.string().describe('Clerk userId of the authenticated user who performed the action. Special values: \"system-pipeline\" (automated step), \"unattributed-legacy\" (rows written before actor attribution was added).'),
+  "actorName": zod.string().nullish().describe('Human-readable display name resolved from Clerk at write time.'),
   "createdAt": zod.coerce.date()
 })
 export const GetSourceDocumentAuditResponse = zod.array(GetSourceDocumentAuditResponseItem)
@@ -2582,32 +2594,36 @@ export const CreateAccuracyRunBody = zod.object({
 
 
 /**
- * @summary A single Clerk user with their current AP role
- */
-export const AppUser = zod.object({
-  "userId": zod.string(),
-  "email": zod.string(),
-  "firstName": zod.string().nullable(),
-  "lastName": zod.string().nullable(),
-  "role": zod.enum(["AP_MANAGER", "AP_CLERK"]),
-})
-
-/**
  * @summary List all users with their roles
  */
-export const ListUsersResponse = zod.array(AppUser)
+export const ListUsersResponseItem = zod.object({
+  "userId": zod.string(),
+  "email": zod.string(),
+  "firstName": zod.string().nullish(),
+  "lastName": zod.string().nullish(),
+  "role": zod.enum(['AP_MANAGER', 'AP_CLERK']).describe('AP role assigned to a Clerk user.')
+}).describe('A single Clerk user with their current AP role')
+export const ListUsersResponse = zod.array(ListUsersResponseItem)
+
 
 /**
- * @summary Body for patching a user's role
+ * @summary Update a user's AP role (AP_MANAGER only)
  */
-export const PatchUserRoleBody = zod.object({
-  "role": zod.enum(["AP_MANAGER", "AP_CLERK"]),
+export const PatchUserRoleParams = zod.object({
+  "userId": zod.coerce.string()
 })
 
-/**
- * @summary Response after patching a user's role
- */
-export const PatchUserRoleResponse = AppUser
+export const PatchUserRoleBody = zod.object({
+  "role": zod.enum(['AP_MANAGER', 'AP_CLERK']).describe('AP role assigned to a Clerk user.')
+}).describe('Body for patching a user\'s role')
+
+export const PatchUserRoleResponse = zod.object({
+  "userId": zod.string(),
+  "email": zod.string(),
+  "firstName": zod.string().nullish(),
+  "lastName": zod.string().nullish(),
+  "role": zod.enum(['AP_MANAGER', 'AP_CLERK']).describe('AP role assigned to a Clerk user.')
+}).describe('A single Clerk user with their current AP role')
 
 
 /**

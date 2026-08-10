@@ -11,6 +11,11 @@ export interface VendorInput {
   vendorCode: string;
   /** @minLength 1 */
   vendorName: string;
+  /**
+     * Identified actor performing the creation (required by the API route; no auth system in pilot)
+     * @nullable
+     */
+  actor?: string | null;
   /** @nullable */
   legalName?: string | null;
   /** @nullable */

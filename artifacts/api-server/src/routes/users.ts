@@ -3,8 +3,8 @@ import { createClerkClient } from "@clerk/backend";
 import { requireRole } from "../middlewares/requireAuth";
 import {
   ListUsersResponse,
+  ListUsersResponseItem,
   PatchUserRoleBody,
-  PatchUserRoleResponse,
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
@@ -78,7 +78,7 @@ router.patch(
       )?.emailAddress;
 
       res.json(
-        PatchUserRoleResponse.parse({
+        ListUsersResponseItem.parse({
           userId: updated.id,
           email: primaryEmail ?? updated.id,
           firstName: updated.firstName ?? null,

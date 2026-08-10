@@ -28,6 +28,7 @@ import {
   FileText, Loader2, Search, ChevronLeft, ChevronRight, FileSearch, History, Eye,
 } from "lucide-react";
 import { format } from "date-fns";
+import { AuditActor } from "@/components/audit-actor";
 
 type StatusFilter = "ALL" | ListSourceDocumentsProcessingStatus;
 
@@ -99,12 +100,15 @@ function SourceAuditDialog({
                   {format(new Date(log.createdAt), "MMM d HH:mm")}
                 </span>
                 <div className="space-y-0.5">
-                  <div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="font-medium">{log.action}</span>
-                    <span className="text-muted-foreground ml-1">· invoice #{log.invoiceId}</span>
-                    {log.editorRole && (
-                      <span className="text-muted-foreground ml-1">· {log.editorRole}</span>
-                    )}
+                    <span className="text-muted-foreground">· invoice #{log.invoiceId}</span>
+                    <span className="text-muted-foreground">·</span>
+                    <AuditActor
+                      actorClerkId={log.actorClerkId}
+                      actorName={log.actorName}
+                      editorRole={log.editorRole}
+                    />
                   </div>
                   {log.fieldName && (
                     <div className="text-muted-foreground">

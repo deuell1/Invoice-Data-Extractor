@@ -20,10 +20,11 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
-  AppUser,
   AccuracyRun,
   AccuracyRunInput,
   AccuracyRunListResponse,
+  AppUser,
+  AppUserList,
   ApproveInput,
   AuditLogEntry,
   BulkActionInput,
@@ -68,12 +69,12 @@ import type {
   RemovalInput,
   Settings,
   SettingsUpdate,
-  UserRoleUpdate,
   SourceDocumentInput,
   SourceDocumentListResponse,
   SourceDocumentWithInvoices,
   UploadUrlRequest,
   UploadUrlResponse,
+  UserRoleUpdate,
   Vendor,
   VendorActivityResponse,
   VendorAnalyticsResponse,
@@ -4259,148 +4260,154 @@ export const useCreateAccuracyRun = <TError = ErrorType<unknown>,
       return useMutation(getCreateAccuracyRunMutationOptions(options));
     }
 
-// ─── Users ───────────────────────────────────────────────────────────────────
-
 export const getListUsersUrl = () => {
-  return `/api/settings/users`;
-};
+
+
+
+
+  return `/api/settings/users`
+}
 
 /**
- * @summary List all Clerk users with their AP roles (AP_MANAGER only)
+ * @summary List all users with their roles
  */
-export const listUsers = async (options?: RequestInit): Promise<AppUser[]> => {
-  return customFetch<AppUser[]>(getListUsersUrl(), {
+export const listUsers = async ( options?: RequestInit): Promise<AppUserList> => {
+
+  return customFetch<AppUserList>(getListUsersUrl(),
+  {
     ...options,
-    method: 'GET',
-  });
-};
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
 
 export const getListUsersQueryKey = () => {
-  return [`/api/settings/users`] as const;
-};
+    return [
+    `/api/settings/users`
+    ] as const;
+    }
 
-export const getListUsersQueryOptions = <
-  TData = Awaited<ReturnType<typeof listUsers>>,
-  TError = ErrorType<unknown>,
->(options?: {
-  query?: UseQueryOptions<Awaited<ReturnType<typeof listUsers>>, TError, TData>;
-  request?: SecondParameter<typeof customFetch>;
-}) => {
-  const { query: queryOptions, request: requestOptions } = options ?? {};
-  const queryKey = queryOptions?.queryKey ?? getListUsersQueryKey();
-  const queryFn: QueryFunction<Awaited<ReturnType<typeof listUsers>>> = ({
-    signal,
-  }) => listUsers({ signal, ...requestOptions });
-  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
-    Awaited<ReturnType<typeof listUsers>>,
-    TError,
-    TData
-  > & { queryKey: QueryKey };
-};
 
-export type ListUsersQueryResult = NonNullable<Awaited<ReturnType<typeof listUsers>>>;
-export type ListUsersQueryError = ErrorType<unknown>;
+export const getListUsersQueryOptions = <TData = Awaited<ReturnType<typeof listUsers>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listUsers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListUsersQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listUsers>>> = ({ signal }) => listUsers({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listUsers>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListUsersQueryResult = NonNullable<Awaited<ReturnType<typeof listUsers>>>
+export type ListUsersQueryError = ErrorType<unknown>
+
 
 /**
- * @summary List all Clerk users with their AP roles (AP_MANAGER only)
+ * @summary List all users with their roles
  */
-export function useListUsers<
-  TData = Awaited<ReturnType<typeof listUsers>>,
-  TError = ErrorType<unknown>,
->(options?: {
-  query?: UseQueryOptions<Awaited<ReturnType<typeof listUsers>>, TError, TData>;
-  request?: SecondParameter<typeof customFetch>;
-}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getListUsersQueryOptions(options);
-  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
-    queryKey: QueryKey;
-  };
+
+export function useListUsers<TData = Awaited<ReturnType<typeof listUsers>>, TError = ErrorType<unknown>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listUsers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListUsersQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
   return { ...query, queryKey: queryOptions.queryKey };
 }
 
-export const getPatchUserRoleUrl = (userId: string) => {
-  return `/api/settings/users/${userId}/role`;
-};
+
+
+
+
+
+
+export const getPatchUserRoleUrl = (userId: string,) => {
+
+
+
+
+  return `/api/settings/users/${userId}/role`
+}
 
 /**
- * @summary Update a user's AP role via Clerk publicMetadata (AP_MANAGER only)
+ * @summary Update a user's AP role (AP_MANAGER only)
  */
-export const patchUserRole = async (
-  userId: string,
-  userRoleUpdate: UserRoleUpdate,
-  options?: RequestInit,
-): Promise<AppUser> => {
-  return customFetch<AppUser>(getPatchUserRoleUrl(userId), {
+export const patchUserRole = async (userId: string,
+    userRoleUpdate: UserRoleUpdate, options?: RequestInit): Promise<AppUser> => {
+
+  return customFetch<AppUser>(getPatchUserRoleUrl(userId),
+  {
     ...options,
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...options?.headers },
-    body: JSON.stringify(userRoleUpdate),
-  });
-};
+    body: JSON.stringify(
+      userRoleUpdate,)
+  }
+);}
 
-export const getPatchUserRoleMutationOptions = <
-  TError = ErrorType<unknown>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof patchUserRole>>,
-    TError,
-    { userId: string; data: BodyType<UserRoleUpdate> },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof patchUserRole>>,
-  TError,
-  { userId: string; data: BodyType<UserRoleUpdate> },
-  TContext
-> => {
-  const mutationKey = ['patchUserRole'];
-  const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, request: undefined };
 
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof patchUserRole>>,
-    { userId: string; data: BodyType<UserRoleUpdate> }
-  > = (props) => {
-    const { userId, data } = props ?? {};
-    return patchUserRole(userId, data, requestOptions);
-  };
 
-  return { mutationFn, ...mutationOptions };
-};
 
-export type PatchUserRoleMutationResult = NonNullable<Awaited<ReturnType<typeof patchUserRole>>>;
-export type PatchUserRoleMutationBody = BodyType<UserRoleUpdate>;
-export type PatchUserRoleMutationError = ErrorType<unknown>;
+export const getPatchUserRoleMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof patchUserRole>>, TError,{userId: string;data: BodyType<UserRoleUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof patchUserRole>>, TError,{userId: string;data: BodyType<UserRoleUpdate>}, TContext> => {
 
-/**
- * @summary Update a user's AP role via Clerk publicMetadata (AP_MANAGER only)
+const mutationKey = ['patchUserRole'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof patchUserRole>>, {userId: string;data: BodyType<UserRoleUpdate>}> = (props) => {
+          const {userId,data} = props ?? {};
+
+          return  patchUserRole(userId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type PatchUserRoleMutationResult = NonNullable<Awaited<ReturnType<typeof patchUserRole>>>
+    export type PatchUserRoleMutationBody = BodyType<UserRoleUpdate>
+    export type PatchUserRoleMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Update a user's AP role (AP_MANAGER only)
  */
-export const usePatchUserRole = <
-  TError = ErrorType<unknown>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof patchUserRole>>,
-    TError,
-    { userId: string; data: BodyType<UserRoleUpdate> },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationResult<
-  Awaited<ReturnType<typeof patchUserRole>>,
-  TError,
-  { userId: string; data: BodyType<UserRoleUpdate> },
-  TContext
-> => {
-  return useMutation(getPatchUserRoleMutationOptions(options));
-};
-
-// ─── Settings ─────────────────────────────────────────────────────────────────
+export const usePatchUserRole = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof patchUserRole>>, TError,{userId: string;data: BodyType<UserRoleUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof patchUserRole>>,
+        TError,
+        {userId: string;data: BodyType<UserRoleUpdate>},
+        TContext
+      > => {
+      return useMutation(getPatchUserRoleMutationOptions(options));
+    }
 
 export const getGetSettingsUrl = () => {
 

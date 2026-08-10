@@ -20,9 +20,12 @@ export interface AuditLogEntry {
   editorRole?: string | null;
   /** @nullable */
   note?: string | null;
-  /** Clerk userId of the authenticated user who performed the action. */
+  /** Clerk userId of the authenticated user who performed the action. Special values: "system-pipeline" (automated step), "unattributed-legacy" (rows written before actor attribution was added). */
   actorClerkId: string;
-  /** Human-readable display name resolved from Clerk at write time. */
+  /**
+     * Human-readable display name resolved from Clerk at write time.
+     * @nullable
+     */
   actorName?: string | null;
   createdAt: Date;
 }

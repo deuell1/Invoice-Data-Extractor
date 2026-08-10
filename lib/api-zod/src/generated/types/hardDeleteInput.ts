@@ -9,4 +9,9 @@
 export interface HardDeleteInput {
   /** Must be true to perform a permanent hard delete. */
   confirm: boolean;
+  /**
+     * Actor performing the deletion (permissions deferred).
+     * @nullable
+     */
+  actor?: string | null;
 }

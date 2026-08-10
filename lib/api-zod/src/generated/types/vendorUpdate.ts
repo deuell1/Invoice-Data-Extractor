@@ -8,6 +8,11 @@
 
 export interface VendorUpdate {
   /**
+     * Actor performing the update; resolved server-side from Clerk auth when not provided
+     * @nullable
+     */
+  actor?: string | null;
+  /**
      * Reason for the update (required for sensitive changes)
      * @nullable
      */

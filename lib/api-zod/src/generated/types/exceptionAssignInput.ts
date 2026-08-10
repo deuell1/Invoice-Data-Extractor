@@ -11,4 +11,6 @@ export interface ExceptionAssignInput {
   owner: string;
   /** Clerk user ID of the assignee; stored for server-side scope enforcement */
   ownerClerkId?: string;
+  /** @nullable */
+  actor?: string | null;
 }

@@ -9,4 +9,6 @@
 export interface ExceptionReturnInput {
   /** @nullable */
   note?: string | null;
+  /** @nullable */
+  actor?: string | null;
 }

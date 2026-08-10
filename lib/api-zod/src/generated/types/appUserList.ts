@@ -5,10 +5,9 @@
  * Invoice Capture MVP API
  * OpenAPI spec version: 0.1.0
  */
+import type { AppUser } from './appUser';
 
-export interface ExceptionNoteInput {
-  /** @minLength 1 */
-  note: string;
-  /** @nullable */
-  actor?: string | null;
-}
+/**
+ * List of users with their AP roles
+ */
+export type AppUserList = AppUser[];

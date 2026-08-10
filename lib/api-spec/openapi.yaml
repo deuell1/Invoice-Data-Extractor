@@ -122,6 +122,11 @@ paths:
           description: Maximum overall confidence as a percentage (0-100)
           schema:
             type: ["number", "null"]
+        - name: assignedTo
+          in: query
+          description: Filter PENDING_APPROVAL invoices by the Clerk user ID of who submitted them
+          schema:
+            type: string
         - name: sortBy
           in: query
           schema:
@@ -1203,6 +1208,11 @@ paths:
           in: query
           schema:
             type: ["boolean", "null"]
+        - name: assignedTo
+          in: query
+          description: Filter by actor name assigned as exception owner; unassigned items always included
+          schema:
+            type: string
         - name: sortBy
           in: query
           schema:
@@ -1616,6 +1626,45 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/AccuracyRun"
+
+  # ─── Phase 2: User / role management ────────────────────────────────────────
+  /settings/users:
+    get:
+      tags: [settings]
+      operationId: listUsers
+      summary: List all users with their roles
+      responses:
+        "200":
+          description: Array of users with their current AP role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppUserList"
+
+  /settings/users/{userId}/role:
+    patch:
+      tags: [settings]
+      operationId: patchUserRole
+      summary: Update a user's AP role (AP_MANAGER only)
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserRoleUpdate"
+      responses:
+        "200":
+          description: Updated user with new role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppUser"
 
   # ─── Phase 2: Admin settings ─────────────────────────────────────────────────
   /settings:
@@ -2362,13 +2411,10 @@ components:
 
     VendorUpdate:
       type: object
-      required:
-        - actor
       properties:
         actor:
-          type: string
-          minLength: 1
-          description: Identified actor performing the update (required)
+          type: ["string", "null"]
+          description: Actor performing the update; resolved server-side from Clerk auth when not provided
         reason:
           type: ["string", "null"]
           description: Reason for the update (required for sensitive changes)
@@ -2551,6 +2597,7 @@ components:
         - id
         - invoiceId
         - action
+        - actorClerkId
         - createdAt
       properties:
         id:
@@ -2569,6 +2616,15 @@ components:
           type: ["string", "null"]
         note:
           type: ["string", "null"]
+        actorClerkId:
+          type: string
+          description: >-
+            Clerk userId of the authenticated user who performed the action.
+            Special values: "system-pipeline" (automated step),
+            "unattributed-legacy" (rows written before actor attribution was added).
+        actorName:
+          type: ["string", "null"]
+          description: Human-readable display name resolved from Clerk at write time.
         createdAt:
           type: string
           format: date-time
@@ -2776,6 +2832,9 @@ components:
         owner:
           type: string
           minLength: 1
+        ownerClerkId:
+          type: string
+          description: Clerk user ID of the assignee; stored for server-side scope enforcement
         actor:
           type: ["string", "null"]
 
@@ -3184,6 +3243,46 @@ components:
         measured:
           type: boolean
           description: False when no labeled accuracy run has been recorded ("Not measured").
+
+    # ─── Phase 2: Users ──────────────────────────────────────────────────────
+    AppRole:
+      type: string
+      enum: [AP_MANAGER, AP_CLERK]
+      description: AP role assigned to a Clerk user.
+
+    AppUser:
+      type: object
+      description: A single Clerk user with their current AP role
+      required:
+        - userId
+        - email
+        - role
+      properties:
+        userId:
+          type: string
+        email:
+          type: string
+        firstName:
+          type: ["string", "null"]
+        lastName:
+          type: ["string", "null"]
+        role:
+          $ref: "#/components/schemas/AppRole"
+
+    AppUserList:
+      type: array
+      description: List of users with their AP roles
+      items:
+        $ref: "#/components/schemas/AppUser"
+
+    UserRoleUpdate:
+      type: object
+      description: Body for patching a user's role
+      required:
+        - role
+      properties:
+        role:
+          $ref: "#/components/schemas/AppRole"
 
     # ─── Phase 2: Settings ───────────────────────────────────────────────────
     Settings:
