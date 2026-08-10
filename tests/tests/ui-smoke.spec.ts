@@ -347,6 +347,115 @@ test("audit viewer renders all three actor types correctly", async ({
   await expect(page.locator("body")).not.toBeEmpty();
 });
 
+// ─── 7. AuditActor — human actor with no actorName falls back to actorClerkId ─
+
+test("audit viewer: human actor with null actorName shows actorClerkId", async ({
+  page,
+}) => {
+  // Mock audit log with a human actor whose actorName is null.
+  await page.route("**/api/invoices/2/audit**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          id: 201,
+          invoiceId: 2,
+          action: "FIELD_EDIT",
+          actorClerkId: "user_clerk_noname",
+          actorName: null,
+          editorRole: "AP_CLERK",
+          fieldName: "amount",
+          oldValue: "100",
+          newValue: "200",
+          note: null,
+          createdAt: "2026-01-04T09:00:00.000Z",
+        },
+      ]),
+    });
+  });
+
+  await page.goto("/audit");
+
+  await expect(
+    page.getByRole("heading", { name: /audit log viewer/i }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  await page.getByTestId("input-invoice-id").fill("2");
+  await page.getByTestId("button-load-audit").click();
+
+  await expect(page.getByTestId("audit-timeline")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // Human actor label is rendered.
+  await expect(page.getByTestId("label-actor-human")).toBeVisible();
+
+  // With no actorName, the actorClerkId is displayed instead.
+  await expect(page.getByTestId("label-actor-human")).toContainText(
+    "user_clerk_noname",
+  );
+
+  // Role badge still renders because editorRole is AP_CLERK.
+  await expect(page.getByTestId("badge-actor-role")).toBeVisible();
+  await expect(page.getByTestId("badge-actor-role")).toContainText("Clerk");
+
+  await expect(page.locator("body")).not.toBeEmpty();
+});
+
+// ─── 8. AuditActor — unrecognised editorRole renders no role badge ────────────
+
+test("audit viewer: human actor with unrecognised editorRole shows no role badge", async ({
+  page,
+}) => {
+  // Mock audit log with a human actor whose editorRole is not a known value.
+  await page.route("**/api/invoices/3/audit**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          id: 301,
+          invoiceId: 3,
+          action: "STATUS_CHANGE",
+          actorClerkId: "user_clerk_unknown_role",
+          actorName: "Alex Unknown",
+          editorRole: "SUPER_ADMIN",
+          fieldName: null,
+          oldValue: null,
+          newValue: null,
+          note: "Role not in known list",
+          createdAt: "2026-01-05T14:00:00.000Z",
+        },
+      ]),
+    });
+  });
+
+  await page.goto("/audit");
+
+  await expect(
+    page.getByRole("heading", { name: /audit log viewer/i }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  await page.getByTestId("input-invoice-id").fill("3");
+  await page.getByTestId("button-load-audit").click();
+
+  await expect(page.getByTestId("audit-timeline")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // Human actor label is rendered with the actor name.
+  await expect(page.getByTestId("label-actor-human")).toBeVisible();
+  await expect(page.getByTestId("label-actor-human")).toContainText(
+    "Alex Unknown",
+  );
+
+  // No role badge should appear for an unrecognised editorRole.
+  await expect(page.getByTestId("badge-actor-role")).not.toBeVisible();
+
+  await expect(page.locator("body")).not.toBeEmpty();
+});
+
 // ─── 4. Invoice List ─────────────────────────────────────────────────────────
 
 test("invoice list page renders with filter controls", async ({ page }) => {
