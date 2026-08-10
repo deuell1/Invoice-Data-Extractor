@@ -1072,7 +1072,7 @@ console.log("══════════════════════�
 //
 // Uploads the real UAT test PDF (TP-001–TP-005), waits for all 5 invoices to
 // extract, then checks every invoice's vendorRawName, invoiceNumber, invoiceDate,
-// totalAmount, and currency against the known-correct snapshot values embedded
+// dueDate, subtotal, totalAmount, and currency against the known-correct snapshot values embedded
 // below.  Fails if:
 //   • any guarded field is missing or doesn't match the snapshot
 //   • overall field accuracy across all 5 REQUIRED_ALWAYS fields drops below 95%
@@ -1084,7 +1084,7 @@ console.log("══════════════════════�
 console.log("\n══════════════════════════════════════════");
 console.log("SUITE 11: Extraction accuracy regression guard");
 console.log("  Uploads UAT test PDF → waits for 5 extractions");
-console.log("  Checks vendorRawName, invoiceNumber, invoiceDate, totalAmount, currency");
+console.log("  Checks vendorRawName, invoiceNumber, invoiceDate, dueDate, subtotal, totalAmount, currency");
 console.log("  against known-correct snapshot for TP-001–TP-005");
 console.log("══════════════════════════════════════════");
 
@@ -1126,7 +1126,7 @@ console.log("══════════════════════�
   const gtLines = gtCsvText.trim().split(/\r?\n/);
   const gtHeaders = parseCsvRow(gtLines[0]);
   const col = (name) => gtHeaders.indexOf(name);
-  const REQUIRED_CSV_COLS = ["testCaseId", "invoiceNumber", "vendorRawName", "invoiceDate", "totalAmount", "currency"];
+  const REQUIRED_CSV_COLS = ["testCaseId", "invoiceNumber", "vendorRawName", "invoiceDate", "dueDate", "subtotal", "totalAmount", "currency"];
   const missingCols = REQUIRED_CSV_COLS.filter((h) => col(h) === -1);
   if (missingCols.length > 0) {
     assert(false, `Suite 11: ground-truth CSV is missing required column(s): ${missingCols.join(", ")} (headers found: ${gtHeaders.join(", ")})`);
@@ -1142,6 +1142,8 @@ console.log("══════════════════════�
       invoiceNumber: row[col("invoiceNumber")].trim(),
       vendorRawName: row[col("vendorRawName")].trim(),
       invoiceDate:   row[col("invoiceDate")].trim(),
+      dueDate:       row[col("dueDate")].trim(),
+      subtotal:      Number(row[col("subtotal")]),
       totalAmount:   Number(row[col("totalAmount")]),
       currency:      row[col("currency")].trim(),
     };
@@ -1400,6 +1402,8 @@ console.log("══════════════════════�
         ` invoiceNumber=${fin.invoiceNumber ?? "(none)"}` +
         ` vendorRawName=${fin.vendorRawName ?? "(none)"}` +
         ` invoiceDate=${fin.invoiceDate ?? "(none)"}` +
+        ` dueDate=${fin.dueDate ?? "(none)"}` +
+        ` subtotal=${fin.subtotal ?? "(none)"}` +
         ` totalAmount=${fin.totalAmount ?? "(none)"}` +
         ` currency=${fin.currency ?? "(none)"}`,
       );
@@ -1407,7 +1411,7 @@ console.log("══════════════════════�
 
     // Stage 6: Check every invoice against the snapshot.
     // Match by normalized invoiceNumber; anything unmatched counts as missing.
-    // Guarded fields: vendorRawName, invoiceNumber, invoiceDate, totalAmount, currency.
+    // Guarded fields: vendorRawName, invoiceNumber, invoiceDate, dueDate, subtotal, totalAmount, currency.
     let s11Correct = 0;
     let s11Total = 0;
     const s11Diffs = [];
@@ -1452,6 +1456,33 @@ console.log("══════════════════════�
         }
       }
 
+      // — dueDate —
+      s11Total++;
+      if (!match) {
+        s11Diffs.push(`${snap.testCaseId} dueDate: no extracted invoice matched invoiceNumber="${snap.invoiceNumber}" (expected "${snap.dueDate}")`);
+      } else {
+        const extractedDueDate = normDate(match.dueDate);
+        const expectedDueDate  = normDate(snap.dueDate);
+        if (extractedDueDate !== null && extractedDueDate === expectedDueDate) {
+          s11Correct++;
+        } else {
+          s11Diffs.push(`${snap.testCaseId} dueDate: expected "${snap.dueDate}" got "${match.dueDate ?? "(null)"}"`);
+        }
+      }
+
+      // — subtotal —
+      s11Total++;
+      if (!match) {
+        s11Diffs.push(`${snap.testCaseId} subtotal: no extracted invoice matched invoiceNumber="${snap.invoiceNumber}" (expected ${snap.subtotal})`);
+      } else {
+        // Allow ±0.02 tolerance for floating-point rounding in extraction.
+        if (amountMatch(match.subtotal, snap.subtotal)) {
+          s11Correct++;
+        } else {
+          s11Diffs.push(`${snap.testCaseId} subtotal: expected ${snap.subtotal} got "${match.subtotal ?? "(null)"}"`);
+        }
+      }
+
       // — totalAmount —
       s11Total++;
       if (!match) {
@@ -1490,13 +1521,13 @@ console.log("══════════════════════�
 
     assert(
       s11Diffs.length === 0,
-      `Suite 11: vendorRawName/invoiceNumber/invoiceDate/totalAmount/currency match known-correct snapshot for all TP-001–TP-005 (${s11Diffs.length} drift(s): ${s11Diffs.join("; ")})`,
+      `Suite 11: vendorRawName/invoiceNumber/invoiceDate/dueDate/subtotal/totalAmount/currency match known-correct snapshot for all TP-001–TP-005 (${s11Diffs.length} drift(s): ${s11Diffs.join("; ")})`,
     );
     assert(
       s11Accuracy >= ACCURACY_THRESHOLD,
       `Suite 11: overall extraction accuracy ${s11Accuracy.toFixed(1)}% >= ${ACCURACY_THRESHOLD}% threshold`,
     );
-    console.log(`  ✓ All TP-001–TP-005 fields (vendorRawName, invoiceNumber, invoiceDate, totalAmount, currency) match snapshot, accuracy=${s11Accuracy.toFixed(1)}%`);
+    console.log(`  ✓ All TP-001–TP-005 fields (vendorRawName, invoiceNumber, invoiceDate, dueDate, subtotal, totalAmount, currency) match snapshot, accuracy=${s11Accuracy.toFixed(1)}%`);
   }
 }
 
