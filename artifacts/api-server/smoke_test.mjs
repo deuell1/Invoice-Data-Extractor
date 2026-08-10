@@ -172,10 +172,16 @@ async function cleanup() {
       if (status === 200 || status === 404) {
         console.log(`  ✓ deleted invoice ${id}`);
       } else {
-        warn(`delete invoice ${id} returned ${status}`);
+        const msg = `cleanup: delete invoice ${id} returned unexpected status ${status} (expected 200 or 404 — possible FK constraint gap)`;
+        console.error(`  ✗ FAIL: ${msg}`);
+        failed++;
+        failures.push(msg);
       }
     } catch (err) {
-      warn(`delete invoice ${id} failed: ${err.message}`);
+      const msg = `cleanup: delete invoice ${id} threw unexpectedly: ${err.message}`;
+      console.error(`  ✗ FAIL: ${msg}`);
+      failed++;
+      failures.push(msg);
     }
   }
 
@@ -234,10 +240,16 @@ async function cleanup() {
       if (status === 200 || status === 404) {
         console.log(`  ✓ deleted vendor ${id}`);
       } else {
-        warn(`delete vendor ${id} returned ${status}`);
+        const msg = `cleanup: delete vendor ${id} returned unexpected status ${status} (expected 200 or 404 — possible FK constraint gap)`;
+        console.error(`  ✗ FAIL: ${msg}`);
+        failed++;
+        failures.push(msg);
       }
     } catch (err) {
-      warn(`delete vendor ${id} failed: ${err.message}`);
+      const msg = `cleanup: delete vendor ${id} threw unexpectedly: ${err.message}`;
+      console.error(`  ✗ FAIL: ${msg}`);
+      failed++;
+      failures.push(msg);
     }
   }
 
