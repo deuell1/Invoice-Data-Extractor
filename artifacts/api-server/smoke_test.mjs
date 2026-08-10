@@ -156,10 +156,16 @@ async function cleanup() {
       if (status === 200 || status === 404) {
         // 200 = voided, 404 = already gone — both are fine
       } else {
-        warn(`void invoice ${id} returned ${status}`);
+        const msg = `cleanup: void invoice ${id} returned unexpected status ${status} (expected 200 or 404 — voucher/approval state may be blocking void)`;
+        console.error(`  ✗ FAIL: ${msg}`);
+        failed++;
+        failures.push(msg);
       }
     } catch (err) {
-      warn(`void invoice ${id} failed: ${err.message}`);
+      const msg = `cleanup: void invoice ${id} threw unexpectedly: ${err.message}`;
+      console.error(`  ✗ FAIL: ${msg}`);
+      failed++;
+      failures.push(msg);
     }
   }
 
@@ -192,10 +198,16 @@ async function cleanup() {
       if (status === 200 || status === 404) {
         console.log(`  ✓ deleted source document ${id}`);
       } else {
-        warn(`delete source document ${id} returned ${status}`);
+        const msg = `cleanup: delete source document ${id} returned unexpected status ${status} (expected 200 or 404 — possible FK constraint gap)`;
+        console.error(`  ✗ FAIL: ${msg}`);
+        failed++;
+        failures.push(msg);
       }
     } catch (err) {
-      warn(`delete source document ${id} failed: ${err.message}`);
+      const msg = `cleanup: delete source document ${id} threw unexpectedly: ${err.message}`;
+      console.error(`  ✗ FAIL: ${msg}`);
+      failed++;
+      failures.push(msg);
     }
   }
 
@@ -212,10 +224,16 @@ async function cleanup() {
       if (status === 200 || status === 404) {
         console.log(`  ✓ deleted orphaned object ${objPath}`);
       } else {
-        warn(`delete orphaned object ${objPath} returned ${status}`);
+        const msg = `cleanup: delete orphaned object ${objPath} returned unexpected status ${status} (expected 200 or 404 — missing deletion route or storage error)`;
+        console.error(`  ✗ FAIL: ${msg}`);
+        failed++;
+        failures.push(msg);
       }
     } catch (err) {
-      warn(`delete orphaned object ${objPath} failed: ${err.message}`);
+      const msg = `cleanup: delete orphaned object ${objPath} threw unexpectedly: ${err.message}`;
+      console.error(`  ✗ FAIL: ${msg}`);
+      failed++;
+      failures.push(msg);
     }
   }
 
@@ -226,10 +244,16 @@ async function cleanup() {
       if (status === 200 || status === 404) {
         console.log(`  ✓ deleted export batch ${id}`);
       } else {
-        warn(`delete export batch ${id} returned ${status}`);
+        const msg = `cleanup: delete export batch ${id} returned unexpected status ${status} (expected 200 or 404 — possible missing deletion route)`;
+        console.error(`  ✗ FAIL: ${msg}`);
+        failed++;
+        failures.push(msg);
       }
     } catch (err) {
-      warn(`delete export batch ${id} failed: ${err.message}`);
+      const msg = `cleanup: delete export batch ${id} threw unexpectedly: ${err.message}`;
+      console.error(`  ✗ FAIL: ${msg}`);
+      failed++;
+      failures.push(msg);
     }
   }
 
