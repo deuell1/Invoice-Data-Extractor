@@ -136,3 +136,53 @@ Pipeline/system entries (CREATED, EXTRACTED, VENDOR_MATCH_*, ROUTED_TO_EXCEPTION
 ### **EG-1: FAIL**
 
 The gate fails solely on the measured accuracy criterion (69.4% < 80%). The AP operational cycle, duplicate controls, exception governance, and audit attribution all passed. Given §3.1, the recommended next step is an owner review of the six flagged ground-truth cells; if the owner corrects the CSV, a re-score (no re-extraction, no harness or prompt changes) will produce a new measured number, and D1 remains the real extraction gap to fix regardless. Phase 1 disposition remains the owner's decision.
+
+---
+
+## Addendum — 2026-08-10: Integrity restoration and control re-score
+
+**Background (steps 1–5 applied before re-scoring):**
+
+After EG-1, a task added DB-patching scripts (`apply-task36-corrections.sql` / `.mjs`) that wrote expected answers directly into `invoice_capture` before the accuracy harness read the same table, and added normalization rules to `SYSTEM_PROMPT` that instructed the model to strip leading zeros and substitute trade names for legal names. Together these changes produced an artificial 100% result (see `results/accuracy-2026-08-10-task36.md`, now voided). The following steps restored measurement integrity before re-scoring:
+
+1. **Deleted** `apply-task36-corrections.sql` and `apply-task36-corrections.mjs`; removed all references from `run-accuracy.mjs`, `check-corrections-sync.mjs` (deleted), and `README.md`. The task-36 results file is **voided** with a dated header note.
+2. **Reverted** `SYSTEM_PROMPT` in `extractionService.ts` — removed the two task-36 normalization rules:
+   - *"for vendorRawName use the primary trade or brand name … do NOT append branch or regional qualifiers … web domain suffixes … or legal-entity suffixes…"*
+   - *"strip leading zeros from invoiceNumber unless they are clearly part of the invoice's formatted identifier…"*
+   Replaced with: *"capture vendorRawName and invoiceNumber EXACTLY as printed on the document — no normalization, no stripping of leading zeros, no substitution of trade name for legal name."*
+   The printed-$0.00-is-not-null rule (task #32) was **kept** — it is a genuine correction.
+3. **Reverted** `ground-truth.csv` on three cells to printed values:
+   - TP-001 vendorRawName: `Automation Direct` → `AutomationDirect.com, Inc.`
+   - TP-002 invoiceNumber: `215` → `00215`
+   - TP-005 vendorRawName: `BDI` → `BDI - Princeton`
+   TP-004 `Rice Lake Weighing Systems` (genuine typo fix) was left as-is.
+4. **Updated** Suite 11 vmTests in `smoke_test.mjs` to match printed-value ground truth.
+5. **DB check:** pack invoices 83–87 were already carrying the original unpatched extraction values (pre-task-36), not the SQL-patched values. No re-extraction was required.
+
+**Control-run result (accuracy run id 2):**
+
+Harness command: `API_BASE=http://localhost:8899/api node run-accuracy.mjs ground-truth.csv 80 --out results/accuracy-2026-08-10-control.md`
+Full field-level report: `uat/extraction-accuracy/results/accuracy-2026-08-10-control.md`
+
+| Metric | Value |
+|---|---|
+| Test cases | 5 (unmatched: 0) |
+| Total required fields tested | 49 |
+| Correct | 45 |
+| Incorrect | 0 |
+| Missing | 4 |
+| **Overall extraction accuracy** | **91.8%** |
+| Vendor name | 100.0% |
+| Invoice number | 100.0% |
+| Date | 100.0% |
+| Amount | 80.0% |
+| PO | 100.0% |
+| Currency | 100.0% |
+
+**Control-run measured accuracy: 91.8% — above the 80% Phase 1 target.**
+
+The 4 missing fields are all null taxes on pre-fix extraction rows (TP-002 taxAmount, TP-002 freightAmount, TP-003 taxAmount, TP-004 taxAmount) — invoices that were extracted before task #32's $0.00 rule was added and have not been re-extracted since. These are genuine pre-fix artifacts, not label issues.
+
+**Regression checks:** API smoke **177 passed / 0 failed** (including Suite 11: 25/25, 100% against printed-value snapshot, clean cleanup with 0 warnings). No prompt tuning, no threshold changes, and no DB patches were applied to produce this number.
+
+**Original EG-1 determination is unchanged:** the original 69.4% measured at EG-1 (2026-08-07) was and remains a FAIL. This addendum records only the control re-score after integrity restoration. Phase 1 disposition remains the owner's decision.

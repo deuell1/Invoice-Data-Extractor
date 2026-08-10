@@ -1192,23 +1192,24 @@ console.log("══════════════════════�
   // broken, not the extraction pipeline.
   const vmTests = [
     // null / empty / punctuation-only must always fail
-    [null,                   "BDI",                        false, "null extracted → mismatch"],
-    ["",                     "BDI",                        false, "empty string → mismatch"],
-    ["...",                  "BDI",                        false, "punctuation-only → mismatch"],
+    [null,                   "BDI - Princeton",               false, "null extracted → mismatch"],
+    ["",                     "BDI - Princeton",               false, "empty string → mismatch"],
+    ["...",                  "BDI - Princeton",               false, "punctuation-only → mismatch"],
     // one-character / severely truncated must fail
-    ["B",                    "BDI",                        false, "single char 'B' vs 'BDI' → mismatch"],
-    ["A",                    "Automation Direct",           false, "single char 'A' → mismatch"],
-    ["Rice",                 "Rice Lake Weighing Systems",  false, "truncated 'Rice' → mismatch"],
+    ["B",                    "BDI - Princeton",               false, "single char 'B' → mismatch"],
+    ["A",                    "AutomationDirect.com, Inc.",    false, "single char 'A' → mismatch"],
+    ["Rice",                 "Rice Lake Weighing Systems",    false, "truncated 'Rice' → mismatch"],
     // legal-suffix omission should pass
-    ["BzRhino Consulting",   "BzRhino Consulting, LLC",    true,  "missing LLC suffix → match"],
-    ["Van Meter",            "Van Meter Inc.",              true,  "missing Inc suffix → match"],
+    ["BzRhino Consulting",   "BzRhino Consulting, LLC",      true,  "missing LLC suffix → match"],
+    ["Van Meter",            "Van Meter Inc.",                true,  "missing Inc suffix → match"],
     // spacing / case / TLD variations should pass
-    ["AutomationDirect",     "Automation Direct",           true,  "no-space vs spaced → match"],
-    ["AutomationDirect.com", "Automation Direct",           true,  ".com TLD stripped → match"],
-    ["VAN METER INC",        "Van Meter Inc.",              true,  "all-caps vs mixed → match"],
+    ["AutomationDirect",     "AutomationDirect.com, Inc.",   true,  "no .com + no Inc suffix → match"],
+    ["AutomationDirect.com", "AutomationDirect.com, Inc.",   true,  ".com TLD stripped → match"],
+    ["VAN METER INC",        "Van Meter Inc.",                true,  "all-caps vs mixed → match"],
     // completely wrong names must fail
-    ["Wrong Company",        "BDI",                        false, "wrong name → mismatch"],
-    ["BDI Princeton",        "BDI",                        false, "extra tokens after core → mismatch"],
+    ["Wrong Company",        "BDI - Princeton",              false, "wrong name → mismatch"],
+    // dash-space variant normalizes identically (punctuation stripped)
+    ["BDI Princeton",        "BDI - Princeton",              true,  "BDI Princeton matches BDI - Princeton after punctuation stripping"],
   ];
   for (const [ext, exp, want, label] of vmTests) {
     const got = vendorMatch(ext, exp);

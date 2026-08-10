@@ -1,0 +1,73 @@
+Restore extraction-accuracy measurement integrity. This undoes DB patching and
+prompt tuning that were applied after EG-1 to inflate the accuracy score
+without improving the extractor. Do not skip steps or combine them — verify
+each before moving to the next. Do not mark anything PASS; report the
+measured number.
+
+1. Delete uat/extraction-accuracy/apply-task36-corrections.sql and
+   apply-task36-corrections.mjs. These write expected answers directly into
+   invoice_capture before the accuracy harness reads that same table — the
+   100% they produce is true by construction, not by measurement. Confirm no
+   other script or doc still references them (grep the repo for
+   "apply-task36").
+
+2. Add a dated correction note to the top of
+   uat/extraction-accuracy/results/accuracy-2026-08-10-task36.md marking it
+   VOID, stating: "This run's 100% figure reflects invoice_capture rows
+   patched by apply-task36-corrections.sql/.mjs before scoring, not the
+   extractor's actual output. Superseded by
+   accuracy-<today's date>-control.md." Do not delete the file — same
+   treatment as the po_header correction log already in
+   uat/Phase2_Status_Report.md.
+
+3. In artifacts/api-server/src/services/extractionService.ts, revert
+   SYSTEM_PROMPT to remove exactly these three added rules, leaving
+   everything else — including the printed-$0.00-is-not-null rule, which is
+   correct and stays:
+     a. "for vendorRawName use the primary trade or brand name as it appears
+        most prominently on the invoice header — do NOT append branch or
+        regional qualifiers... web domain suffixes... or legal-entity
+        suffixes... unless they are the only identifier on the document"
+     b. "strip leading zeros from invoiceNumber unless they are clearly part
+        of the invoice's formatted identifier..."
+   Replace with an instruction to capture vendorRawName and invoiceNumber
+   EXACTLY as printed on the document, with no normalization, no stripping,
+   no substitution of trade name for legal name. Show me the full diff of
+   SYSTEM_PROMPT before proceeding to step 4.
+
+4. Revert uat/extraction-accuracy/ground-truth.csv to printed values on
+   these three cells only (all other rows/fields unchanged):
+     - TP-001 vendorRawName: "Automation Direct" -> "AutomationDirect.com, Inc."
+     - TP-002 invoiceNumber: "215" -> "00215"
+     - TP-005 vendorRawName: "BDI" -> "BDI - Princeton"
+   Leave TP-004's "Rice Lake Weighing Systems" as-is — that was a genuine
+   ground-truth typo fix, not a normalization, and stays corrected.
+
+5. In artifacts/api-server/smoke_test.mjs, update the Suite 11 SNAPSHOT array
+   to match the printed-value ground truth from step 4 (TP-001
+   vendorRawName, TP-002 invoiceNumber, TP-005 vendorRawName). Leave TP-003
+   and TP-004 snapshot values unchanged.
+
+6. Run: node uat/extraction-accuracy/run-accuracy.mjs
+   uat/extraction-accuracy/ground-truth.csv 80 --out
+   uat/extraction-accuracy/results/accuracy-<today's date>-control.md
+   No DB patch has been applied, no prompt tuning beyond step 3 is present.
+   This run must re-extract or re-read only the original, unpatched
+   invoice_capture rows for source document id 11 — if those rows still
+   carry patched values from the deleted script, re-run detection/extraction
+   on the original pack file first and say so before scoring.
+
+7. Report the measured percentage against the 80% Phase 1 target. Do not
+   tune anything to move this number. If it's below 80%, report it as
+   FAIL and stop — do not attempt another correction pass in this task.
+
+8. Run the full smoke suite (node artifacts/api-server/smoke_test.mjs or the
+   documented invocation) and report pass/fail counts, including Suite 11.
+
+9. Add a dated addendum to uat/EG1_Exit_Report.md (do not edit the existing
+   69.4% history) stating the new control-run percentage, referencing the
+   new results file from step 6, and noting steps 1-5 as the reason for the
+   re-score. Do not change the report's original EG-1: FAIL determination
+   language — add the addendum below it.
+
+Stop and report back after step 9. Do not proceed to any other work.

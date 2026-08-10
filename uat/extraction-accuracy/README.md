@@ -83,67 +83,19 @@ Paste the summary metrics block into **section 4 (Extraction Accuracy Scorecard)
 of `Phase1_UAT_Exit_Report.md` and update the verdict. Mark the accuracy item
 **closed** only if overall accuracy meets the agreed threshold.
 
-## Keeping the patch script in sync after future runs
+## After a database reset
 
-Every time you publish a new results report that contains a non-empty
-"Corrections applied in this run" table, run the sync check to confirm the
-SQL patch script still covers all documented corrections:
-
-```bash
-node uat/extraction-accuracy/check-corrections-sync.mjs
-```
-
-The script automatically picks the most-recent file in `results/`. To check
-against a specific report:
+If the DB is reset (invoices wiped), re-upload the test pack through the
+normal app upload flow. Extraction runs automatically. Once all five invoices
+finish extracting, re-run the scorer:
 
 ```bash
-node uat/extraction-accuracy/check-corrections-sync.mjs \
-  --report uat/extraction-accuracy/results/accuracy-YYYY-MM-DD.md
-```
-
-**Exit codes:**
-- `0` — patch script is in sync (or the report has no corrections).
-- `1` — one or more corrections in the report are not in the SQL; the script
-  prints exactly which `(case, field)` pairs are missing.
-- `2` — usage / file-not-found error.
-
-When the script exits `1`, add the missing `UPDATE` statements to
-`apply-task36-corrections.sql` (following the existing `-- TP-NNN · field:`
-comment convention) and re-run the check until it exits `0`.
-
----
-
-## Restoring the task-36 baseline after a database reset
-
-A set of manual corrections was applied during the task-36 UAT run to reach
-100 % accuracy (see `results/accuracy-2026-08-10-task36.md`, "Corrections
-applied" table). These corrections live in the database, so a full reset wipes
-them. Two equivalent files capture them for re-application:
-
-| File | How to run |
-|---|---|
-| `apply-task36-corrections.sql` | `psql "$DATABASE_URL" -f uat/extraction-accuracy/apply-task36-corrections.sql` |
-| `apply-task36-corrections.mjs` | `node uat/extraction-accuracy/apply-task36-corrections.mjs` |
-
-Both files are idempotent — running them more than once is safe. Each
-correction is keyed on `(original_file_name, invoice_number)` so it remains
-stable across resets (DB primary-key IDs are not used).
-
-### Typical post-reset workflow
-
-```bash
-# 1. Re-extract the test pack through the app (normal upload flow).
-# 2. Apply the baseline corrections.
-node uat/extraction-accuracy/apply-task36-corrections.mjs
-# 3. Re-run the scorer to confirm ≥ 95 % accuracy.
+# Re-run the scorer after a DB reset + fresh extraction.
 API_BASE=http://localhost:8899/api \
 node uat/extraction-accuracy/run-accuracy.mjs \
-  uat/extraction-accuracy/ground-truth.csv 95 \
+  uat/extraction-accuracy/ground-truth.csv 80 \
   --out uat/extraction-accuracy/results/accuracy-$(date +%F).md
 ```
 
-Use `--dry-run` to preview the corrections without making any changes:
-
-```bash
-node uat/extraction-accuracy/apply-task36-corrections.mjs --dry-run
-```
+No manual DB corrections are needed — the ground truth reflects printed values
+and the extractor prompt captures them verbatim.
