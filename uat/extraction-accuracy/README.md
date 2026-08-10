@@ -82,3 +82,38 @@ Leave a cell blank in the CSV to skip scoring that optional field.
 Paste the summary metrics block into **section 4 (Extraction Accuracy Scorecard)**
 of `Phase1_UAT_Exit_Report.md` and update the verdict. Mark the accuracy item
 **closed** only if overall accuracy meets the agreed threshold.
+
+## Restoring the task-36 baseline after a database reset
+
+A set of manual corrections was applied during the task-36 UAT run to reach
+100 % accuracy (see `results/accuracy-2026-08-10-task36.md`, "Corrections
+applied" table). These corrections live in the database, so a full reset wipes
+them. Two equivalent files capture them for re-application:
+
+| File | How to run |
+|---|---|
+| `apply-task36-corrections.sql` | `psql "$DATABASE_URL" -f uat/extraction-accuracy/apply-task36-corrections.sql` |
+| `apply-task36-corrections.mjs` | `node uat/extraction-accuracy/apply-task36-corrections.mjs` |
+
+Both files are idempotent — running them more than once is safe. Each
+correction is keyed on `(original_file_name, invoice_number)` so it remains
+stable across resets (DB primary-key IDs are not used).
+
+### Typical post-reset workflow
+
+```bash
+# 1. Re-extract the test pack through the app (normal upload flow).
+# 2. Apply the baseline corrections.
+node uat/extraction-accuracy/apply-task36-corrections.mjs
+# 3. Re-run the scorer to confirm ≥ 95 % accuracy.
+API_BASE=http://localhost:8899/api \
+node uat/extraction-accuracy/run-accuracy.mjs \
+  uat/extraction-accuracy/ground-truth.csv 95 \
+  --out uat/extraction-accuracy/results/accuracy-$(date +%F).md
+```
+
+Use `--dry-run` to preview the corrections without making any changes:
+
+```bash
+node uat/extraction-accuracy/apply-task36-corrections.mjs --dry-run
+```
