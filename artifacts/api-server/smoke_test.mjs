@@ -1027,6 +1027,249 @@ console.log("══════════════════════�
   }
 }
 
+// ─── Suite 11: Extraction accuracy regression guard ───────────────────────────
+//
+// Uploads the real UAT test PDF (TP-001–TP-005), waits for all 5 invoices to
+// extract, then checks every invoice's vendorRawName and invoiceNumber against
+// the known-correct snapshot values embedded below.  Fails if:
+//   • any guarded field is missing or doesn't match the snapshot
+//   • overall field accuracy across vendorRawName + invoiceNumber drops below 95%
+//
+// This suite is the automated regression guard described in the accuracy harness
+// README: it fires on every smoke-test run so field-level drift is caught before
+// it reaches the manual accuracy report.
+
+console.log("\n══════════════════════════════════════════");
+console.log("SUITE 11: Extraction accuracy regression guard");
+console.log("  Uploads UAT test PDF → waits for 5 extractions");
+console.log("  Checks vendorRawName + invoiceNumber against known-correct snapshot");
+console.log("══════════════════════════════════════════");
+
+{
+  // ── Known-correct snapshot (2026-08-10 verified baseline) ───────────────────
+  // Values from the last committed accuracy run (uat/extraction-accuracy/results/
+  // accuracy-2026-08-10-task36.md "Actual" column), which scored 100%.
+  // This is the REGRESSION BASELINE — the guard fails when a previously-correct
+  // field goes null or drifts to something meaningfully different.
+  // Update when extraction is intentionally improved and a new accuracy run confirms it.
+  const SNAPSHOT = [
+    { testCaseId: "TP-001", invoiceNumber: "19237741",       vendorRawName: "Automation Direct" },
+    { testCaseId: "TP-002", invoiceNumber: "215",             vendorRawName: "BzRhino Consulting, LLC" },
+    { testCaseId: "TP-003", invoiceNumber: "S014432461.002", vendorRawName: "Van Meter Inc." },
+    { testCaseId: "TP-004", invoiceNumber: "5438211",         vendorRawName: "Rice Lake Weighing Systems" },
+    { testCaseId: "TP-005", invoiceNumber: "9504895965",      vendorRawName: "BDI" },
+  ];
+  const ACCURACY_THRESHOLD = 95; // percent — fail if overall accuracy drops below this
+
+  // ── Vendor-name normalization ────────────────────────────────────────────────
+  // Strip ALL whitespace and punctuation so that minor AI formatting variations
+  // ("AutomationDirect" vs "Automation Direct", "VAN METER INC" vs "Van Meter Inc.")
+  // compare equal while still catching real regressions (null, completely wrong name).
+  const normVendor = (v) =>
+    String(v ?? "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  // Strip a single trailing legal-entity token if present.
+  // This allows "BzRhino Consulting" to match "BzRhino Consulting, LLC" when the
+  // system prompt instructs the model to omit suffixes, while still requiring the
+  // full core name — so a truncated value like "B" does NOT match "BDI".
+  // Only one suffix is stripped (no chained removal).
+  const LEGAL_SUFFIXES = ["llc", "inc", "corp", "ltd", "co", "lp", "llp", "plc"];
+  const stripLegalSuffix = (s) => {
+    for (const sfx of LEGAL_SUFFIXES) {
+      if (s.endsWith(sfx) && s.length > sfx.length) {
+        return s.slice(0, -sfx.length);
+      }
+    }
+    return s;
+  };
+
+  // Core match: both sides are normalized then stripped of one legal suffix.
+  // An empty or punctuation-only extracted value is ALWAYS a mismatch so that
+  // null/blank vendorRawName regressions are caught.
+  const vendorMatch = (extracted, expected) => {
+    const e = stripLegalSuffix(normVendor(extracted));
+    if (e.length === 0) return false; // null / empty / punctuation-only → regression
+    const x = stripLegalSuffix(normVendor(expected));
+    return e === x;
+  };
+
+  // ── Self-test the comparison logic before uploading anything ─────────────────
+  // These run synchronously and fast; a failure here means the guard itself is
+  // broken, not the extraction pipeline.
+  const vmTests = [
+    // null / empty / punctuation-only must always fail
+    [null,                   "BDI",                        false, "null extracted → mismatch"],
+    ["",                     "BDI",                        false, "empty string → mismatch"],
+    ["...",                  "BDI",                        false, "punctuation-only → mismatch"],
+    // one-character / severely truncated must fail
+    ["B",                    "BDI",                        false, "single char 'B' vs 'BDI' → mismatch"],
+    ["A",                    "Automation Direct",           false, "single char 'A' → mismatch"],
+    ["Rice",                 "Rice Lake Weighing Systems",  false, "truncated 'Rice' → mismatch"],
+    // legal-suffix omission should pass
+    ["BzRhino Consulting",   "BzRhino Consulting, LLC",    true,  "missing LLC suffix → match"],
+    ["Van Meter",            "Van Meter Inc.",              true,  "missing Inc suffix → match"],
+    // spacing / case variations should pass
+    ["AutomationDirect",     "Automation Direct",           true,  "no-space vs spaced → match"],
+    ["VAN METER INC",        "Van Meter Inc.",              true,  "all-caps vs mixed → match"],
+    // completely wrong names must fail
+    ["Wrong Company",        "BDI",                        false, "wrong name → mismatch"],
+    ["BDI Princeton",        "BDI",                        false, "extra tokens after core → mismatch"],
+  ];
+  for (const [ext, exp, want, label] of vmTests) {
+    const got = vendorMatch(ext, exp);
+    assert(got === want, `vendorMatch self-test: ${label} (got ${got}, want ${want})`);
+  }
+
+  // Invoice-number normalization: strip leading zeros from purely-numeric IDs.
+  // The AI may add or drop leading zeros non-deterministically ("00215" vs "215");
+  // alphanumeric IDs like "S014432461.002" keep their exact structure.
+  const normInvNum = (v) => {
+    const s = String(v ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").replace(/\s+/g, " ").trim();
+    return /^[0-9 ]+$/.test(s) ? s.replace(/^0+/, "") || "0" : s;
+  };
+
+  // Locate the UAT test PDF (two levels up from artifacts/api-server/).
+  const uatPdfPath = path.resolve(__dirname, "../../uat/extraction-accuracy/pack/invoice_Ingestor_5_invoice_test_1786035375284.pdf");
+
+  if (!existsSync(uatPdfPath)) {
+    // Loud warning but not a hard failure — the file may not be committed in all
+    // environments.  The test is skipped so it can't produce a false pass.
+    warn(`Suite 11 SKIPPED — UAT test PDF not found at ${uatPdfPath}`);
+    assert(false, `Suite 11: UAT test PDF present at expected path (${uatPdfPath})`);
+  } else {
+    const { readFileSync } = await import("node:fs");
+    const uatPdf = readFileSync(uatPdfPath);
+    console.log(`  → UAT PDF loaded: ${(uatPdf.length / 1024).toFixed(1)} KB`);
+
+    // Stage 1: Request presigned upload URL.
+    const s11UrlRes = await api("POST", "/storage/uploads/request-url", {
+      name: "regression_guard_suite11.pdf",
+      size: uatPdf.length,
+      contentType: "application/pdf",
+    });
+    assert(
+      s11UrlRes.ok,
+      `Suite 11: storage presigned URL returned (status=${s11UrlRes.status}): ${JSON.stringify(s11UrlRes.json).slice(0, 200)}`,
+    );
+    const { uploadURL: s11UploadURL, objectPath: s11ObjectPath } = s11UrlRes.json;
+
+    // Stage 2: Upload PDF.
+    const s11PutRes = await fetch(s11UploadURL, {
+      method: "PUT",
+      body: uatPdf,
+      headers: { "Content-Type": "application/pdf" },
+    });
+    assert(s11PutRes.ok, `Suite 11: UAT PDF uploaded via presigned PUT (status=${s11PutRes.status})`);
+    orphanedObjectPaths.push(s11ObjectPath);
+
+    // Stage 3: Create source document.
+    const { status: s11csS, json: s11csJ } = await api("POST", "/source-documents", {
+      fileObjectPath: s11ObjectPath,
+      originalFileName: "regression_guard_suite11.pdf",
+      contentType: "application/pdf",
+    });
+    assert(
+      s11csS === 200 || s11csS === 201,
+      `Suite 11: POST /source-documents returns 2xx (got ${s11csS}: ${JSON.stringify(s11csJ).slice(0, 200)})`,
+    );
+    const s11SourceId = s11csJ.source?.id;
+    assert(typeof s11SourceId === "number", `Suite 11: source document id returned (id=${s11SourceId})`);
+    createdSourceDocIds.push(s11SourceId);
+    orphanedObjectPaths.splice(orphanedObjectPaths.indexOf(s11ObjectPath), 1);
+    console.log(`  → source document id=${s11SourceId}`);
+
+    // Stage 4: Poll until all expected invoices are detected.
+    const s11AfterDetection = await poll(
+      async () => {
+        const { json: d } = await api("GET", `/source-documents/${s11SourceId}`);
+        const s = d.source;
+        console.log(`  … Suite 11 detect: proc=${s?.processingStatus} detected=${s?.detectedInvoiceCount} invoiceCount=${d?.invoiceCount}`);
+        const done =
+          (s.processingStatus === "COMPLETED" || s.processingStatus === "EXCEPTION") &&
+          d.invoiceCount > 0;
+        if (done) return d;
+        const finishedEmpty =
+          (s.processingStatus === "COMPLETED" || s.processingStatus === "EXCEPTION") &&
+          s.detectedInvoiceCount === 0;
+        if (finishedEmpty) return { _detectionEmpty: true, source: s };
+        return false;
+      },
+      { timeoutMs: 90_000, label: "Suite 11 source document detection" },
+    );
+
+    if (s11AfterDetection._detectionEmpty) {
+      assert(false, `Suite 11: detection finished with 0 invoices (proc=${s11AfterDetection.source?.processingStatus})`);
+    }
+
+    const s11Invoices = s11AfterDetection.invoices ?? [];
+    assert(
+      s11Invoices.length === SNAPSHOT.length,
+      `Suite 11: detected ${s11Invoices.length} invoice(s) — expected ${SNAPSHOT.length} (one per TP test case)`,
+    );
+    console.log(`  → detected ${s11Invoices.length} invoices — waiting for extraction …`);
+    for (const inv of s11Invoices) createdInvoiceIds.push(inv.id);
+
+    // Stage 5: Wait for extraction to complete on all invoices.
+    const s11Finals = [];
+    for (const inv of s11Invoices) {
+      const fin = await waitForExtraction(inv.id, 120_000);
+      s11Finals.push(fin);
+      console.log(`  → invoice ${inv.id}: status=${fin.status} invoiceNumber=${fin.invoiceNumber ?? "(none)"} vendorRawName=${fin.vendorRawName ?? "(none)"}`);
+    }
+
+    // Stage 6: Check every invoice against the snapshot.
+    // Match by normalized invoiceNumber; anything unmatched counts as missing.
+    let s11Correct = 0;
+    let s11Total = 0;
+    const s11Diffs = [];
+
+    for (const snap of SNAPSHOT) {
+      const match = s11Finals.find(
+        (inv) => normInvNum(inv.invoiceNumber ?? "") === normInvNum(snap.invoiceNumber),
+      );
+
+      // — vendorRawName —
+      s11Total++;
+      if (!match) {
+        s11Diffs.push(`${snap.testCaseId} vendorRawName: no extracted invoice matched invoiceNumber="${snap.invoiceNumber}" (expected "${snap.vendorRawName}")`);
+      } else {
+        if (vendorMatch(match.vendorRawName ?? "", snap.vendorRawName)) {
+          s11Correct++;
+        } else {
+          s11Diffs.push(`${snap.testCaseId} vendorRawName: expected "${snap.vendorRawName}" got "${match.vendorRawName ?? "(null)"}"`);
+        }
+      }
+
+      // — invoiceNumber —
+      s11Total++;
+      if (!match) {
+        s11Diffs.push(`${snap.testCaseId} invoiceNumber: no extracted invoice matched invoiceNumber="${snap.invoiceNumber}"`);
+      } else {
+        // Match itself proves invoiceNumber is correct — it was used to find the row.
+        s11Correct++;
+      }
+    }
+
+    const s11Accuracy = s11Total > 0 ? (s11Correct / s11Total) * 100 : 0;
+    console.log(`\n  Suite 11 accuracy: ${s11Correct}/${s11Total} fields correct (${s11Accuracy.toFixed(1)}%)`);
+
+    if (s11Diffs.length > 0) {
+      console.error("  ✗ Extraction regression detected — field drift from known-correct snapshot:");
+      for (const d of s11Diffs) console.error(`    • ${d}`);
+    }
+
+    assert(
+      s11Diffs.length === 0,
+      `Suite 11: vendorRawName/invoiceNumber match known-correct snapshot for all TP-001–TP-005 (${s11Diffs.length} drift(s): ${s11Diffs.join("; ")})`,
+    );
+    assert(
+      s11Accuracy >= ACCURACY_THRESHOLD,
+      `Suite 11: overall extraction accuracy ${s11Accuracy.toFixed(1)}% >= ${ACCURACY_THRESHOLD}% threshold`,
+    );
+    console.log(`  ✓ All TP-001–TP-005 vendorRawName + invoiceNumber match snapshot, accuracy=${s11Accuracy.toFixed(1)}%`);
+  }
+}
+
 // ─── Summary ──────────────────────────────────────────────────────────────────
 
 console.log("\n══════════════════════════════════════════");
