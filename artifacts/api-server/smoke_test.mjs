@@ -1680,6 +1680,96 @@ if (suite4SourceId == null) {
   console.log(`  → actor attribution verified: ${auditJ.length} total rows, actorClerkId + actorName present on all`);
 }
 
+// ─── Suite 13: vendor_audit_log ON DELETE CASCADE integrity check ─────────────
+//
+// Verifies two things:
+//   (a) No orphaned vendor_audit_log rows currently exist (vendorId refers to a
+//       vendor_id row that has already been deleted outside the API).
+//   (b) The ON DELETE CASCADE FK is active: deleting a vendor via the API
+//       automatically removes its audit-log rows so the orphan count stays at 0.
+//
+// This is the runtime companion to the startup fkCoverageCheck — where that
+// check asserts FK schema coverage at boot, this suite asserts observed cascade
+// behaviour on every run.
+
+console.log("\n══════════════════════════════════════════");
+console.log("SUITE 13: vendor_audit_log ON DELETE CASCADE integrity");
+console.log("  (a) Zero orphaned audit rows before this run");
+console.log("  (b) Deleting a vendor via API leaves zero orphaned rows");
+console.log("══════════════════════════════════════════");
+
+{
+  // ── (a) Baseline: no orphaned rows should exist ───────────────────────────
+  const { status: baseS, json: baseJ } = await api("GET", "/vendors/orphaned-audit-count");
+  assert(
+    baseS === 200,
+    `GET /vendors/orphaned-audit-count returns 200 (got ${baseS}: ${JSON.stringify(baseJ).slice(0, 200)})`,
+  );
+  assert(
+    typeof baseJ.orphanedRows === "number",
+    `orphanedRows is a number (got ${JSON.stringify(baseJ.orphanedRows)})`,
+  );
+  assert(
+    baseJ.orphanedRows === 0,
+    `No orphaned vendor_audit_log rows at baseline (got ${baseJ.orphanedRows} — vendors were deleted outside the API, bypassing ON DELETE CASCADE)`,
+  );
+  console.log(`  → baseline orphaned rows: ${baseJ.orphanedRows} ✓`);
+
+  // ── (b) Create vendor → delete via API → cascade verified ─────────────────
+  // The vendor creation automatically inserts a VENDOR_CREATED audit row.
+  // Deleting via the API should trigger the ON DELETE CASCADE and remove it.
+  const cascadeVendorCode = `CASC-${RUN_ID}`;
+  const cascadeVendorName = `Cascade Test Vendor ${RUN_ID}`;
+
+  const { status: cvS, json: cvJ } = await api("POST", "/vendors", {
+    vendorCode: cascadeVendorCode,
+    vendorName: cascadeVendorName,
+    paymentTerms: "Net 30",
+    isActive: true,
+  });
+  assert(cvS === 201, `Suite 13: POST /vendors returns 201 (got ${cvS}: ${JSON.stringify(cvJ).slice(0, 200)})`);
+  const cascadeVendorId = cvJ.id;
+  // Track for cleanup in case the delete assertion below fails.
+  createdVendorIds.push(cascadeVendorId);
+  console.log(`  → created vendor id=${cascadeVendorId} (has VENDOR_CREATED audit row)`);
+
+  // Confirm the audit row was written.
+  const { status: auditBeforeS, json: auditBeforeJ } = await api("GET", `/vendors/${cascadeVendorId}/audit`);
+  assert(auditBeforeS === 200, `Suite 13: GET /vendors/:id/audit returns 200 before delete (got ${auditBeforeS})`);
+  assert(
+    Array.isArray(auditBeforeJ) && auditBeforeJ.length >= 1,
+    `Suite 13: vendor has at least 1 audit row before delete (got ${auditBeforeJ?.length ?? "non-array"})`,
+  );
+  console.log(`  → audit rows before delete: ${auditBeforeJ.length}`);
+
+  // Delete the vendor via the API (cascade removes audit rows).
+  const { status: delS, json: delJ } = await api("DELETE", `/vendors/${cascadeVendorId}`, { confirm: true });
+  assert(
+    delS === 200,
+    `Suite 13: DELETE /vendors/:id returns 200 (got ${delS}: ${JSON.stringify(delJ).slice(0, 200)})`,
+  );
+  assert(
+    delJ.deleted === true,
+    `Suite 13: vendor was hard-deleted (got deleted=${delJ.deleted}, deactivated=${delJ.deactivated})`,
+  );
+  // Remove from cleanup list — already deleted.
+  const idx = createdVendorIds.indexOf(cascadeVendorId);
+  if (idx !== -1) createdVendorIds.splice(idx, 1);
+  console.log(`  → vendor ${cascadeVendorId} deleted via API`);
+
+  // Verify orphan count is still zero after the delete.
+  const { status: afterS, json: afterJ } = await api("GET", "/vendors/orphaned-audit-count");
+  assert(
+    afterS === 200,
+    `Suite 13: GET /vendors/orphaned-audit-count returns 200 after delete (got ${afterS})`,
+  );
+  assert(
+    afterJ.orphanedRows === 0,
+    `Suite 13: ON DELETE CASCADE removed audit rows — orphanedRows=0 after vendor delete (got ${afterJ.orphanedRows})`,
+  );
+  console.log(`  → orphaned rows after delete: ${afterJ.orphanedRows} ✓ — cascade is active`);
+}
+
 // ─── Summary ──────────────────────────────────────────────────────────────────
 
 console.log("\n══════════════════════════════════════════");

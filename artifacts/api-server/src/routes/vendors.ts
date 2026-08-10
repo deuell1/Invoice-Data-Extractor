@@ -489,6 +489,26 @@ router.get("/vendors/profile-export", async (req, res): Promise<void> => {
   res.send(csv);
 });
 
+// ─── GET /vendors/orphaned-audit-count (MUST precede /:id) ───────────────────
+// Returns the count of vendor_audit_log rows whose vendor_id no longer exists
+// in vendor_id (i.e. orphaned by an out-of-band delete that skipped the
+// ON DELETE CASCADE).  Zero is the only acceptable value in production; any
+// non-zero result means vendor rows were deleted without going through the API.
+//
+// Used by the smoke test (Suite 13) to confirm the cascade is working and that
+// no external DELETE has bypassed it.
+
+router.get("/vendors/orphaned-audit-count", requireRole("AP_MANAGER"), async (_req, res): Promise<void> => {
+  const [row] = await db
+    .select({ orphanedRows: sql<number>`count(*)::int` })
+    .from(vendorAuditLogTable)
+    .where(
+      sql`${vendorAuditLogTable.vendorId} NOT IN (SELECT id FROM ${vendorIdTable})`,
+    );
+
+  res.json({ orphanedRows: row?.orphanedRows ?? 0 });
+});
+
 // ─── GET /vendors/:id ─────────────────────────────────────────────────────────
 
 router.get("/vendors/:id", async (req, res): Promise<void> => {
