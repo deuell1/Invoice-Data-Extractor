@@ -668,7 +668,43 @@ test("audit viewer: network drop shows error message and does not crash", async 
   await expect(page.locator("body")).not.toBeEmpty();
 });
 
-// ─── 14. Audit Viewer — null oldValue renders "empty" label ─────────────────
+// ─── 14. Audit Viewer — malformed JSON body (status 200) ─────────────────────
+
+test("audit viewer: malformed JSON body shows error message and does not crash", async ({
+  page,
+}) => {
+  // Simulate a proxy/CDN truncation: the server replies 200 but the body is
+  // invalid JSON.  React Query must still set isError=true via the JSON parse
+  // failure, and the audit-error element must appear.
+  await page.route("**/api/invoices/7/audit**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: "{ invalid json [",
+    });
+  });
+
+  await page.goto("/audit");
+
+  await expect(
+    page.getByRole("heading", { name: /audit log viewer/i }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  await page.getByTestId("input-invoice-id").fill("7");
+  await page.getByTestId("button-load-audit").click();
+
+  // The error element must appear; neither the timeline nor the empty state.
+  await expect(page.getByTestId("audit-error")).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect(page.getByTestId("audit-timeline")).not.toBeVisible();
+  await expect(page.getByTestId("audit-empty")).not.toBeVisible();
+
+  // The page must remain intact — no crash or blank screen.
+  await expect(page.locator("body")).not.toBeEmpty();
+});
+
+// ─── 15. Audit Viewer — null oldValue renders "empty" label ─────────────────
 
 test("audit viewer: FIELD_EDIT with null oldValue renders 'empty' on the left side", async ({
   page,
