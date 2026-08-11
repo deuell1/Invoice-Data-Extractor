@@ -1,6 +1,6 @@
 import app from "./app";
 import { logger } from "./lib/logger";
-import { assertFkCoverage } from "./lib/fkCoverageCheck";
+import { assertFkCoverage, warnVendorAuditOrphans } from "./lib/fkCoverageCheck";
 
 const rawPort = process.env["PORT"];
 
@@ -22,6 +22,7 @@ if (Number.isNaN(port) || port <= 0) {
 // transaction. If a new child table is added without updating the transaction,
 // the server refuses to start with a clear remediation message.
 assertFkCoverage()
+  .then(() => warnVendorAuditOrphans())
   .then(() => {
     app.listen(port, (err) => {
       if (err) {

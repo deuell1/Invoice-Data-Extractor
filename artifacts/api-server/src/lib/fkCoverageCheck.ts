@@ -153,3 +153,35 @@ export async function assertFkCoverage(): Promise<void> {
 
   throw new Error(lines.join("\n"));
 }
+
+/**
+ * Check for orphaned vendor_audit_log rows — rows whose vendor_id no longer
+ * has a matching row in vendor_id (possible if a vendor was deleted out-of-band
+ * via raw SQL, bypassing the ON DELETE CASCADE).
+ *
+ * This is a warning-only check: it logs a structured WARN with the orphan
+ * count but does NOT crash the server. Crashing would be too disruptive for
+ * an operational issue that does not affect correctness of live traffic.
+ */
+export async function warnVendorAuditOrphans(): Promise<void> {
+  const result = await db.execute<{ orphan_count: string }>(sql`
+    SELECT COUNT(*) AS orphan_count
+    FROM vendor_audit_log val
+    WHERE NOT EXISTS (
+      SELECT 1 FROM vendor_id v WHERE v.id = val.vendor_id
+    )
+  `);
+
+  const orphanCount = Number(result.rows[0]?.orphan_count ?? 0);
+
+  if (orphanCount > 0) {
+    logger.warn(
+      { orphanCount },
+      `vendorAuditOrphanCheck: ${orphanCount} orphaned row(s) found in vendor_audit_log — ` +
+        "a vendor was likely deleted out-of-band via raw SQL, bypassing ON DELETE CASCADE. " +
+        "Run the smoke test (Suite 13) for details.",
+    );
+  } else {
+    logger.info("vendorAuditOrphanCheck: no orphaned vendor_audit_log rows ✓");
+  }
+}
