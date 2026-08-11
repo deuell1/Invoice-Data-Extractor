@@ -997,7 +997,7 @@ console.log("══════════════════════�
   const gtLines = gtCsvText.trim().split(/\r?\n/);
   const gtHeaders = parseCsvRow(gtLines[0]);
   const col = (name) => gtHeaders.indexOf(name);
-  const REQUIRED_CSV_COLS = ["testCaseId", "invoiceNumber", "vendorRawName", "invoiceDate", "dueDate", "paymentTerms", "poNumber", "subtotal", "taxAmount", "freightAmount", "totalAmount", "currency"];
+  const REQUIRED_CSV_COLS = ["testCaseId", "sourceFileName", "invoiceNumber", "vendorRawName", "invoiceDate", "dueDate", "paymentTerms", "poNumber", "subtotal", "taxAmount", "freightAmount", "totalAmount", "currency"];
   const missingCols = REQUIRED_CSV_COLS.filter((h) => col(h) === -1);
   if (missingCols.length > 0) {
     assert(false, `Suite 11: ground-truth CSV is missing required column(s): ${missingCols.join(", ")} (headers found: ${gtHeaders.join(", ")})`);
@@ -1027,6 +1027,7 @@ console.log("══════════════════════�
     const rowRef = `row ${lineIdx + 2} (line ${lineIdx + 2} of CSV)`;
     return {
       testCaseId:    row[col("testCaseId")].trim(),
+      sourceFileName: row[col("sourceFileName")].trim(),
       invoiceNumber: row[col("invoiceNumber")].trim(),
       vendorRawName: row[col("vendorRawName")].trim(),
       invoiceDate:   row[col("invoiceDate")].trim(),
@@ -1136,6 +1137,31 @@ console.log("══════════════════════�
       seenAt.set(id, lineNum);
     }
     assert(true, `Suite 11: all ${SNAPSHOT.length} testCaseId values are unique`);
+  }
+
+  // ── Uniqueness check: every (sourceFileName, invoiceNumber) pair must appear exactly once ──
+  // If two rows share the same sourceFileName + invoiceNumber, the harness could
+  // match an extracted invoice to the wrong ground-truth row, silently inflating
+  // or deflating accuracy scores.  Detect and reject duplicates before any upload.
+  {
+    const seenPairAt = new Map(); // "sourceFileName\0invoiceNumber" → { testCaseId, lineNum }
+    for (let i = 0; i < SNAPSHOT.length; i++) {
+      const row = SNAPSHOT[i];
+      const key = `${row.sourceFileName}\0${row.invoiceNumber}`;
+      const lineNum = i + 2; // +1 for header, +1 for 0-based index
+      if (seenPairAt.has(key)) {
+        const first = seenPairAt.get(key);
+        assert(
+          false,
+          `Suite 11: duplicate (sourceFileName, invoiceNumber) pair — ` +
+          `sourceFileName="${row.sourceFileName}", invoiceNumber="${row.invoiceNumber}" ` +
+          `appears at CSV rows ${first.lineNum} (testCaseId="${first.testCaseId}") ` +
+          `and ${lineNum} (testCaseId="${row.testCaseId}") — every (sourceFileName, invoiceNumber) combination must be unique`,
+        );
+      }
+      seenPairAt.set(key, { testCaseId: row.testCaseId, lineNum });
+    }
+    assert(true, `Suite 11: all ${SNAPSHOT.length} (sourceFileName, invoiceNumber) pairs are unique`);
   }
 
   console.log(`  → Snapshot loaded from ground-truth CSV: ${SNAPSHOT.length} test case(s) (${gtCsvPath})`);
