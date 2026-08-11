@@ -143,17 +143,30 @@ export async function resolveActorName(
     // temporarily unavailable Clerk API never blocks a request.
     // Default: 500 ms.  Override via CLERK_NAME_TIMEOUT_MS env var.
     const timeoutMs = Number(process.env.CLERK_NAME_TIMEOUT_MS) || 500;
-    const timeoutPromise = new Promise<null>((resolve) =>
-      setTimeout(() => resolve(null), timeoutMs),
+    const TIMEOUT_SENTINEL = Symbol("clerk-name-timeout");
+    const timeoutPromise = new Promise<typeof TIMEOUT_SENTINEL>((resolve) =>
+      setTimeout(() => resolve(TIMEOUT_SENTINEL), timeoutMs),
     );
     const fetchPromise = users.getUser(userId).then(formatActorName);
 
-    const result = await Promise.race([fetchPromise, timeoutPromise]);
+    const raceResult = await Promise.race([fetchPromise, timeoutPromise]);
+
+    // Detect when the timeout won the race and log a warning so ops teams
+    // notice Clerk API degradation before audit records start showing
+    // missing actor names.
+    if (raceResult === TIMEOUT_SENTINEL) {
+      console.warn(
+        `[requireAuth] Clerk name resolution timed out for userId=${userId} (timeout=${timeoutMs}ms)`,
+      );
+      cacheSet(userId, null);
+      return null;
+    }
+
+    const result = raceResult;
 
     // ── Cache store ──────────────────────────────────────────────────────
-    // Cache whatever we resolved (including null — no name, or a timeout).
-    // The 5-minute TTL keeps stale data minimal; on a timeout the next
-    // request will retry after the entry expires.
+    // Cache whatever we resolved (including null — no name).
+    // The 5-minute TTL keeps stale data minimal.
     cacheSet(userId, result);
 
     return result;
