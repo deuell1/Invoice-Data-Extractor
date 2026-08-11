@@ -818,7 +818,123 @@ test("audit viewer: FIELD_EDIT with null newValue renders 'empty' on the right s
   await expect(page.locator("body")).not.toBeEmpty();
 });
 
-// ─── 16. Exception Queue — InvoiceAuditPanel actor types ─────────────────────
+// ─── 16. Audit Viewer — empty-string oldValue renders "empty" label ──────────
+
+test("audit viewer: FIELD_EDIT with empty-string oldValue renders 'empty' on the left side", async ({
+  page,
+}) => {
+  // Mock the audit API for invoice #14 with a FIELD_EDIT row where oldValue is
+  // "" (empty string). The component uses `|| "empty"` which treats "" as
+  // falsy; this test pins that behaviour so a future refactor to `=== null`
+  // does not silently break the empty-string case.
+  await page.route("**/api/invoices/14/audit**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          id: 1401,
+          invoiceId: 14,
+          action: "FIELD_EDIT",
+          actorClerkId: "user_clerk_editor",
+          actorName: "Alex Editor",
+          editorRole: "AP_CLERK",
+          fieldName: "poNumber",
+          oldValue: "",
+          newValue: "PO-12345",
+          note: null,
+          createdAt: "2026-06-01T10:00:00.000Z",
+        },
+      ]),
+    });
+  });
+
+  await page.goto("/audit");
+
+  await expect(
+    page.getByRole("heading", { name: /audit log viewer/i }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  await page.getByTestId("input-invoice-id").fill("14");
+  await page.getByTestId("button-load-audit").click();
+
+  await expect(page.getByTestId("audit-timeline")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // The field-change row must be present.
+  await expect(page.getByTestId("audit-field-change-1401")).toBeVisible();
+
+  // oldValue is "" → the component must render the fallback "empty" label.
+  await expect(page.getByTestId("audit-old-value-1401")).toContainText("empty");
+
+  // newValue is a real value → must render as-is (not "empty").
+  await expect(page.getByTestId("audit-new-value-1401")).toContainText(
+    "PO-12345",
+  );
+
+  // Page must remain intact — no crash.
+  await expect(page.locator("body")).not.toBeEmpty();
+});
+
+// ─── 17. Audit Viewer — empty-string newValue renders "empty" label ──────────
+
+test("audit viewer: FIELD_EDIT with empty-string newValue renders 'empty' on the right side", async ({
+  page,
+}) => {
+  // Mock the audit API for invoice #15 with a FIELD_EDIT row where newValue is
+  // "" (empty string). Mirrors the oldValue test above for the right-hand side.
+  await page.route("**/api/invoices/15/audit**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          id: 1501,
+          invoiceId: 15,
+          action: "FIELD_EDIT",
+          actorClerkId: "user_clerk_clearer",
+          actorName: "Riley Clearer",
+          editorRole: "AP_MANAGER",
+          fieldName: "invoiceNumber",
+          oldValue: "INV-999",
+          newValue: "",
+          note: null,
+          createdAt: "2026-06-02T11:00:00.000Z",
+        },
+      ]),
+    });
+  });
+
+  await page.goto("/audit");
+
+  await expect(
+    page.getByRole("heading", { name: /audit log viewer/i }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  await page.getByTestId("input-invoice-id").fill("15");
+  await page.getByTestId("button-load-audit").click();
+
+  await expect(page.getByTestId("audit-timeline")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // The field-change row must be present.
+  await expect(page.getByTestId("audit-field-change-1501")).toBeVisible();
+
+  // oldValue is a real value → must render as-is (not "empty").
+  await expect(page.getByTestId("audit-old-value-1501")).toContainText(
+    "INV-999",
+  );
+
+  // newValue is "" → the component must render the fallback "empty" label.
+  await expect(page.getByTestId("audit-new-value-1501")).toContainText("empty");
+
+  // Page must remain intact — no crash.
+  await expect(page.locator("body")).not.toBeEmpty();
+});
+
+// ─── 18. Exception Queue — InvoiceAuditPanel actor types ─────────────────────
 
 test("exception queue audit panel shows all three actor types correctly", async ({
   page,
