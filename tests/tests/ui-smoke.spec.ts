@@ -637,6 +637,37 @@ test("audit viewer: STATUS_CHANGE row shows note text", async ({ page }) => {
   await expect(page.locator("body")).not.toBeEmpty();
 });
 
+// ─── 13. Audit Viewer — network drop mid-load ────────────────────────────────
+
+test("audit viewer: network drop shows error message and does not crash", async ({
+  page,
+}) => {
+  // Simulate a network-level failure (ERR_NETWORK / request aborted) for
+  // invoice #6 — this is distinct from an HTTP error response.
+  await page.route("**/api/invoices/6/audit**", async (route) => {
+    await route.abort();
+  });
+
+  await page.goto("/audit");
+
+  await expect(
+    page.getByRole("heading", { name: /audit log viewer/i }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  await page.getByTestId("input-invoice-id").fill("6");
+  await page.getByTestId("button-load-audit").click();
+
+  // The error element must appear; neither the timeline nor the empty state.
+  await expect(page.getByTestId("audit-error")).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect(page.getByTestId("audit-timeline")).not.toBeVisible();
+  await expect(page.getByTestId("audit-empty")).not.toBeVisible();
+
+  // The page must remain intact — no crash or blank screen.
+  await expect(page.locator("body")).not.toBeEmpty();
+});
+
 // ─── 4. Invoice List ─────────────────────────────────────────────────────────
 
 test("invoice list page renders with filter controls", async ({ page }) => {
