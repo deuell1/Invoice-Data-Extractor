@@ -178,6 +178,68 @@ describe("resolveActorName", () => {
       if (saved !== undefined) process.env.CLERK_SECRET_KEY = saved;
     }
   });
+
+  // ── Timeout / race tests ────────────────────────────────────────────────────
+
+  it("returns null when the Clerk API responds slower than CLERK_NAME_TIMEOUT_MS", async () => {
+    // Set a very short timeout so the test runs quickly without real waiting.
+    const savedTimeout = process.env.CLERK_NAME_TIMEOUT_MS;
+    process.env.CLERK_NAME_TIMEOUT_MS = "50"; // 50 ms timeout
+
+    // This mock takes 300 ms — far longer than the 50 ms timeout.
+    const slowClient: ClerkUsersClient = {
+      async getUser(_userId) {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        return { firstName: "Slow", lastName: "Response" };
+      },
+    };
+
+    try {
+      const start = Date.now();
+      const name = await resolveActorName("user_timeout_test", slowClient);
+      const elapsed = Date.now() - start;
+
+      assert.strictEqual(
+        name,
+        null,
+        "resolveActorName must return null when the Clerk API exceeds the timeout",
+      );
+      // Should resolve well under the slow client's 300 ms delay.
+      assert.ok(
+        elapsed < 250,
+        `resolveActorName should have timed out quickly but took ${elapsed} ms`,
+      );
+    } finally {
+      if (savedTimeout !== undefined) process.env.CLERK_NAME_TIMEOUT_MS = savedTimeout;
+      else delete process.env.CLERK_NAME_TIMEOUT_MS;
+    }
+  });
+
+  it("returns the formatted name when the Clerk API responds within CLERK_NAME_TIMEOUT_MS", async () => {
+    // Set a generous timeout — the fast mock will finish well within it.
+    const savedTimeout = process.env.CLERK_NAME_TIMEOUT_MS;
+    process.env.CLERK_NAME_TIMEOUT_MS = "200"; // 200 ms timeout
+
+    // This mock returns immediately (no artificial delay).
+    const fastClient: ClerkUsersClient = {
+      async getUser(_userId) {
+        return { firstName: "Fast", lastName: "User" };
+      },
+    };
+
+    try {
+      const name = await resolveActorName("user_fast_test", fastClient);
+
+      assert.strictEqual(
+        name,
+        "Fast User",
+        "resolveActorName must return the formatted name when the Clerk API responds in time",
+      );
+    } finally {
+      if (savedTimeout !== undefined) process.env.CLERK_NAME_TIMEOUT_MS = savedTimeout;
+      else delete process.env.CLERK_NAME_TIMEOUT_MS;
+    }
+  });
 });
 
 // ─── actorNameCache (TTL cache) ───────────────────────────────────────────────
