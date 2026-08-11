@@ -867,9 +867,9 @@ export async function runExtraction(invoiceId: number): Promise<void> {
         invoiceDate: fields.invoiceDate,
         dueDate: fields.dueDate,
         totalAmount: fields.totalAmount != null ? String(fields.totalAmount) : null,
-        taxAmount: fields.taxAmount != null ? String(fields.taxAmount) : null,
+        taxAmount: String(fields.taxAmount ?? 0),
         subtotal: fields.subtotal != null ? String(fields.subtotal) : null,
-        freightAmount: fields.freightAmount != null ? String(fields.freightAmount) : null,
+        freightAmount: String(fields.freightAmount ?? 0),
         discountAmount: fields.discountAmount != null ? String(fields.discountAmount) : null,
         otherChargesAmount:
           fields.otherChargesAmount != null ? String(fields.otherChargesAmount) : null,

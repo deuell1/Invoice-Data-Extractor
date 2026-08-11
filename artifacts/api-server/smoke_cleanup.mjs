@@ -59,21 +59,46 @@ export async function runCleanup({
 
   // Step 1: void all invoices first (handles POSTED/APPROVED that cannot be
   // hard-deleted directly).
+  //
+  // Retry once on "fetch failed" (ECONNREFUSED): after a long-running spawnSync
+  // (e.g. Suite 15/16 vitest subprocesses) the underlying HTTP connection pool
+  // may have stale connections that fail on the first attempt but succeed after
+  // a short pause.
   for (const id of createdInvoiceIds) {
-    try {
-      const { status } = await api("POST", `/invoices/${id}/void`, {
-        reason: "Smoke-test cleanup — automated removal after run",
-      });
-      if (status === 200 || status === 404) {
-        // 200 = voided, 404 = already gone — both are fine
-      } else {
-        const msg = `cleanup: void invoice ${id} returned unexpected status ${status} (expected 200 or 404 — voucher/approval state may be blocking void)`;
-        console.error(`  ✗ FAIL: ${msg}`);
-        failed++;
-        failures.push(msg);
+    let lastErr = null;
+    let succeeded = false;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (attempt > 0) {
+        // Brief pause before retry to let the connection pool recover.
+        await new Promise((r) => setTimeout(r, 800));
       }
-    } catch (err) {
-      const msg = `cleanup: void invoice ${id} threw unexpectedly: ${err.message}`;
+      try {
+        const { status } = await api("POST", `/invoices/${id}/void`, {
+          reason: "Smoke-test cleanup — automated removal after run",
+        });
+        if (status === 200 || status === 404) {
+          // 200 = voided, 404 = already gone — both are fine
+          succeeded = true;
+          break;
+        } else {
+          const msg = `cleanup: void invoice ${id} returned unexpected status ${status} (expected 200 or 404 — voucher/approval state may be blocking void)`;
+          console.error(`  ✗ FAIL: ${msg}`);
+          failed++;
+          failures.push(msg);
+          succeeded = true; // don't retry non-network errors
+          break;
+        }
+      } catch (err) {
+        lastErr = err;
+        // Only retry on network-level errors (fetch failed / ECONNREFUSED).
+        if (!err.message?.includes("fetch failed") && !err.message?.includes("ECONNREFUSED")) {
+          break;
+        }
+        console.warn(`  ⚠ void invoice ${id} attempt ${attempt + 1} threw "${err.message}" — ${attempt < 1 ? "retrying…" : "giving up"}`);
+      }
+    }
+    if (!succeeded && lastErr) {
+      const msg = `cleanup: void invoice ${id} threw unexpectedly: ${lastErr.message}`;
       console.error(`  ✗ FAIL: ${msg}`);
       failed++;
       failures.push(msg);

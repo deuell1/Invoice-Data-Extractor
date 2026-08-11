@@ -8,7 +8,8 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test:unit": "node --test --import tsx/esm src/middlewares/__tests__/requireAuth.test.ts src/routes/__tests__/webhooks.test.ts src/routes/__tests__/webhooks.integration.test.ts"
+    "test:unit": "node --test --import tsx/esm src/middlewares/__tests__/requireAuth.test.ts src/routes/__tests__/webhooks.test.ts src/routes/__tests__/webhooks.integration.test.ts",
+    "purge-orphaned-audit-logs": "npx tsx src/scripts/cleanVendorAuditOrphans.ts --confirm"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.116.0",

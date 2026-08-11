@@ -2089,6 +2089,61 @@ try {
   console.error(`  Suite 16 aborted: ${s16err.message}`);
 }
 
+// ─── Suite 17: DELETE /vendors/:id explicit audit-log delete regression ───────
+//
+// Proves that DELETE /vendors/:id removes vendor_audit_log rows EXPLICITLY
+// (inside its transaction) rather than relying on ON DELETE CASCADE.
+//
+// The subprocess runs with session_replication_role = replica to disable FK
+// cascade enforcement, then calls the route via supertest.  If the route
+// relied solely on CASCADE, orphaned audit rows would remain.  The test fails
+// if any new orphans appear after the delete.
+//
+// If the test file is absent (e.g. running against an older checkout) the suite
+// emits a warning but does not fail — the check was not present in that build.
+
+console.log("\n══════════════════════════════════════════");
+console.log("SUITE 17: DELETE /vendors/:id — explicit audit-log delete regression");
+console.log("  Proves the route explicitly deletes audit rows (not relying on CASCADE)");
+console.log("══════════════════════════════════════════");
+
+try {
+  const vendorDeleteTestPath = path.resolve(
+    __dirname,
+    "src/routes/__tests__/vendorDeleteNoOrphan.test.ts",
+  );
+
+  if (!existsSync(vendorDeleteTestPath)) {
+    warn(`Suite 17 SKIPPED — test file not found at ${vendorDeleteTestPath}`);
+  } else {
+    const s17Result = spawnSync(
+      "node",
+      ["--test", "--import", "tsx/esm", vendorDeleteTestPath],
+      {
+        cwd: __dirname,
+        encoding: "utf8",
+        env: { ...process.env },
+        timeout: 30_000,
+      },
+    );
+
+    if (s17Result.stdout) process.stdout.write(s17Result.stdout);
+    if (s17Result.stderr) process.stderr.write(s17Result.stderr);
+
+    assert(
+      s17Result.status === 0,
+      `Suite 17: vendor-delete no-orphan regression test passed (exit code ${s17Result.status ?? "null (signal: " + s17Result.signal + ")"})`,
+    );
+    console.log("  → Suite 17 passed: DELETE /vendors/:id leaves zero orphaned audit rows even without CASCADE");
+  }
+} catch (s17err) {
+  if (!failures.some((f) => f === s17err.message)) {
+    failed++;
+    failures.push(`Suite 17 unexpected error: ${s17err.message}`);
+  }
+  console.error(`  Suite 17 aborted: ${s17err.message}`);
+}
+
 // ─── Summary ──────────────────────────────────────────────────────────────────
 
 console.log("\n══════════════════════════════════════════");
