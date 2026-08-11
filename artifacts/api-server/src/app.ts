@@ -9,6 +9,7 @@ import {
   getClerkProxyHost,
 } from "./middlewares/clerkProxyMiddleware";
 import router from "./routes";
+import webhooksRouter from "./routes/webhooks";
 import { logger } from "./lib/logger";
 
 const app: Express = express();
@@ -37,6 +38,12 @@ app.use(
 app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 
 app.use(cors({ credentials: true, origin: true }));
+
+// Webhook routes must be mounted BEFORE express.json() so they receive the raw
+// body that Svix needs for signature verification.  Scope the raw-body parser
+// to just the webhook path so it does not interfere with any other routes.
+app.use("/webhooks", express.raw({ type: "application/json" }), webhooksRouter);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
