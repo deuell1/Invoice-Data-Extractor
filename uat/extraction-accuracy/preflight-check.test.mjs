@@ -1,7 +1,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // preflight-check.test.mjs
 //
-// Unit tests for checkBaselineCorrections() and BASELINE_PREFLIGHT.
+// Unit tests for checkBaselineCorrections(), BASELINE_PREFLIGHT,
+// CORRECTIONS_REGISTRY, and validateCorrectionsCoverage().
 //
 // Design
 // ──────
@@ -21,6 +22,10 @@
 // The non-pack scoping test uses an invoice with the same patched values but
 // a different originalFileName; the preflight must NOT fire.
 //
+// The CORRECTIONS_REGISTRY coverage suite uses validateCorrectionsCoverage()
+// both with real filesystem data and with fabricated inputs (negative tests)
+// to prove the data-contract enforcement actually works.
+//
 // Run with:
 //   node --test uat/extraction-accuracy/preflight-check.test.mjs
 // or via the workspace test suite:
@@ -29,8 +34,20 @@
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { readdir } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 
-import { BASELINE_PREFLIGHT, checkBaselineCorrections, PACK_FILE } from "./preflight.mjs";
+import {
+  BASELINE_PREFLIGHT,
+  checkBaselineCorrections,
+  CORRECTIONS_REGISTRY,
+  PACK_FILE,
+  validateCorrectionsCoverage,
+} from "./preflight.mjs";
+
+// Absolute path to this directory so we can scan it for corrections files.
+const DIR = path.dirname(fileURLToPath(import.meta.url));
 
 // ─── Unpatched baseline actuals (legitimate control-run state) ────────────────
 // These represent the five test-pack invoices exactly as the extraction pipeline
@@ -335,5 +352,112 @@ describe("checkBaselineCorrections — all seven patches applied simultaneously"
         `Missing violation for ${pf.id}`,
       );
     }
+  });
+});
+
+// ─── CORRECTIONS_REGISTRY live coverage ──────────────────────────────────────
+// Cross-references the registry against files that actually exist on disk.
+// Fails if any apply-*-corrections file on disk is unregistered, or if any
+// registered entry names a file that no longer exists or has no valid preflight
+// ids.
+
+describe("CORRECTIONS_REGISTRY — live filesystem coverage", () => {
+  /** Basenames in this directory that match the corrections naming convention. */
+  async function findCorrectionsFiles() {
+    const entries = await readdir(DIR);
+    return entries.filter((name) => /^apply-.*-corrections\.(sql|mjs)$/i.test(name));
+  }
+
+  test("no violations between CORRECTIONS_REGISTRY, BASELINE_PREFLIGHT, and files on disk", async () => {
+    const filesOnDisk = await findCorrectionsFiles();
+    const violations = validateCorrectionsCoverage(
+      CORRECTIONS_REGISTRY,
+      BASELINE_PREFLIGHT,
+      filesOnDisk,
+    );
+    assert.deepEqual(
+      violations,
+      [],
+      `CORRECTIONS_REGISTRY coverage violations detected:\n${violations.join("\n")}\n\n` +
+        `For every apply-*-corrections file on disk:\n` +
+        `  1. Add its basename as a key in CORRECTIONS_REGISTRY in preflight.mjs\n` +
+        `  2. List every BASELINE_PREFLIGHT id that guards against its patches\n` +
+        `  3. Add the corresponding BASELINE_PREFLIGHT entries if new ids are needed`,
+    );
+  });
+});
+
+// ─── validateCorrectionsCoverage — negative (unit) tests ─────────────────────
+// These tests use fabricated inputs — no filesystem access — to prove the
+// validation logic catches each failure mode.  A developer who adds a
+// corrections file and registers it correctly but lists zero preflight ids, a
+// non-existent id, or forgets to register it at all must see a failure here.
+
+describe("validateCorrectionsCoverage — negative scenarios (pure unit tests)", () => {
+  /** A minimal but valid preflight array for use in fabricated scenarios. */
+  const FAKE_PREFLIGHT = [
+    { id: "PF-99", description: "fake entry", check: () => false },
+  ];
+
+  test("reports UNREGISTERED when a corrections file on disk has no registry entry", () => {
+    const violations = validateCorrectionsCoverage(
+      {},                              // empty registry
+      FAKE_PREFLIGHT,
+      ["apply-new-corrections.sql"],   // file exists on disk
+    );
+    assert.ok(
+      violations.some((v) => v.includes("UNREGISTERED")),
+      `Expected UNREGISTERED violation; got: ${JSON.stringify(violations)}`,
+    );
+  });
+
+  test("reports STALE when a registry entry names a file that does not exist on disk", () => {
+    const violations = validateCorrectionsCoverage(
+      { "apply-old-corrections.sql": ["PF-99"] }, // registered but not on disk
+      FAKE_PREFLIGHT,
+      [],                                          // nothing on disk
+    );
+    assert.ok(
+      violations.some((v) => v.includes("STALE")),
+      `Expected STALE violation; got: ${JSON.stringify(violations)}`,
+    );
+  });
+
+  test("reports EMPTY_COVERAGE when a registered entry maps to an empty id array", () => {
+    const violations = validateCorrectionsCoverage(
+      { "apply-new-corrections.sql": [] }, // registered with no preflight ids
+      FAKE_PREFLIGHT,
+      ["apply-new-corrections.sql"],
+    );
+    assert.ok(
+      violations.some((v) => v.includes("EMPTY_COVERAGE")),
+      `Expected EMPTY_COVERAGE violation; got: ${JSON.stringify(violations)}`,
+    );
+  });
+
+  test("reports UNKNOWN_ID when a registered entry lists a preflight id that does not exist", () => {
+    const violations = validateCorrectionsCoverage(
+      { "apply-new-corrections.sql": ["PF-DOES-NOT-EXIST"] },
+      FAKE_PREFLIGHT,                          // only PF-99 is real
+      ["apply-new-corrections.sql"],
+    );
+    assert.ok(
+      violations.some((v) => v.includes("UNKNOWN_ID")),
+      `Expected UNKNOWN_ID violation; got: ${JSON.stringify(violations)}`,
+    );
+  });
+
+  test("passes when registry is empty and no corrections files exist on disk", () => {
+    const violations = validateCorrectionsCoverage({}, FAKE_PREFLIGHT, []);
+    assert.deepEqual(violations, [], `Expected no violations; got: ${JSON.stringify(violations)}`);
+  });
+
+  test("passes when a corrections file is correctly registered with a valid preflight id", () => {
+    const violations = validateCorrectionsCoverage(
+      { "apply-new-corrections.sql": ["PF-99"] },
+      FAKE_PREFLIGHT,
+      ["apply-new-corrections.sql"],
+    );
+    assert.deepEqual(violations, [], `Expected no violations; got: ${JSON.stringify(violations)}`);
   });
 });
