@@ -1875,6 +1875,75 @@ try {
   console.error(`  Suite 14 aborted: ${s14err.message}`);
 }
 
+// ─── Suite 15: Cold-cache actorName resolution after server restart ────────────
+//
+// The display-name cache (actorNameCache in requireAuth.ts) is held in process
+// memory.  A server restart wipes it unconditionally — there is no warm-up step
+// and no external cache store.  This is intentional: the complexity of a shared
+// cache (Redis, etc.) is not justified for a single extra Clerk round-trip per
+// real user per restart.  System actors (smoke-test, system-pipeline, etc.)
+// bypass the cache entirely and never trigger a Clerk round-trip.
+//
+// Because the smoke-test HTTP bypass sets clerkActorName = null directly without
+// ever calling resolveActorName, the HTTP layer cannot exercise the cache path.
+// This suite therefore spawns a fresh Node.js subprocess that imports the
+// requireAuth module in a brand-new process (guaranteed cold cache — identical
+// to a real server restart) and exercises resolveActorName directly with a mock
+// Clerk client.  The subprocess runs four assertions:
+//
+//   1. Post-restart cold cache: first call for a non-system userId hits Clerk
+//      exactly once and returns the resolved name.
+//   2. Warm-up after cold miss: the second call for the same userId is served
+//      from the cache without hitting Clerk again.
+//   3. Restart simulation (cache.clear): clearing the cache forces the next
+//      call to re-invoke Clerk, proving expiry/refresh still works post-restart.
+//   4. System actors are never cached regardless of restart state.
+
+console.log("\n══════════════════════════════════════════");
+console.log("SUITE 15: Cold-cache actorName resolution after server restart");
+console.log("  Runs resolveActorName in a fresh subprocess (guaranteed cold cache)");
+console.log("  Exercises: cold miss → Clerk hit, warm hit → no Clerk, restart → re-hit");
+console.log("══════════════════════════════════════════");
+
+try {
+  const coldCacheTestPath = path.resolve(
+    __dirname,
+    "src/middlewares/__tests__/cold-cache-restart.test.ts",
+  );
+
+  const s15Result = spawnSync(
+    "node",
+    ["--test", "--import", "tsx/esm", coldCacheTestPath],
+    {
+      cwd: __dirname,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        // Unset CLERK_SECRET_KEY so resolveActorName uses the injected mock
+        // client and never tries to create a real Clerk connection.
+        CLERK_SECRET_KEY: "",
+      },
+      timeout: 30_000,
+    },
+  );
+
+  // Emit the subprocess output so failures are diagnosable in CI logs.
+  if (s15Result.stdout) process.stdout.write(s15Result.stdout);
+  if (s15Result.stderr) process.stderr.write(s15Result.stderr);
+
+  assert(
+    s15Result.status === 0,
+    `Suite 15: cold-cache-restart unit tests passed (exit code ${s15Result.status ?? "null (signal: " + s15Result.signal + ")"})`,
+  );
+  console.log("  → Suite 15 passed: cold-cache resolveActorName behavior correct after restart");
+} catch (s15err) {
+  if (!failures.some((f) => f === s15err.message)) {
+    failed++;
+    failures.push(`Suite 15 unexpected error: ${s15err.message}`);
+  }
+  console.error(`  Suite 15 aborted: ${s15err.message}`);
+}
+
 // ─── Summary ──────────────────────────────────────────────────────────────────
 
 console.log("\n══════════════════════════════════════════");

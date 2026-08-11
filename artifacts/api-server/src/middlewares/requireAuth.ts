@@ -24,6 +24,17 @@ interface CacheEntry {
  * in insertion order) is evicted before adding a new one.
  *
  * Exported so unit tests can inspect or clear it between cases.
+ *
+ * INTENTIONAL DESIGN — in-process only:
+ * This cache lives entirely in process memory.  A server restart always clears
+ * it, so the first authenticated non-system request after a restart will hit
+ * the Clerk API regardless of how recently that name was last resolved.  System
+ * actors (smoke-test, system-pipeline, etc.) bypass the cache entirely and
+ * never trigger a Clerk round-trip.  This is deliberate: persisting the cache
+ * across restarts would require an external store (Redis, etc.), adding
+ * operational complexity for a low-frequency lookup.  The trade-off is
+ * accepted — a single extra Clerk round-trip per real user per restart is well
+ * within the 500 ms timeout budget and does not block the request.
  */
 export const actorNameCache = new Map<string, CacheEntry>();
 
