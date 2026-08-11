@@ -1308,6 +1308,26 @@ console.log("══════════════════════�
     const uatPdf = readFileSync(uatPdfPath);
     console.log(`  → UAT PDF loaded: ${(uatPdf.length / 1024).toFixed(1)} KB`);
 
+    // ── Preflight: confirm extraction service is reachable ──────────────────────
+    // Suite 11 depends on real extraction (OpenAI or Anthropic). When the API key
+    // is absent or the service is unreachable the suite would otherwise hang for
+    // 90–120 s before timing out with a misleading error. Skip cleanly instead so
+    // the run does not count this suite as a failure.
+    // Mirror the provider logic from extractionService.isExtractionConfigured().
+    const s11ExtractionProvider = (process.env.EXTRACTION_PROVIDER ?? "openai").toLowerCase();
+    const s11ExtractionAvailable =
+      s11ExtractionProvider === "anthropic"
+        ? Boolean((process.env.ANTHROPIC_API_KEY ?? "").trim())
+        : Boolean((process.env.OPENAI_API_KEY ?? "").trim());
+
+    if (!s11ExtractionAvailable) {
+      warn(
+        `Suite 11 SKIPPED — extraction service is not configured ` +
+        `(provider="${s11ExtractionProvider}", key absent); ` +
+        `skipping without failure so CI is not gated on external-service availability`,
+      );
+    } else {
+
     // Stage 1: Request presigned upload URL.
     const s11UrlRes = await api("POST", "/storage/uploads/request-url", {
       name: "regression_guard_suite11.pdf",
@@ -1540,6 +1560,7 @@ console.log("══════════════════════�
       `Suite 11: overall extraction accuracy ${s11Accuracy.toFixed(1)}% >= ${ACCURACY_THRESHOLD}% threshold`,
     );
     console.log(`  ✓ All TP-001–TP-005 fields (vendorRawName, invoiceNumber, invoiceDate, dueDate, paymentTerms, subtotal, taxAmount, totalAmount, currency) match snapshot, accuracy=${s11Accuracy.toFixed(1)}%`);
+    } // end if (s11ExtractionAvailable)
   }
 }
 
