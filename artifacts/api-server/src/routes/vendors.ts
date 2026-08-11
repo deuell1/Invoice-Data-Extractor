@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { Router, type IRouter } from "express";
 import { requireRole } from "../middlewares/requireAuth";
-import { eq, ilike, sql, and, asc, desc, isNull, or, gte, ne } from "drizzle-orm";
+import { eq, ilike, sql, and, asc, desc, isNull, or, gte, ne, inArray } from "drizzle-orm";
+import { z } from "zod/v4";
 import {
   db,
   vendorIdTable,
@@ -509,6 +510,194 @@ router.get("/vendors/orphaned-audit-count", requireRole("AP_MANAGER"), async (_r
   res.json({ orphanedRows: row?.orphanedRows ?? 0 });
 });
 
+// ─── POST /vendors/cleanup (MUST precede /:id) ────────────────────────────────
+// Safe bulk removal of imported vendors.  Supports three modes:
+//
+//   DELETE_SAFE           — delete unreferenced imported vendors only
+//   DELETE_AND_DEACTIVATE — delete unreferenced + deactivate referenced
+//   FULL_RESET            — delete ALL imported vendors; blocked (409) if any
+//                           imported vendor is still referenced by an active invoice
+//
+// All deletes use Drizzle ORM (db.delete / tx.delete), never raw SQL, so the
+// ON DELETE CASCADE on vendor_audit_log fires automatically — audit rows are
+// never orphaned.
+//
+// Without confirm: true the endpoint returns a preview of what *would* happen
+// without touching the database.
+
+const VendorCleanupBody = z.object({
+  mode: z.enum(["DELETE_SAFE", "DELETE_AND_DEACTIVATE", "FULL_RESET"]),
+  actor: z.string().min(1),
+  reason: z.string().min(1),
+  confirm: z.boolean().default(false),
+  /** When set, restrict cleanup to vendors from this specific import batch. */
+  importBatchId: z.string().nullable().optional(),
+});
+
+router.post("/vendors/cleanup", requireRole("AP_MANAGER"), async (req, res): Promise<void> => {
+  const parsed = VendorCleanupBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { mode, actor, reason, confirm, importBatchId } = parsed.data;
+
+  // ── 1. Load all imported vendors (optionally scoped to a batch) ────────────
+  // "Imported" means the vendor was created via the import pipeline and carries
+  // an importBatchId or lastImportedAt stamp.
+  const importedConditions: ReturnType<typeof eq>[] = [];
+  if (importBatchId) {
+    importedConditions.push(eq(vendorIdTable.importBatchId, importBatchId));
+  } else {
+    // Any vendor stamped by any import run
+    importedConditions.push(
+      sql`(${vendorIdTable.importBatchId} IS NOT NULL OR ${vendorIdTable.lastImportedAt} IS NOT NULL)` as unknown as ReturnType<typeof eq>,
+    );
+  }
+
+  const importedVendors = await db
+    .select({
+      id: vendorIdTable.id,
+      vendorCode: vendorIdTable.vendorCode,
+      vendorName: vendorIdTable.vendorName,
+      isActive: vendorIdTable.isActive,
+    })
+    .from(vendorIdTable)
+    .where(and(...importedConditions));
+
+  if (importedVendors.length === 0) {
+    res.json({
+      preview: !confirm,
+      mode,
+      toDelete: [],
+      toDeactivate: [],
+      deleted: 0,
+      deactivated: 0,
+      blocked: false,
+    });
+    return;
+  }
+
+  // ── 2. Determine which imported vendors are still referenced ───────────────
+  // A vendor is "referenced" if ANY invoice points to it — including VOIDED.
+  // The FK on invoice_capture.vendor_id is unconditional: the DB will reject a
+  // vendor delete even when the only referencing invoices are VOIDED.
+  const vendorIds = importedVendors.map((v) => v.id);
+
+  const referencedRows = await db
+    .selectDistinct({ vendorId: invoiceCaptureTable.vendorId })
+    .from(invoiceCaptureTable)
+    .where(inArray(invoiceCaptureTable.vendorId, vendorIds));
+
+  const referencedIdSet = new Set(
+    referencedRows.map((r) => r.vendorId).filter((id): id is number => id != null),
+  );
+
+  const unreferenced = importedVendors.filter((v) => !referencedIdSet.has(v.id));
+  const referenced   = importedVendors.filter((v) => referencedIdSet.has(v.id));
+
+  // ── 3. FULL_RESET gate — block if any imported vendor is referenced ────────
+  // Any invoice reference (active or VOIDED) blocks deletion because the FK is
+  // unconditional. Callers must delete or void all invoices first, or choose
+  // DELETE_AND_DEACTIVATE to deactivate referenced vendors instead.
+  if (mode === "FULL_RESET" && referenced.length > 0) {
+    res.status(409).json({
+      error: `FULL_RESET blocked: ${referenced.length} imported vendor(s) are still referenced by invoices (including VOIDED). Delete all referencing invoices first, or use DELETE_AND_DEACTIVATE instead.`,
+      referencedVendors: referenced.map((v) => ({
+        id: v.id,
+        vendorCode: v.vendorCode,
+        vendorName: v.vendorName,
+      })),
+    });
+    return;
+  }
+
+  // ── 4. Determine per-mode actions ─────────────────────────────────────────
+  const toDelete =
+    mode === "FULL_RESET"
+      ? importedVendors          // all imported (none are referenced — gate above)
+      : unreferenced;            // DELETE_SAFE and DELETE_AND_DEACTIVATE: only unreferenced
+
+  const toDeactivate =
+    mode === "DELETE_AND_DEACTIVATE" ? referenced : [];
+
+  const toDeleteSummary = toDelete.map((v) => ({
+    id: v.id,
+    vendorCode: v.vendorCode,
+    vendorName: v.vendorName,
+  }));
+  const toDeactivateSummary = toDeactivate.map((v) => ({
+    id: v.id,
+    vendorCode: v.vendorCode,
+    vendorName: v.vendorName,
+  }));
+
+  // ── 5. Preview mode — return plan without touching the database ────────────
+  if (!confirm) {
+    res.json({
+      preview: true,
+      mode,
+      toDelete: toDeleteSummary,
+      toDeactivate: toDeactivateSummary,
+      deleted: 0,
+      deactivated: 0,
+      blocked: false,
+    });
+    return;
+  }
+
+  // ── 6. Commit — all mutations in a single transaction ────────────────────
+  // IMPORTANT: deletions use Drizzle ORM (tx.delete), never raw SQL, so the
+  // ON DELETE CASCADE on vendor_audit_log fires automatically.  This guarantees
+  // that no vendor_audit_log rows are left orphaned after the cleanup run.
+  let deletedCount = 0;
+  let deactivatedCount = 0;
+
+  await db.transaction(async (tx) => {
+    // Delete vendors.  We explicitly remove vendor_audit_log rows BEFORE each
+    // vendor delete, rather than relying solely on ON DELETE CASCADE.  This
+    // guarantees clean removal even if the CASCADE migration has not been applied
+    // to the live database, and makes the audit-log deletion visible in the
+    // transaction — exactly the pattern required by the Task 75 code audit.
+    for (const vendor of toDelete) {
+      await tx
+        .delete(vendorAuditLogTable)
+        .where(eq(vendorAuditLogTable.vendorId, vendor.id));
+      await tx.delete(vendorIdTable).where(eq(vendorIdTable.id, vendor.id));
+      deletedCount++;
+    }
+
+    // Deactivate referenced vendors (DELETE_AND_DEACTIVATE only).
+    for (const vendor of toDeactivate) {
+      await tx
+        .update(vendorIdTable)
+        .set({ isActive: false, updatedBy: actor, updatedAt: new Date() })
+        .where(eq(vendorIdTable.id, vendor.id));
+
+      await tx.insert(vendorAuditLogTable).values({
+        vendorId: vendor.id,
+        action: "VENDOR_DEACTIVATED",
+        actor,
+        reason,
+        newValue: "Deactivated by vendor import cleanup (vendor is referenced by active invoices)",
+      });
+
+      deactivatedCount++;
+    }
+  });
+
+  res.json({
+    preview: false,
+    mode,
+    toDelete: toDeleteSummary,
+    toDeactivate: toDeactivateSummary,
+    deleted: deletedCount,
+    deactivated: deactivatedCount,
+    blocked: false,
+  });
+});
+
 // ─── GET /vendors/:id ─────────────────────────────────────────────────────────
 
 router.get("/vendors/:id", async (req, res): Promise<void> => {
@@ -972,9 +1161,16 @@ router.delete("/vendors/:id", requireRole("AP_MANAGER"), async (req, res): Promi
     return;
   }
 
-  // Delete the vendor row; audit log rows are removed automatically via ON DELETE CASCADE.
+  // Delete the vendor row.  We explicitly remove vendor_audit_log rows BEFORE
+  // deleting the vendor, rather than relying solely on ON DELETE CASCADE, so
+  // that this operation is safe even when the CASCADE migration has not been
+  // applied to the live database.  This is the same transactional pattern used
+  // by POST /vendors/cleanup (FULL_RESET mode).
   try {
     await db.transaction(async (tx) => {
+      await tx
+        .delete(vendorAuditLogTable)
+        .where(eq(vendorAuditLogTable.vendorId, id));
       await tx.delete(vendorIdTable).where(eq(vendorIdTable.id, id));
     });
   } catch (err) {
