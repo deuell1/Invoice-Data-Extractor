@@ -4,6 +4,73 @@ import type { Request, Response, NextFunction } from "express";
 
 export type UserRole = "AP_MANAGER" | "AP_CLERK";
 
+// ─── Display-name TTL cache ───────────────────────────────────────────────────
+
+/**
+ * A single entry in the display-name cache.
+ */
+interface CacheEntry {
+  name: string | null;
+  /** Absolute expiry timestamp in milliseconds (Date.now() + TTL). */
+  expiresAt: number;
+}
+
+/**
+ * Bounded TTL cache for resolved Clerk display names.
+ *
+ * Keyed by userId.  Entries expire after CLERK_NAME_CACHE_TTL_MS milliseconds
+ * (default 5 min = 300_000 ms).  The cache is capped at CLERK_NAME_CACHE_MAX
+ * entries (default 1 000); when the cap is reached the oldest entry (first key
+ * in insertion order) is evicted before adding a new one.
+ *
+ * Exported so unit tests can inspect or clear it between cases.
+ */
+export const actorNameCache = new Map<string, CacheEntry>();
+
+/** Default TTL: 5 minutes.  Override with CLERK_NAME_CACHE_TTL_MS env var. */
+const DEFAULT_CACHE_TTL_MS = 5 * 60 * 1_000;
+
+/** Default max entries: 1 000.  Override with CLERK_NAME_CACHE_MAX env var. */
+const DEFAULT_CACHE_MAX = 1_000;
+
+function cacheTtlMs(): number {
+  return Number(process.env.CLERK_NAME_CACHE_TTL_MS) || DEFAULT_CACHE_TTL_MS;
+}
+
+function cacheMax(): number {
+  return Number(process.env.CLERK_NAME_CACHE_MAX) || DEFAULT_CACHE_MAX;
+}
+
+/**
+ * Return the cached name for userId if the entry exists and has not expired.
+ * Returns `undefined` on a cache miss or stale entry (stale entries are pruned).
+ */
+function cacheGet(userId: string): string | null | undefined {
+  const entry = actorNameCache.get(userId);
+  if (!entry) return undefined;
+  if (Date.now() > entry.expiresAt) {
+    actorNameCache.delete(userId);
+    return undefined;
+  }
+  return entry.name;
+}
+
+/**
+ * Store a resolved name in the cache, evicting the oldest entry if the cap
+ * would be exceeded.
+ */
+function cacheSet(userId: string, name: string | null): void {
+  // Evict the oldest entry when at capacity (Map iteration is insertion-ordered).
+  const max = cacheMax();
+  if (actorNameCache.size >= max && !actorNameCache.has(userId)) {
+    const oldestKey = actorNameCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      actorNameCache.delete(oldestKey);
+    }
+  }
+  actorNameCache.set(userId, { name, expiresAt: Date.now() + cacheTtlMs() });
+}
+
 // ─── Actor name resolution ────────────────────────────────────────────────────
 
 /**
@@ -47,7 +114,7 @@ export async function resolveActorName(
    */
   clerkUsers?: ClerkUsersClient,
 ): Promise<string | null> {
-  // System actors have no Clerk profile — skip the API call.
+  // System actors have no Clerk profile — skip the API call (and the cache).
   if (
     !userId ||
     userId === "system-pipeline" ||
@@ -55,6 +122,12 @@ export async function resolveActorName(
     userId.startsWith("system")
   ) {
     return null;
+  }
+
+  // ── Cache look-up ────────────────────────────────────────────────────────
+  const cached = cacheGet(userId);
+  if (cached !== undefined) {
+    return cached;
   }
 
   try {
@@ -76,6 +149,13 @@ export async function resolveActorName(
     const fetchPromise = users.getUser(userId).then(formatActorName);
 
     const result = await Promise.race([fetchPromise, timeoutPromise]);
+
+    // ── Cache store ──────────────────────────────────────────────────────
+    // Cache whatever we resolved (including null — no name, or a timeout).
+    // The 5-minute TTL keeps stale data minimal; on a timeout the next
+    // request will retry after the entry expires.
+    cacheSet(userId, result);
+
     return result;
   } catch {
     // Never let name resolution fail a request.

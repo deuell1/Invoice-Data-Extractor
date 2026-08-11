@@ -13,10 +13,10 @@
  *   node --test --import tsx/esm src/middlewares/__tests__/requireAuth.test.ts
  */
 
-import { describe, it } from "node:test";
+import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
-import { formatActorName, resolveActorName } from "../requireAuth.js";
+import { formatActorName, resolveActorName, actorNameCache } from "../requireAuth.js";
 import type { ClerkUsersClient } from "../requireAuth.js";
 
 // ─── formatActorName ─────────────────────────────────────────────────────────
@@ -79,6 +79,11 @@ function mockClerkUsersThrows(message = "Clerk API error"): ClerkUsersClient {
 }
 
 describe("resolveActorName", () => {
+  // Clear the shared cache before every test so no prior result leaks across cases.
+  beforeEach(() => {
+    actorNameCache.clear();
+  });
+
   // ── The critical regression test ────────────────────────────────────────────
   // This is the primary test this task exists to create:
   // when a real Clerk user's profile is available, actorName MUST NOT be null.
@@ -172,5 +177,116 @@ describe("resolveActorName", () => {
     } finally {
       if (saved !== undefined) process.env.CLERK_SECRET_KEY = saved;
     }
+  });
+});
+
+// ─── actorNameCache (TTL cache) ───────────────────────────────────────────────
+
+describe("actorNameCache — resolveActorName caching behaviour", () => {
+  // Clear the shared cache before every test so cases are fully independent.
+  beforeEach(() => {
+    actorNameCache.clear();
+  });
+
+  it("returns the cached name on a second call without hitting Clerk again", async () => {
+    let callCount = 0;
+    const countingClient: ClerkUsersClient = {
+      async getUser(_userId) {
+        callCount += 1;
+        return { firstName: "Jane", lastName: "Doe" };
+      },
+    };
+
+    const userId = "user_cache_hit_test";
+    const first = await resolveActorName(userId, countingClient);
+    const second = await resolveActorName(userId, countingClient);
+
+    assert.strictEqual(first, "Jane Doe", "first call should return the name");
+    assert.strictEqual(second, "Jane Doe", "second call should return the same name");
+    assert.strictEqual(callCount, 1, "Clerk API must be called exactly once — cache hit on second call");
+  });
+
+  it("calls Clerk again after the cache entry has expired", async () => {
+    let callCount = 0;
+    const countingClient: ClerkUsersClient = {
+      async getUser(_userId) {
+        callCount += 1;
+        return { firstName: "Bob", lastName: "Smith" };
+      },
+    };
+
+    const userId = "user_ttl_expiry_test";
+
+    // Seed the cache with an already-expired entry (expiresAt in the past).
+    actorNameCache.set(userId, { name: "Stale Name", expiresAt: Date.now() - 1 });
+
+    const name = await resolveActorName(userId, countingClient);
+
+    assert.strictEqual(name, "Bob Smith", "should return freshly resolved name after expiry");
+    assert.strictEqual(callCount, 1, "Clerk API must be called once after expiry");
+  });
+
+  it("different userIds are cached independently", async () => {
+    let callCount = 0;
+    const countingClient: ClerkUsersClient = {
+      async getUser(userId) {
+        callCount += 1;
+        return userId === "user_a" ? { firstName: "Alice" } : { firstName: "Bob" };
+      },
+    };
+
+    const nameA1 = await resolveActorName("user_a", countingClient);
+    const nameB1 = await resolveActorName("user_b", countingClient);
+    const nameA2 = await resolveActorName("user_a", countingClient); // cache hit
+    const nameB2 = await resolveActorName("user_b", countingClient); // cache hit
+
+    assert.strictEqual(nameA1, "Alice");
+    assert.strictEqual(nameB1, "Bob");
+    assert.strictEqual(nameA2, "Alice", "user_a name cached correctly");
+    assert.strictEqual(nameB2, "Bob", "user_b name cached independently");
+    assert.strictEqual(callCount, 2, "Clerk must only be called once per distinct userId");
+  });
+
+  it("evicts the oldest entry when the cache is at capacity", async () => {
+    // Override the cache max to 2 so we can hit the eviction path easily.
+    const savedMax = process.env.CLERK_NAME_CACHE_MAX;
+    process.env.CLERK_NAME_CACHE_MAX = "2";
+
+    try {
+      const client: ClerkUsersClient = {
+        async getUser(userId) {
+          return { firstName: userId };
+        },
+      };
+
+      await resolveActorName("user_oldest", client); // entry 1 (oldest)
+      await resolveActorName("user_middle", client); // entry 2
+      // Adding entry 3 should evict "user_oldest" (first in insertion order).
+      await resolveActorName("user_newest", client); // entry 3
+
+      assert.strictEqual(actorNameCache.size, 2, "cache must not exceed the configured max");
+      assert.strictEqual(
+        actorNameCache.has("user_oldest"),
+        false,
+        "the oldest entry must have been evicted",
+      );
+      assert.strictEqual(actorNameCache.has("user_middle"), true);
+      assert.strictEqual(actorNameCache.has("user_newest"), true);
+    } finally {
+      if (savedMax !== undefined) process.env.CLERK_NAME_CACHE_MAX = savedMax;
+      else delete process.env.CLERK_NAME_CACHE_MAX;
+    }
+  });
+
+  it("system actors are never stored in the cache", async () => {
+    await resolveActorName("smoke-test");
+    await resolveActorName("system-pipeline");
+    await resolveActorName("system-vendor-matcher");
+
+    assert.strictEqual(
+      actorNameCache.size,
+      0,
+      "system/smoke-test actors must never be cached",
+    );
   });
 });
