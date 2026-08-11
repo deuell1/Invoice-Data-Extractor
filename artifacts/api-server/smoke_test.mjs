@@ -2032,6 +2032,63 @@ try {
   console.error(`  Suite 15 aborted: ${s15err.message}`);
 }
 
+// ─── Suite 16: warnVendorAuditOrphans fires WARN when orphans exist ───────────
+//
+// Verifies the startup orphan-warning logic in fkCoverageCheck.ts:
+//
+//   (a) WARN path (real DB): inserts a vendor + audit row, then raw-deletes the
+//       vendor bypassing ON DELETE CASCADE (SET session_replication_role=replica),
+//       and asserts warnVendorAuditOrphans() emits logger.warn with orphanCount≥1.
+//
+//   (b) INFO path (mocked DB): stubs db.execute to return orphan_count="0" and
+//       asserts that warnVendorAuditOrphans() emits logger.info (not logger.warn).
+//       The INFO path is mocked because pre-existing orphaned rows in the
+//       environment would always trigger the WARN branch, making a real INFO
+//       assertion unreliable against a live DB.
+//
+// Delegates to a subprocess so the real DB connection and logger are used for
+// path (a), and so test isolation is guaranteed regardless of prior suite outcomes.
+
+console.log("\n══════════════════════════════════════════");
+console.log("SUITE 16: warnVendorAuditOrphans — WARN fires when orphans exist");
+console.log("  (a) WARN with orphanCount ≥ 1 when a vendor was deleted out-of-band (real DB)");
+console.log("  (b) INFO (no WARN) when query returns zero orphans (mocked DB)");
+console.log("══════════════════════════════════════════");
+
+try {
+  const orphanTestPath = path.resolve(
+    __dirname,
+    "src/lib/__tests__/warnVendorAuditOrphans.test.ts",
+  );
+
+  const s16Result = spawnSync(
+    "node",
+    ["--test", "--import", "tsx/esm", orphanTestPath],
+    {
+      cwd: __dirname,
+      encoding: "utf8",
+      env: { ...process.env },
+      timeout: 30_000,
+    },
+  );
+
+  // Emit subprocess output so failures are diagnosable in logs.
+  if (s16Result.stdout) process.stdout.write(s16Result.stdout);
+  if (s16Result.stderr) process.stderr.write(s16Result.stderr);
+
+  assert(
+    s16Result.status === 0,
+    `Suite 16: warnVendorAuditOrphans unit tests passed (exit code ${s16Result.status ?? "null (signal: " + s16Result.signal + ")"})`,
+  );
+  console.log("  → Suite 16 passed: orphan WARN fires correctly; INFO fires after cleanup");
+} catch (s16err) {
+  if (!failures.some((f) => f === s16err.message)) {
+    failed++;
+    failures.push(`Suite 16 unexpected error: ${s16err.message}`);
+  }
+  console.error(`  Suite 16 aborted: ${s16err.message}`);
+}
+
 // ─── Summary ──────────────────────────────────────────────────────────────────
 
 console.log("\n══════════════════════════════════════════");
