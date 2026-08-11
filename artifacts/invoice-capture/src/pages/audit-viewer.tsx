@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useGetInvoiceAuditLog,
   getGetInvoiceAuditLogQueryKey,
@@ -14,6 +15,7 @@ import { format } from "date-fns";
 export function AuditViewer() {
   const [inputValue, setInputValue] = useState("");
   const [invoiceId, setInvoiceId] = useState<number | null>(null);
+  const queryClient = useQueryClient();
 
   const { data: logs, isLoading, isError } = useGetInvoiceAuditLog(invoiceId ?? 0, {
     query: {
@@ -26,6 +28,12 @@ export function AuditViewer() {
     e.preventDefault();
     const parsed = parseInt(inputValue, 10);
     setInvoiceId(Number.isNaN(parsed) || parsed <= 0 ? null : parsed);
+  };
+
+  const handleRetry = () => {
+    queryClient.invalidateQueries({
+      queryKey: getGetInvoiceAuditLogQueryKey(invoiceId ?? 0),
+    });
   };
 
   const hasQuery = invoiceId != null && invoiceId > 0;
@@ -81,8 +89,11 @@ export function AuditViewer() {
               <Loader2 className="h-6 w-6 animate-spin mx-auto text-muted-foreground" />
             </div>
           ) : isError ? (
-            <div className="py-12 text-center text-destructive" data-testid="audit-error">
-              Could not load the audit log for invoice #{invoiceId}.
+            <div className="py-12 text-center space-y-3" data-testid="audit-error">
+              <p className="text-destructive">Could not load the audit log for invoice #{invoiceId}.</p>
+              <Button variant="outline" size="sm" onClick={handleRetry} data-testid="button-retry-audit">
+                Try Again
+              </Button>
             </div>
           ) : !logs || logs.length === 0 ? (
             <div className="flex flex-col items-center justify-center text-center py-16 space-y-3 text-muted-foreground" data-testid="audit-empty">

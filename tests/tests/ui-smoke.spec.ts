@@ -973,6 +973,39 @@ test("exception queue audit panel shows all three actor types correctly", async 
   await expect(page.locator("body")).not.toBeEmpty();
 });
 
+// ─── 17. Audit Viewer — retry button visible on error ────────────────────────
+
+test("audit viewer: error state shows retry button", async ({ page }) => {
+  // Mock the audit API for invoice #20 returning 500.
+  await page.route("**/api/invoices/20/audit**", async (route) => {
+    await route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "Internal server error" }),
+    });
+  });
+
+  await page.goto("/audit");
+
+  await expect(
+    page.getByRole("heading", { name: /audit log viewer/i }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  await page.getByTestId("input-invoice-id").fill("20");
+  await page.getByTestId("button-load-audit").click();
+
+  // The error element must appear.
+  await expect(page.getByTestId("audit-error")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // The retry button must be visible alongside the error message.
+  await expect(page.getByTestId("button-retry-audit")).toBeVisible();
+
+  // The page must remain intact — no crash.
+  await expect(page.locator("body")).not.toBeEmpty();
+});
+
 // ─── 4. Invoice List ─────────────────────────────────────────────────────────
 
 test("invoice list page renders with filter controls", async ({ page }) => {
