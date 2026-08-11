@@ -782,6 +782,161 @@ test("audit viewer: FIELD_EDIT with null newValue renders 'empty' on the right s
   await expect(page.locator("body")).not.toBeEmpty();
 });
 
+// ─── 16. Exception Queue — InvoiceAuditPanel actor types ─────────────────────
+
+test("exception queue audit panel shows all three actor types correctly", async ({
+  page,
+}) => {
+  const INVOICE_ID = 50;
+
+  // Mock the exceptions list to return a single invoice.
+  await page.route("**/api/exceptions**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: [
+          {
+            id: INVOICE_ID,
+            invoiceNumber: "INV-TEST-50",
+            vendorId: 1,
+            vendorName: "Acme Corp",
+            invoiceDate: "2026-01-15",
+            totalAmount: 1500,
+            taxAmount: 150,
+            poNumber: "PO-9999",
+            currency: "USD",
+            exceptionReason: "Low confidence",
+            lowConfidenceFields: null,
+            updatedAt: "2026-01-15T10:00:00.000Z",
+            status: "EXCEPTION",
+            exceptionOwner: null,
+          },
+        ],
+        total: 1,
+      }),
+    });
+  });
+
+  // Mock the audit log for this invoice covering all three actor types.
+  await page.route(`**/api/invoices/${INVOICE_ID}/audit**`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          id: 5001,
+          invoiceId: INVOICE_ID,
+          action: "EXTRACTION_COMPLETE",
+          actorClerkId: "system-pipeline",
+          actorName: null,
+          editorRole: null,
+          fieldName: null,
+          oldValue: null,
+          newValue: null,
+          note: "Automated extraction",
+          createdAt: "2026-01-15T08:00:00.000Z",
+        },
+        {
+          id: 5002,
+          invoiceId: INVOICE_ID,
+          action: "STATUS_CHANGE",
+          actorClerkId: "unattributed-legacy",
+          actorName: null,
+          editorRole: null,
+          fieldName: "status",
+          oldValue: "PENDING",
+          newValue: "EXCEPTION",
+          note: null,
+          createdAt: "2026-01-15T09:00:00.000Z",
+        },
+        {
+          id: 5003,
+          invoiceId: INVOICE_ID,
+          action: "FIELD_EDIT",
+          actorClerkId: "user_2abc_real_clerk_id",
+          actorName: "Jane Manager",
+          editorRole: "AP_MANAGER",
+          fieldName: "vendorId",
+          oldValue: "10",
+          newValue: "1",
+          note: null,
+          createdAt: "2026-01-15T10:00:00.000Z",
+        },
+      ]),
+    });
+  });
+
+  // Mock the vendors list (loaded by the page on mount).
+  await page.route("**/api/vendors**", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: [], total: 0 }),
+      });
+    } else {
+      await route.continue();
+    }
+  });
+
+  await page.goto("/exceptions");
+
+  // Wait for the exception queue heading.
+  await expect(
+    page.getByRole("heading", { name: /exception queue/i }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  // The mocked invoice row must be visible.
+  await expect(
+    page.getByTestId(`row-exception-${INVOICE_ID}`),
+  ).toBeVisible({ timeout: 10_000 });
+
+  // Click the chevron cell (first <td> in the row) to expand the audit panel.
+  await page
+    .getByTestId(`row-exception-${INVOICE_ID}`)
+    .locator("td")
+    .first()
+    .click();
+
+  // The audit panel renders inside the expanded row — wait for any content.
+  // "Audit History" label appears as a heading in the expanded row.
+  await expect(page.getByText("Audit History")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // ── system-pipeline → "System" badge ──────────────────────────────────────
+  await expect(page.getByTestId("badge-actor-system")).toBeVisible();
+  await expect(page.getByTestId("badge-actor-system")).toContainText("System");
+
+  // ── unattributed-legacy → "Unknown (legacy)" label ────────────────────────
+  await expect(page.getByTestId("label-actor-legacy")).toBeVisible();
+  await expect(page.getByTestId("label-actor-legacy")).toContainText(
+    "Unknown (legacy)",
+  );
+
+  // ── real Clerk user → actor name rendered, raw Clerk ID absent ────────────
+  await expect(page.getByTestId("label-actor-human")).toBeVisible();
+  await expect(page.getByTestId("label-actor-human")).toContainText(
+    "Jane Manager",
+  );
+
+  // Raw Clerk ID must NOT be visible anywhere in the panel when actorName is
+  // present — the component must display the name, not the opaque ID.
+  await expect(page.getByText("user_2abc_real_clerk_id")).not.toBeVisible();
+
+  // Role badge renders for the AP_MANAGER actor.
+  await expect(page.getByTestId("badge-actor-role")).toBeVisible();
+  await expect(page.getByTestId("badge-actor-role")).toContainText("Manager");
+
+  // Page must remain intact — no crash.
+  await expect(page.locator("body")).not.toBeEmpty();
+});
+
 // ─── 4. Invoice List ─────────────────────────────────────────────────────────
 
 test("invoice list page renders with filter controls", async ({ page }) => {
