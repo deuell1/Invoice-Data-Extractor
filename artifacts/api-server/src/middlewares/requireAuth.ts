@@ -66,8 +66,17 @@ export async function resolveActorName(
       users = createClerkClient({ secretKey }).users as unknown as ClerkUsersClient;
     }
 
-    const user = await users.getUser(userId);
-    return formatActorName(user);
+    // Wrap the Clerk API call with a configurable timeout so a slow or
+    // temporarily unavailable Clerk API never blocks a request.
+    // Default: 500 ms.  Override via CLERK_NAME_TIMEOUT_MS env var.
+    const timeoutMs = Number(process.env.CLERK_NAME_TIMEOUT_MS) || 500;
+    const timeoutPromise = new Promise<null>((resolve) =>
+      setTimeout(() => resolve(null), timeoutMs),
+    );
+    const fetchPromise = users.getUser(userId).then(formatActorName);
+
+    const result = await Promise.race([fetchPromise, timeoutPromise]);
+    return result;
   } catch {
     // Never let name resolution fail a request.
     return null;
