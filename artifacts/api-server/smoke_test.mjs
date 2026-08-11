@@ -997,7 +997,7 @@ console.log("══════════════════════�
   const gtLines = gtCsvText.trim().split(/\r?\n/);
   const gtHeaders = parseCsvRow(gtLines[0]);
   const col = (name) => gtHeaders.indexOf(name);
-  const REQUIRED_CSV_COLS = ["testCaseId", "invoiceNumber", "vendorRawName", "invoiceDate", "dueDate", "subtotal", "taxAmount", "totalAmount", "currency"];
+  const REQUIRED_CSV_COLS = ["testCaseId", "invoiceNumber", "vendorRawName", "invoiceDate", "dueDate", "paymentTerms", "subtotal", "taxAmount", "totalAmount", "currency"];
   const missingCols = REQUIRED_CSV_COLS.filter((h) => col(h) === -1);
   if (missingCols.length > 0) {
     assert(false, `Suite 11: ground-truth CSV is missing required column(s): ${missingCols.join(", ")} (headers found: ${gtHeaders.join(", ")})`);
@@ -1031,6 +1031,7 @@ console.log("══════════════════════�
       vendorRawName: row[col("vendorRawName")].trim(),
       invoiceDate:   row[col("invoiceDate")].trim(),
       dueDate:       row[col("dueDate")].trim(),
+      paymentTerms:  row[col("paymentTerms")].trim(),
       subtotal:      parseRequiredFinite(row[col("subtotal")], "subtotal", rowRef),
       taxAmount:     parseRequiredFinite(row[col("taxAmount")], "taxAmount", rowRef),
       totalAmount:   parseRequiredFinite(row[col("totalAmount")], "totalAmount", rowRef),
@@ -1088,6 +1089,10 @@ console.log("══════════════════════�
     assert(
       isValidCalendarDate(row.dueDate),
       `${loc}: dueDate must be a valid M/D/YYYY calendar date (got "${row.dueDate}")`,
+    );
+    assert(
+      row.paymentTerms.length > 0,
+      `${loc}: paymentTerms must not be empty`,
     );
     // subtotal, taxAmount, and totalAmount are already guaranteed finite by
     // parseRequiredFinite (called during SNAPSHOT construction above), but
@@ -1481,6 +1486,20 @@ console.log("══════════════════════�
           s11Diffs.push(`${snap.testCaseId} currency: expected "${snap.currency}" got "${match.currency ?? "(null)"}"`);
         }
       }
+
+      // — paymentTerms —
+      s11Total++;
+      if (!match) {
+        s11Diffs.push(`${snap.testCaseId} paymentTerms: no extracted invoice matched invoiceNumber="${snap.invoiceNumber}" (expected "${snap.paymentTerms}")`);
+      } else {
+        const extractedTerms = String(match.paymentTerms ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+        const expectedTerms  = snap.paymentTerms.trim().toLowerCase().replace(/\s+/g, " ");
+        if (extractedTerms !== "" && extractedTerms === expectedTerms) {
+          s11Correct++;
+        } else {
+          s11Diffs.push(`${snap.testCaseId} paymentTerms: expected "${snap.paymentTerms}" got "${match.paymentTerms ?? "(null)"}"`);
+        }
+      }
     }
 
     const s11Accuracy = s11Total > 0 ? (s11Correct / s11Total) * 100 : 0;
@@ -1493,13 +1512,13 @@ console.log("══════════════════════�
 
     assert(
       s11Diffs.length === 0,
-      `Suite 11: vendorRawName/invoiceNumber/invoiceDate/dueDate/subtotal/taxAmount/totalAmount/currency match known-correct snapshot for all TP-001–TP-005 (${s11Diffs.length} drift(s): ${s11Diffs.join("; ")})`,
+      `Suite 11: vendorRawName/invoiceNumber/invoiceDate/dueDate/paymentTerms/subtotal/taxAmount/totalAmount/currency match known-correct snapshot for all TP-001–TP-005 (${s11Diffs.length} drift(s): ${s11Diffs.join("; ")})`,
     );
     assert(
       s11Accuracy >= ACCURACY_THRESHOLD,
       `Suite 11: overall extraction accuracy ${s11Accuracy.toFixed(1)}% >= ${ACCURACY_THRESHOLD}% threshold`,
     );
-    console.log(`  ✓ All TP-001–TP-005 fields (vendorRawName, invoiceNumber, invoiceDate, dueDate, subtotal, taxAmount, totalAmount, currency) match snapshot, accuracy=${s11Accuracy.toFixed(1)}%`);
+    console.log(`  ✓ All TP-001–TP-005 fields (vendorRawName, invoiceNumber, invoiceDate, dueDate, paymentTerms, subtotal, taxAmount, totalAmount, currency) match snapshot, accuracy=${s11Accuracy.toFixed(1)}%`);
   }
 }
 
