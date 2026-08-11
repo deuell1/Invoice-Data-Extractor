@@ -21,6 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { InvoiceCleanupActions } from "@/components/cleanup-actions";
 import { Loader2, AlertTriangle, ArrowRight, RotateCcw, ChevronDown, ChevronRight, Pencil, AlertCircle, UserRound, Users } from "lucide-react";
+import { AuditActor } from "@/components/audit-actor";
 import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -64,10 +65,17 @@ function InvoiceAuditPanel({ invoiceId }: { invoiceId: number }) {
           <span className="text-muted-foreground whitespace-nowrap">
             {format(new Date(log.createdAt), "MMM d HH:mm")}
           </span>
-          <div>
-            <span className="font-medium">{log.action}</span>
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-medium">{log.action}</span>
+              <AuditActor
+                actorClerkId={log.actorClerkId}
+                actorName={log.actorName}
+                editorRole={log.editorRole}
+              />
+            </div>
             {log.fieldName && (
-              <span className="text-muted-foreground ml-1">
+              <span className="text-muted-foreground">
                 on {log.fieldName}: {log.oldValue || "empty"} → {log.newValue || "empty"}
               </span>
             )}
