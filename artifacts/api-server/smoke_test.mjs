@@ -997,7 +997,7 @@ console.log("══════════════════════�
   const gtLines = gtCsvText.trim().split(/\r?\n/);
   const gtHeaders = parseCsvRow(gtLines[0]);
   const col = (name) => gtHeaders.indexOf(name);
-  const REQUIRED_CSV_COLS = ["testCaseId", "invoiceNumber", "vendorRawName", "invoiceDate", "dueDate", "paymentTerms", "subtotal", "taxAmount", "totalAmount", "currency"];
+  const REQUIRED_CSV_COLS = ["testCaseId", "invoiceNumber", "vendorRawName", "invoiceDate", "dueDate", "paymentTerms", "subtotal", "taxAmount", "freightAmount", "totalAmount", "currency"];
   const missingCols = REQUIRED_CSV_COLS.filter((h) => col(h) === -1);
   if (missingCols.length > 0) {
     assert(false, `Suite 11: ground-truth CSV is missing required column(s): ${missingCols.join(", ")} (headers found: ${gtHeaders.join(", ")})`);
@@ -1034,6 +1034,7 @@ console.log("══════════════════════�
       paymentTerms:  row[col("paymentTerms")].trim(),
       subtotal:      parseRequiredFinite(row[col("subtotal")], "subtotal", rowRef),
       taxAmount:     parseRequiredFinite(row[col("taxAmount")], "taxAmount", rowRef),
+      freightAmount: parseRequiredFinite(row[col("freightAmount")], "freightAmount", rowRef),
       totalAmount:   parseRequiredFinite(row[col("totalAmount")], "totalAmount", rowRef),
       currency:      row[col("currency")].trim(),
     };
@@ -1417,6 +1418,7 @@ console.log("══════════════════════�
         ` dueDate=${fin.dueDate ?? "(none)"}` +
         ` subtotal=${fin.subtotal ?? "(none)"}` +
         ` taxAmount=${fin.taxAmount ?? "(none)"}` +
+        ` freightAmount=${fin.freightAmount ?? "(none)"}` +
         ` totalAmount=${fin.totalAmount ?? "(none)"}` +
         ` currency=${fin.currency ?? "(none)"}`,
       );
@@ -1424,7 +1426,7 @@ console.log("══════════════════════�
 
     // Stage 6: Check every invoice against the snapshot.
     // Match by normalized invoiceNumber; anything unmatched counts as missing.
-    // Guarded fields: vendorRawName, invoiceNumber, invoiceDate, dueDate, subtotal, taxAmount, totalAmount, currency.
+    // Guarded fields: vendorRawName, invoiceNumber, invoiceDate, dueDate, subtotal, taxAmount, freightAmount, totalAmount, currency.
     let s11Correct = 0;
     let s11Total = 0;
     const s11Diffs = [];
@@ -1506,6 +1508,19 @@ console.log("══════════════════════�
           s11Correct++;
         } else {
           s11Diffs.push(`${snap.testCaseId} taxAmount: expected ${snap.taxAmount} got "${match.taxAmount ?? "(null)"}"`);
+        }
+      }
+
+      // — freightAmount —
+      s11Total++;
+      if (!match) {
+        s11Diffs.push(`${snap.testCaseId} freightAmount: no extracted invoice matched invoiceNumber="${snap.invoiceNumber}" (expected ${snap.freightAmount})`);
+      } else {
+        // Allow ±0.02 tolerance for floating-point rounding in extraction.
+        if (amountMatch(match.freightAmount, snap.freightAmount)) {
+          s11Correct++;
+        } else {
+          s11Diffs.push(`${snap.testCaseId} freightAmount: expected ${snap.freightAmount} got "${match.freightAmount ?? "(null)"}"`);
         }
       }
 
