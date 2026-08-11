@@ -25,6 +25,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { readFileSync, writeFileSync } from "node:fs";
+import { checkBaselineCorrections } from "./preflight.mjs";
 
 const API_BASE = process.env.API_BASE || "http://localhost:8080/api";
 
@@ -272,6 +273,21 @@ try {
   actuals = await fetchActuals();
 } catch (e) {
   console.error(`ERROR: could not fetch actual invoices from ${API_BASE}: ${e.message}`);
+  process.exit(2);
+}
+
+// ─── baseline-corrections preflight ──────────────────────────────────────────
+// Abort before scoring if any known pre-correction values are still present in
+// the database.  Scoring against uncorrected data produces an inflated result
+// that cannot be relied upon as a Phase 1 accuracy measurement.
+const preflightViolations = checkBaselineCorrections(actuals);
+if (preflightViolations.length > 0) {
+  console.error("ERROR: Baseline preflight failed — the database appears to contain manually patched values.");
+  console.error("Scoring against patched data produces a misleading accuracy figure.");
+  console.error("");
+  for (const v of preflightViolations) console.error(`  • ${v}`);
+  console.error("");
+  console.error("Restore the database to its unpatched state (re-extraction output) before re-running the scorer.");
   process.exit(2);
 }
 

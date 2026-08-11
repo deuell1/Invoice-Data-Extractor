@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "playwright test",
+    "test": "node --test ../uat/extraction-accuracy/preflight-check.test.mjs ../uat/extraction-accuracy/preflight-exit.test.mjs && playwright test",
     "test:headed": "playwright test --headed",
     "test:ui": "playwright test --ui",
     "install:browsers": "playwright install --with-deps chromium"
