@@ -23,6 +23,7 @@ import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { runCleanup } from "./smoke_cleanup.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BASE = process.env.API_BASE_URL ?? "http://localhost:8080/api";
@@ -132,152 +133,22 @@ const orphanedObjectPaths = [];
  * Best-effort cleanup: void then delete every invoice created this run,
  * then delete every vendor. Errors are logged but never rethrown so they
  * cannot mask an assertion failure.
+ *
+ * Delegates to runCleanup() from smoke_cleanup.mjs — the same function
+ * exercised by smoke_cleanup_exit.test.mjs, so any regression in cleanup
+ * logic will break both production runs and the test suite.
  */
 async function cleanup() {
-  console.log("\n── Cleanup: removing smoke-test data ──────────────────────");
-  if (
-    createdInvoiceIds.length === 0 &&
-    createdVendorIds.length === 0 &&
-    createdSourceDocIds.length === 0 &&
-    createdExportBatchIds.length === 0 &&
-    orphanedObjectPaths.length === 0
-  ) {
-    console.log("  (nothing to clean up)");
-    return;
-  }
-
-  // Step 1: void all invoices first (handles POSTED/APPROVED that cannot be
-  // hard-deleted directly).
-  for (const id of createdInvoiceIds) {
-    try {
-      const { status } = await api("POST", `/invoices/${id}/void`, {
-        reason: "Smoke-test cleanup — automated removal after run",
-      });
-      if (status === 200 || status === 404) {
-        // 200 = voided, 404 = already gone — both are fine
-      } else {
-        const msg = `cleanup: void invoice ${id} returned unexpected status ${status} (expected 200 or 404 — voucher/approval state may be blocking void)`;
-        console.error(`  ✗ FAIL: ${msg}`);
-        failed++;
-        failures.push(msg);
-      }
-    } catch (err) {
-      const msg = `cleanup: void invoice ${id} threw unexpectedly: ${err.message}`;
-      console.error(`  ✗ FAIL: ${msg}`);
-      failed++;
-      failures.push(msg);
-    }
-  }
-
-  // Step 2: hard-delete all invoices (now that they're VOIDED or never POSTED).
-  for (const id of createdInvoiceIds) {
-    try {
-      const { status } = await api("DELETE", `/invoices/${id}`, {
-        confirm: true,
-      });
-      if (status === 200 || status === 404) {
-        console.log(`  ✓ deleted invoice ${id}`);
-      } else {
-        const msg = `cleanup: delete invoice ${id} returned unexpected status ${status} (expected 200 or 404 — possible FK constraint gap)`;
-        console.error(`  ✗ FAIL: ${msg}`);
-        failed++;
-        failures.push(msg);
-      }
-    } catch (err) {
-      const msg = `cleanup: delete invoice ${id} threw unexpectedly: ${err.message}`;
-      console.error(`  ✗ FAIL: ${msg}`);
-      failed++;
-      failures.push(msg);
-    }
-  }
-
-  // Step 3: hard-delete source documents (invoices are gone so the cascade is safe).
-  for (const id of createdSourceDocIds) {
-    try {
-      const { status } = await api("DELETE", `/source-documents/${id}`, { confirm: true });
-      if (status === 200 || status === 404) {
-        console.log(`  ✓ deleted source document ${id}`);
-      } else {
-        const msg = `cleanup: delete source document ${id} returned unexpected status ${status} (expected 200 or 404 — possible FK constraint gap)`;
-        console.error(`  ✗ FAIL: ${msg}`);
-        failed++;
-        failures.push(msg);
-      }
-    } catch (err) {
-      const msg = `cleanup: delete source document ${id} threw unexpectedly: ${err.message}`;
-      console.error(`  ✗ FAIL: ${msg}`);
-      failed++;
-      failures.push(msg);
-    }
-  }
-
-  // Step 4: delete any object paths that were uploaded but never linked to a
-  // source document (orphan uploads from runs that failed mid-way through
-  // Stage 1c of Suite 4).  Source-doc-linked blobs are already cleaned up by
-  // Step 3, so this only fires when that step was skipped.
-  for (const objPath of orphanedObjectPaths) {
-    try {
-      // objPath is already the /objects/... form; strip the leading /objects/
-      // to match the wildcard route DELETE /storage/objects/*path.
-      const routePath = objPath.replace(/^\/objects\//, "");
-      const { status } = await api("DELETE", `/storage/objects/${routePath}`, undefined);
-      if (status === 200 || status === 404) {
-        console.log(`  ✓ deleted orphaned object ${objPath}`);
-      } else {
-        const msg = `cleanup: delete orphaned object ${objPath} returned unexpected status ${status} (expected 200 or 404 — missing deletion route or storage error)`;
-        console.error(`  ✗ FAIL: ${msg}`);
-        failed++;
-        failures.push(msg);
-      }
-    } catch (err) {
-      const msg = `cleanup: delete orphaned object ${objPath} threw unexpectedly: ${err.message}`;
-      console.error(`  ✗ FAIL: ${msg}`);
-      failed++;
-      failures.push(msg);
-    }
-  }
-
-  // Step 5: delete export batches created during this run.
-  for (const id of createdExportBatchIds) {
-    try {
-      const { status } = await api("DELETE", `/exports/${id}`, undefined);
-      if (status === 200 || status === 404) {
-        console.log(`  ✓ deleted export batch ${id}`);
-      } else {
-        const msg = `cleanup: delete export batch ${id} returned unexpected status ${status} (expected 200 or 404 — possible missing deletion route)`;
-        console.error(`  ✗ FAIL: ${msg}`);
-        failed++;
-        failures.push(msg);
-      }
-    } catch (err) {
-      const msg = `cleanup: delete export batch ${id} threw unexpectedly: ${err.message}`;
-      console.error(`  ✗ FAIL: ${msg}`);
-      failed++;
-      failures.push(msg);
-    }
-  }
-
-  // Step 6: delete all vendors (invoices are gone so the FK check passes).
-  for (const id of createdVendorIds) {
-    try {
-      const { status } = await api("DELETE", `/vendors/${id}`, { confirm: true });
-      if (status === 200 || status === 404) {
-        console.log(`  ✓ deleted vendor ${id}`);
-      } else {
-        const msg = `cleanup: delete vendor ${id} returned unexpected status ${status} (expected 200 or 404 — possible FK constraint gap)`;
-        console.error(`  ✗ FAIL: ${msg}`);
-        failed++;
-        failures.push(msg);
-      }
-    } catch (err) {
-      const msg = `cleanup: delete vendor ${id} threw unexpectedly: ${err.message}`;
-      console.error(`  ✗ FAIL: ${msg}`);
-      failed++;
-      failures.push(msg);
-    }
-  }
-
-  console.log("── Cleanup complete ────────────────────────────────────────");
+  const result = await runCleanup({
+    api,
+    createdInvoiceIds,
+    createdVendorIds,
+    createdSourceDocIds,
+    createdExportBatchIds,
+    orphanedObjectPaths,
+  });
+  failed   += result.failed;
+  failures.push(...result.failures);
 }
 
 // ─── Suites (wrapped in try/finally so cleanup always runs) ──────────────────
