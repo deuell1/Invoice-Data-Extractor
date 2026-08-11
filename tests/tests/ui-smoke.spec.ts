@@ -668,6 +668,120 @@ test("audit viewer: network drop shows error message and does not crash", async 
   await expect(page.locator("body")).not.toBeEmpty();
 });
 
+// ─── 14. Audit Viewer — null oldValue renders "empty" label ─────────────────
+
+test("audit viewer: FIELD_EDIT with null oldValue renders 'empty' on the left side", async ({
+  page,
+}) => {
+  // Mock the audit API for invoice #12 with a FIELD_EDIT row where oldValue is
+  // null (a value was set for the first time — there was nothing before).
+  await page.route("**/api/invoices/12/audit**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          id: 1201,
+          invoiceId: 12,
+          action: "FIELD_EDIT",
+          actorClerkId: "user_clerk_setter",
+          actorName: "Pat Setter",
+          editorRole: "AP_CLERK",
+          fieldName: "dueDate",
+          oldValue: null,
+          newValue: "2026-06-30",
+          note: null,
+          createdAt: "2026-05-01T09:00:00.000Z",
+        },
+      ]),
+    });
+  });
+
+  await page.goto("/audit");
+
+  await expect(
+    page.getByRole("heading", { name: /audit log viewer/i }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  await page.getByTestId("input-invoice-id").fill("12");
+  await page.getByTestId("button-load-audit").click();
+
+  await expect(page.getByTestId("audit-timeline")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // The field-change row must be present.
+  await expect(page.getByTestId("audit-field-change-1201")).toBeVisible();
+
+  // oldValue is null → the component must render the fallback "empty" label.
+  await expect(page.getByTestId("audit-old-value-1201")).toContainText("empty");
+
+  // newValue is a real value → must render as-is (not "empty").
+  await expect(page.getByTestId("audit-new-value-1201")).toContainText(
+    "2026-06-30",
+  );
+
+  // Page must remain intact — no crash.
+  await expect(page.locator("body")).not.toBeEmpty();
+});
+
+// ─── 15. Audit Viewer — null newValue renders "empty" label ─────────────────
+
+test("audit viewer: FIELD_EDIT with null newValue renders 'empty' on the right side", async ({
+  page,
+}) => {
+  // Mock the audit API for invoice #13 with a FIELD_EDIT row where newValue is
+  // null (a field was cleared).
+  await page.route("**/api/invoices/13/audit**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          id: 1301,
+          invoiceId: 13,
+          action: "FIELD_EDIT",
+          actorClerkId: "user_clerk_clearer",
+          actorName: "Jordan Clearer",
+          editorRole: "AP_MANAGER",
+          fieldName: "poNumber",
+          oldValue: "PO-9876",
+          newValue: null,
+          note: null,
+          createdAt: "2026-05-02T10:30:00.000Z",
+        },
+      ]),
+    });
+  });
+
+  await page.goto("/audit");
+
+  await expect(
+    page.getByRole("heading", { name: /audit log viewer/i }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  await page.getByTestId("input-invoice-id").fill("13");
+  await page.getByTestId("button-load-audit").click();
+
+  await expect(page.getByTestId("audit-timeline")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // The field-change row must be present.
+  await expect(page.getByTestId("audit-field-change-1301")).toBeVisible();
+
+  // oldValue is a real value → must render as-is (not "empty").
+  await expect(page.getByTestId("audit-old-value-1301")).toContainText(
+    "PO-9876",
+  );
+
+  // newValue is null → the component must render the fallback "empty" label.
+  await expect(page.getByTestId("audit-new-value-1301")).toContainText("empty");
+
+  // Page must remain intact — no crash.
+  await expect(page.locator("body")).not.toBeEmpty();
+});
+
 // ─── 4. Invoice List ─────────────────────────────────────────────────────────
 
 test("invoice list page renders with filter controls", async ({ page }) => {
