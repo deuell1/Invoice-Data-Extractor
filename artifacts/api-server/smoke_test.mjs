@@ -1115,6 +1115,27 @@ console.log("══════════════════════�
       `${loc}: currency must be a 3-letter code (got "${row.currency}")`,
     );
   }
+
+  // ── Uniqueness check: every testCaseId must appear exactly once ──────────────
+  // A duplicated testCaseId would cause one test case to silently shadow another,
+  // producing misleading accuracy scores.  Detect and reject duplicates before
+  // any upload so that a CSV edit that introduces a collision fails loudly.
+  {
+    const seenAt = new Map(); // testCaseId → first CSV line number (1-based, header is line 1)
+    for (let i = 0; i < SNAPSHOT.length; i++) {
+      const id = SNAPSHOT[i].testCaseId;
+      const lineNum = i + 2; // +1 for header, +1 for 0-based index
+      if (seenAt.has(id)) {
+        assert(
+          false,
+          `Suite 11: duplicate testCaseId "${id}" found at CSV rows ${seenAt.get(id)} and ${lineNum} — every testCaseId must be unique`,
+        );
+      }
+      seenAt.set(id, lineNum);
+    }
+    assert(true, `Suite 11: all ${SNAPSHOT.length} testCaseId values are unique`);
+  }
+
   console.log(`  → Snapshot loaded from ground-truth CSV: ${SNAPSHOT.length} test case(s) (${gtCsvPath})`);
   const ACCURACY_THRESHOLD = 95; // percent — fail if overall accuracy drops below this
 
