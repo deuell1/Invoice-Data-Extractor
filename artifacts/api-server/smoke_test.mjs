@@ -955,7 +955,7 @@ console.log("══════════════════════�
 console.log("\n══════════════════════════════════════════");
 console.log("SUITE 11: Extraction accuracy regression guard");
 console.log("  Uploads UAT test PDF → waits for 5 extractions");
-console.log("  Checks vendorRawName, invoiceNumber, invoiceDate, dueDate, subtotal, totalAmount, currency");
+console.log("  Checks vendorRawName, invoiceNumber, invoiceDate, dueDate, subtotal, taxAmount, totalAmount, currency");
 console.log("  against known-correct snapshot for TP-001–TP-005");
 console.log("══════════════════════════════════════════");
 
@@ -997,7 +997,7 @@ console.log("══════════════════════�
   const gtLines = gtCsvText.trim().split(/\r?\n/);
   const gtHeaders = parseCsvRow(gtLines[0]);
   const col = (name) => gtHeaders.indexOf(name);
-  const REQUIRED_CSV_COLS = ["testCaseId", "invoiceNumber", "vendorRawName", "invoiceDate", "dueDate", "subtotal", "totalAmount", "currency"];
+  const REQUIRED_CSV_COLS = ["testCaseId", "invoiceNumber", "vendorRawName", "invoiceDate", "dueDate", "subtotal", "taxAmount", "totalAmount", "currency"];
   const missingCols = REQUIRED_CSV_COLS.filter((h) => col(h) === -1);
   if (missingCols.length > 0) {
     assert(false, `Suite 11: ground-truth CSV is missing required column(s): ${missingCols.join(", ")} (headers found: ${gtHeaders.join(", ")})`);
@@ -1032,6 +1032,7 @@ console.log("══════════════════════�
       invoiceDate:   row[col("invoiceDate")].trim(),
       dueDate:       row[col("dueDate")].trim(),
       subtotal:      parseRequiredFinite(row[col("subtotal")], "subtotal", rowRef),
+      taxAmount:     parseRequiredFinite(row[col("taxAmount")], "taxAmount", rowRef),
       totalAmount:   parseRequiredFinite(row[col("totalAmount")], "totalAmount", rowRef),
       currency:      row[col("currency")].trim(),
     };
@@ -1088,12 +1089,17 @@ console.log("══════════════════════�
       isValidCalendarDate(row.dueDate),
       `${loc}: dueDate must be a valid M/D/YYYY calendar date (got "${row.dueDate}")`,
     );
-    // subtotal and totalAmount are already guaranteed finite by parseRequiredFinite
-    // (called during SNAPSHOT construction above), but re-assert here so failures
-    // are reported with the row label rather than as a thrown Error.
+    // subtotal, taxAmount, and totalAmount are already guaranteed finite by
+    // parseRequiredFinite (called during SNAPSHOT construction above), but
+    // re-assert here so failures are reported with the row label rather than
+    // as a thrown Error.
     assert(
       Number.isFinite(row.subtotal),
       `${loc}: subtotal must be a finite number (got "${row.subtotal}")`,
+    );
+    assert(
+      Number.isFinite(row.taxAmount),
+      `${loc}: taxAmount must be a finite number (got "${row.taxAmount}")`,
     );
     assert(
       Number.isFinite(row.totalAmount),
@@ -1356,6 +1362,7 @@ console.log("══════════════════════�
         ` invoiceDate=${fin.invoiceDate ?? "(none)"}` +
         ` dueDate=${fin.dueDate ?? "(none)"}` +
         ` subtotal=${fin.subtotal ?? "(none)"}` +
+        ` taxAmount=${fin.taxAmount ?? "(none)"}` +
         ` totalAmount=${fin.totalAmount ?? "(none)"}` +
         ` currency=${fin.currency ?? "(none)"}`,
       );
@@ -1363,7 +1370,7 @@ console.log("══════════════════════�
 
     // Stage 6: Check every invoice against the snapshot.
     // Match by normalized invoiceNumber; anything unmatched counts as missing.
-    // Guarded fields: vendorRawName, invoiceNumber, invoiceDate, dueDate, subtotal, totalAmount, currency.
+    // Guarded fields: vendorRawName, invoiceNumber, invoiceDate, dueDate, subtotal, taxAmount, totalAmount, currency.
     let s11Correct = 0;
     let s11Total = 0;
     const s11Diffs = [];
@@ -1435,6 +1442,19 @@ console.log("══════════════════════�
         }
       }
 
+      // — taxAmount —
+      s11Total++;
+      if (!match) {
+        s11Diffs.push(`${snap.testCaseId} taxAmount: no extracted invoice matched invoiceNumber="${snap.invoiceNumber}" (expected ${snap.taxAmount})`);
+      } else {
+        // Allow ±0.02 tolerance for floating-point rounding in extraction.
+        if (amountMatch(match.taxAmount, snap.taxAmount)) {
+          s11Correct++;
+        } else {
+          s11Diffs.push(`${snap.testCaseId} taxAmount: expected ${snap.taxAmount} got "${match.taxAmount ?? "(null)"}"`);
+        }
+      }
+
       // — totalAmount —
       s11Total++;
       if (!match) {
@@ -1473,13 +1493,13 @@ console.log("══════════════════════�
 
     assert(
       s11Diffs.length === 0,
-      `Suite 11: vendorRawName/invoiceNumber/invoiceDate/dueDate/subtotal/totalAmount/currency match known-correct snapshot for all TP-001–TP-005 (${s11Diffs.length} drift(s): ${s11Diffs.join("; ")})`,
+      `Suite 11: vendorRawName/invoiceNumber/invoiceDate/dueDate/subtotal/taxAmount/totalAmount/currency match known-correct snapshot for all TP-001–TP-005 (${s11Diffs.length} drift(s): ${s11Diffs.join("; ")})`,
     );
     assert(
       s11Accuracy >= ACCURACY_THRESHOLD,
       `Suite 11: overall extraction accuracy ${s11Accuracy.toFixed(1)}% >= ${ACCURACY_THRESHOLD}% threshold`,
     );
-    console.log(`  ✓ All TP-001–TP-005 fields (vendorRawName, invoiceNumber, invoiceDate, dueDate, subtotal, totalAmount, currency) match snapshot, accuracy=${s11Accuracy.toFixed(1)}%`);
+    console.log(`  ✓ All TP-001–TP-005 fields (vendorRawName, invoiceNumber, invoiceDate, dueDate, subtotal, taxAmount, totalAmount, currency) match snapshot, accuracy=${s11Accuracy.toFixed(1)}%`);
   }
 }
 
