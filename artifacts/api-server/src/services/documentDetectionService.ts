@@ -1,5 +1,7 @@
 import { logger } from "../lib/logger";
 import { getPdfPageCount } from "../lib/pdfUtils";
+import { callAnthropicStructured } from "./anthropicStructured";
+import type { AnthropicUserContent } from "./anthropicStructured";
 
 /**
  * Document detection service.
@@ -23,6 +25,11 @@ import { getPdfPageCount } from "../lib/pdfUtils";
 const SUPPORTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"];
 const DEFAULT_MODEL = "gpt-4o";
 const DETECTION_TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS) || 60_000;
+
+/** Resolve the configured extraction provider (defaults to "openai"). */
+function detectionProvider(): string {
+  return (process.env.EXTRACTION_PROVIDER ?? "openai").toLowerCase();
+}
 
 /** Canonical exception reasons produced by detection. */
 export const DETECTION_REASON = {
@@ -53,6 +60,8 @@ export interface DetectionResult {
 }
 
 export function isDetectionConfigured(): boolean {
+  const provider = (process.env.EXTRACTION_PROVIDER ?? "openai").toLowerCase();
+  if (provider === "anthropic") return Boolean(process.env.ANTHROPIC_API_KEY);
   return Boolean(process.env.OPENAI_API_KEY);
 }
 
@@ -174,6 +183,113 @@ function normalizeRanges(
   return parsed.map((it, idx) => ({ ...it, invoiceSequence: idx + 1 }));
 }
 
+// ─── Anthropic detection paths ───────────────────────────────────────────────
+
+async function detectPdfAnthropic(
+  buffer: Buffer,
+  fileName: string,
+  pageCount: number,
+): Promise<DetectionResult> {
+  const base64 = buffer.toString("base64");
+
+  // Embed schema shape inline — Claude does not enforce JSON schemas natively.
+  const systemPrompt =
+    PDF_SYSTEM_PROMPT +
+    " Return ONLY valid JSON with this exact shape — no markdown, no prose:" +
+    ' {"invoiceCount": integer, "uncertain": boolean, "invoices":' +
+    ' [{"invoiceSequence": integer, "pageStart": integer, "pageEnd": integer, "reason": string|null}]}';
+
+  const userContent: AnthropicUserContent = [
+    {
+      type: "text",
+      text: `This PDF ("${fileName}") has ${pageCount} pages. Identify the invoices and their page ranges.`,
+    },
+  ];
+  (userContent as unknown[]).push({
+    type: "document",
+    source: { type: "base64", media_type: "application/pdf", data: base64 },
+  });
+
+  try {
+    const raw = await callAnthropicStructured({ systemPrompt, userContent });
+    const parsed = JSON.parse(raw) as PdfDetectionOutput;
+
+    const ranges = normalizeRanges(parsed, pageCount);
+    if (!ranges) {
+      logger.warn({ fileName, pageCount }, "detectPdfAnthropic: model ranges invalid; routing to exception");
+      return singleInvoice(pageCount, DETECTION_REASON.RANGE_UNCLEAR);
+    }
+
+    if (parsed.uncertain === true) {
+      return { pageCount, invoiceCount: ranges.length, invoices: ranges, exceptionReason: DETECTION_REASON.RANGE_UNCLEAR };
+    }
+
+    return { pageCount, invoiceCount: ranges.length, invoices: ranges, exceptionReason: null };
+  } catch (err) {
+    // SDK 0.116.0: use constructor.name for Anthropic error classes.
+    logger.error(
+      {
+        fileName,
+        status: (err as { status?: number })?.status,
+        constructorName: (err as { constructor?: { name?: string } })?.constructor?.name,
+      },
+      "detectPdfAnthropic: detection request failed",
+    );
+    return singleInvoice(pageCount, DETECTION_REASON.DETECTION_FAILED);
+  }
+}
+
+async function detectImageAnthropic(
+  buffer: Buffer,
+  contentType: string,
+  fileName: string,
+): Promise<DetectionResult> {
+  // Normalise image/jpg → image/jpeg; Anthropic only accepts canonical MIME types.
+  const mediaType = (contentType === "image/jpg" ? "image/jpeg" : contentType) as
+    | "image/jpeg"
+    | "image/png"
+    | "image/webp"
+    | "image/gif";
+  const base64 = buffer.toString("base64");
+
+  const systemPrompt =
+    IMAGE_SYSTEM_PROMPT +
+    " Return ONLY valid JSON with this exact shape — no markdown, no prose:" +
+    ' {"invoiceCount": integer, "reason": string|null}';
+
+  const userContent: AnthropicUserContent = [
+    { type: "text", text: `How many separate invoices are in this image ("${fileName}")?` },
+  ];
+  (userContent as unknown[]).push({
+    type: "image",
+    source: { type: "base64", media_type: mediaType, data: base64 },
+  });
+
+  try {
+    const raw = await callAnthropicStructured({ systemPrompt, userContent });
+    const parsed = JSON.parse(raw) as { invoiceCount?: unknown };
+    const count = toInt(parsed.invoiceCount) ?? 1;
+
+    if (count > 1) {
+      return singleInvoice(1, DETECTION_REASON.IMAGE_MULTIPLE);
+    }
+    return singleInvoice(1);
+  } catch (err) {
+    // SDK 0.116.0: use constructor.name for Anthropic error classes.
+    logger.error(
+      {
+        fileName,
+        status: (err as { status?: number })?.status,
+        constructorName: (err as { constructor?: { name?: string } })?.constructor?.name,
+      },
+      "detectImageAnthropic: detection request failed; defaulting to single invoice",
+    );
+    return singleInvoice(1);
+  }
+}
+
+// ─── OpenAI detection paths ───────────────────────────────────────────────────
+
 async function detectPdf(buffer: Buffer, fileName: string): Promise<DetectionResult> {
   let pageCount: number;
   try {
@@ -192,6 +308,11 @@ async function detectPdf(buffer: Buffer, fileName: string): Promise<DetectionRes
   if (!isDetectionConfigured()) {
     // Dev fallback: no key, treat the whole document as one invoice.
     return singleInvoice(pageCount);
+  }
+
+  // Branch on provider: Anthropic path uses the Messages API; OpenAI uses Responses API.
+  if (detectionProvider() === "anthropic") {
+    return detectPdfAnthropic(buffer, fileName, pageCount);
   }
 
   const apiKey = process.env.OPENAI_API_KEY;
@@ -260,6 +381,11 @@ async function detectPdf(buffer: Buffer, fileName: string): Promise<DetectionRes
 async function detectImage(buffer: Buffer, contentType: string, fileName: string): Promise<DetectionResult> {
   if (!isDetectionConfigured()) {
     return singleInvoice(1);
+  }
+
+  // Branch on provider: Anthropic path uses the Messages API; OpenAI uses Responses API.
+  if (detectionProvider() === "anthropic") {
+    return detectImageAnthropic(buffer, contentType, fileName);
   }
 
   const apiKey = process.env.OPENAI_API_KEY;

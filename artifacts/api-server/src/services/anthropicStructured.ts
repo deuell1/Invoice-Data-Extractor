@@ -37,9 +37,12 @@ export async function callAnthropicStructured(params: {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not configured.");
 
+  // Read timeout at call time so ANTHROPIC_TIMEOUT_MS can be changed without
+  // redeploying (e.g. temporarily set to 1 in a test to exercise the TIMEOUT path).
+  const timeoutMs = Number(process.env.ANTHROPIC_TIMEOUT_MS) || 60_000;
   const client = new Anthropic({
     apiKey,
-    timeout: ANTHROPIC_TIMEOUT_MS,
+    timeout: timeoutMs,
     maxRetries: 1,
   });
 

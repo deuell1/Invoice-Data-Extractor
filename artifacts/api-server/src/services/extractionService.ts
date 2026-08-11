@@ -5,6 +5,8 @@ import { validateInvoice } from "./validationService";
 import { logger } from "../lib/logger";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { extractPdfPageRange } from "../lib/pdfUtils";
+import { callAnthropicStructured } from "./anthropicStructured";
+import type { AnthropicUserContent } from "./anthropicStructured";
 
 /**
  * Extraction service.
@@ -65,6 +67,8 @@ export type ExtractedFields = {
 };
 
 export function isExtractionConfigured(): boolean {
+  const provider = (process.env.EXTRACTION_PROVIDER ?? "openai").toLowerCase();
+  if (provider === "anthropic") return Boolean(process.env.ANTHROPIC_API_KEY);
   return Boolean(process.env.OPENAI_API_KEY);
 }
 
@@ -285,8 +289,14 @@ function categorizeExtractionError(err: unknown): {
   }
 
   // Timeouts/aborts from the SDK or our own timeout guard.
+  // SDK 0.116.0: use constructor.name — .name is not reliably set on subclasses.
+  const constructorName = (err as { constructor?: { name?: string } })?.constructor?.name;
   const name = (err as { name?: string })?.name;
-  if (name === "APIConnectionTimeoutError" || name === "AbortError") {
+  if (
+    constructorName === "APIConnectionTimeoutError" ||
+    constructorName === "APITimeoutError" ||
+    name === "AbortError"
+  ) {
     return {
       category: "TIMEOUT",
       message: "Automatic extraction timed out. Please retry.",
@@ -656,7 +666,11 @@ async function openAiExtract(
       {
         category,
         status: (err as { status?: number })?.status,
-        requestId: (err as { request_id?: string })?.request_id ?? null,
+          // SDK 0.116.0: Anthropic uses requestID (camelCase); OpenAI uses request_id.
+        requestId:
+          (err as { request_id?: string })?.request_id ??
+          (err as { requestID?: string })?.requestID ??
+          null,
       },
       "openAiExtract: OpenAI request failed",
     );
@@ -677,6 +691,124 @@ async function openAiExtract(
   // Valid JSON can still be structurally wrong; reject it before persisting.
   assertValidModelShape(parsed);
 
+  return mapModelOutput(parsed, raw);
+}
+
+// ─── Live Anthropic extraction ──────────────────────────────────────────────
+// Parallel path to openAiExtract; selected when EXTRACTION_PROVIDER=anthropic.
+
+async function anthropicExtract(
+  fileObjectPath: string,
+  fileName: string,
+  pageRange?: { pageStart: number; pageEnd: number } | null,
+): Promise<ExtractedFields> {
+  if (!process.env.ANTHROPIC_API_KEY) {
+    throw new Error("Extraction service is not configured.");
+  }
+
+  // Fetch the uploaded document bytes from object storage.
+  const storage = new ObjectStorageService();
+  const file = await storage.getObjectEntityFile(fileObjectPath);
+  const [metadata] = await file.getMetadata();
+  let [buffer] = await file.download();
+  const contentType =
+    (typeof metadata.contentType === "string" && metadata.contentType) || inferContentType(fileName);
+
+  // Multi-invoice source documents: extract this invoice from only its own pages.
+  if (contentType === "application/pdf" && pageRange) {
+    try {
+      buffer = await extractPdfPageRange(buffer, pageRange.pageStart, pageRange.pageEnd);
+    } catch (err) {
+      logger.error(
+        { fileObjectPath, pageRange, err: (err as Error)?.message },
+        "anthropicExtract: failed to split PDF page range",
+      );
+      throw new ExtractionError(
+        "UNSUPPORTED_FILE",
+        `Could not isolate pages ${pageRange.pageStart}-${pageRange.pageEnd} from the source file. Review the page split or enter the fields manually.`,
+      );
+    }
+  }
+
+  // Validate file size and type BEFORE building the Anthropic request.
+  if (buffer.length > MAX_EXTRACTION_FILE_BYTES) {
+    throw new ExtractionError(
+      "UNSUPPORTED_FILE",
+      `Document is too large for automatic extraction (max ${Math.floor(
+        MAX_EXTRACTION_FILE_BYTES / (1024 * 1024),
+      )} MB). Enter the invoice fields manually.`,
+    );
+  }
+  const isPdf = contentType === "application/pdf";
+  const isImage = SUPPORTED_IMAGE_TYPES.includes(contentType);
+  if (!isPdf && !isImage) {
+    throw new ExtractionError(
+      "UNSUPPORTED_FILE",
+      "Unsupported document type for automatic extraction. Upload a PDF or image, or enter the fields manually.",
+    );
+  }
+
+  const base64 = buffer.toString("base64");
+
+  // Build user content blocks for Claude.
+  const userContent: AnthropicUserContent = [
+    { type: "text", text: `Extract the fields from this invoice ("${fileName}").` },
+  ];
+
+  if (isPdf) {
+    (userContent as unknown[]).push({
+      type: "document",
+      source: { type: "base64", media_type: "application/pdf", data: base64 },
+    });
+  } else {
+    // Normalise image/jpg → image/jpeg; Anthropic SDK only accepts the canonical MIME type.
+    const mediaType = (contentType === "image/jpg" ? "image/jpeg" : contentType) as
+      | "image/jpeg"
+      | "image/png"
+      | "image/webp"
+      | "image/gif";
+    (userContent as unknown[]).push({
+      type: "image",
+      source: { type: "base64", media_type: mediaType, data: base64 },
+    });
+  }
+
+  // The SYSTEM_PROMPT is provider-agnostic; append a JSON-only instruction for Claude.
+  const systemPrompt =
+    SYSTEM_PROMPT +
+    " Return ONLY valid JSON that matches the schema exactly — no markdown code fences," +
+    " no explanatory prose, no trailing text.";
+
+  let raw = "{}";
+  try {
+    raw = await callAnthropicStructured({ systemPrompt, userContent });
+  } catch (err) {
+    const { category, message } = categorizeExtractionError(err);
+    // Log only safe diagnostics — never the raw provider message, which may echo credentials.
+    logger.error(
+      {
+        category,
+        status: (err as { status?: number })?.status,
+        // SDK 0.116.0: requestID (camelCase), not request_id.
+        requestId: (err as { requestID?: string })?.requestID ?? null,
+      },
+      "anthropicExtract: Anthropic request failed",
+    );
+    throw new ExtractionError(category, message);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    logger.error({ rawLength: raw.length }, "anthropicExtract: model returned non-JSON output");
+    throw new ExtractionError(
+      "INVALID_RESPONSE",
+      "Automatic extraction failed to read the document. You can retry or enter the fields manually.",
+    );
+  }
+
+  assertValidModelShape(parsed);
   return mapModelOutput(parsed, raw);
 }
 
@@ -716,13 +848,16 @@ export async function runExtraction(invoiceId: number): Promise<void> {
 
   try {
     const usingMock = !isExtractionConfigured();
+    const provider = (process.env.EXTRACTION_PROVIDER ?? "openai").toLowerCase();
     const pageRange =
       invoice.pageStart != null && invoice.pageEnd != null
         ? { pageStart: invoice.pageStart, pageEnd: invoice.pageEnd }
         : null;
     const fields = usingMock
       ? mockExtract(invoice.id, invoice.originalFileName)
-      : await openAiExtract(invoice.fileObjectPath, invoice.originalFileName, pageRange);
+      : provider === "anthropic"
+        ? await anthropicExtract(invoice.fileObjectPath, invoice.originalFileName, pageRange)
+        : await openAiExtract(invoice.fileObjectPath, invoice.originalFileName, pageRange);
 
     await db
       .update(invoiceCaptureTable)
@@ -758,7 +893,7 @@ export async function runExtraction(invoiceId: number): Promise<void> {
       invoiceId,
       action: "EXTRACTED",
       actorClerkId: "system-pipeline",
-      note: `Extraction completed via ${usingMock ? "development mock" : "OpenAI"} (confidence ${(fields.confidenceScore * 100).toFixed(0)}%)`,
+      note: `Extraction completed via ${usingMock ? "development mock" : provider === "anthropic" ? "Anthropic" : "OpenAI"} (confidence ${(fields.confidenceScore * 100).toFixed(0)}%)`,
     });
 
     // Run controlled vendor matching on the extracted raw name.

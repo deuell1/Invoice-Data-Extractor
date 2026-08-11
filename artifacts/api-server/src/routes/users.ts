@@ -3,9 +3,11 @@ import { createClerkClient } from "@clerk/backend";
 import { requireRole } from "../middlewares/requireAuth";
 import {
   ListUsersResponse,
-  ListUsersResponseItem,
   PatchUserRoleBody,
 } from "@workspace/api-zod";
+
+// The item schema is the element type of the list response array.
+const ListUsersResponseItem = ListUsersResponse.element;
 
 const router: IRouter = Router();
 
