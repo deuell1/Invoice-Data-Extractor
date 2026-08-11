@@ -955,7 +955,7 @@ console.log("══════════════════════�
 console.log("\n══════════════════════════════════════════");
 console.log("SUITE 11: Extraction accuracy regression guard");
 console.log("  Uploads UAT test PDF → waits for 5 extractions");
-console.log("  Checks vendorRawName, invoiceNumber, invoiceDate, dueDate, subtotal, taxAmount, totalAmount, currency");
+console.log("  Checks vendorRawName, invoiceNumber, invoiceDate, dueDate, subtotal, taxAmount, totalAmount, currency, poNumber");
 console.log("  against known-correct snapshot for TP-001–TP-005");
 console.log("══════════════════════════════════════════");
 
@@ -997,7 +997,7 @@ console.log("══════════════════════�
   const gtLines = gtCsvText.trim().split(/\r?\n/);
   const gtHeaders = parseCsvRow(gtLines[0]);
   const col = (name) => gtHeaders.indexOf(name);
-  const REQUIRED_CSV_COLS = ["testCaseId", "invoiceNumber", "vendorRawName", "invoiceDate", "dueDate", "paymentTerms", "subtotal", "taxAmount", "freightAmount", "totalAmount", "currency"];
+  const REQUIRED_CSV_COLS = ["testCaseId", "invoiceNumber", "vendorRawName", "invoiceDate", "dueDate", "paymentTerms", "poNumber", "subtotal", "taxAmount", "freightAmount", "totalAmount", "currency"];
   const missingCols = REQUIRED_CSV_COLS.filter((h) => col(h) === -1);
   if (missingCols.length > 0) {
     assert(false, `Suite 11: ground-truth CSV is missing required column(s): ${missingCols.join(", ")} (headers found: ${gtHeaders.join(", ")})`);
@@ -1032,6 +1032,7 @@ console.log("══════════════════════�
       invoiceDate:   row[col("invoiceDate")].trim(),
       dueDate:       row[col("dueDate")].trim(),
       paymentTerms:  row[col("paymentTerms")].trim(),
+      poNumber:      row[col("poNumber")].trim(),
       subtotal:      parseRequiredFinite(row[col("subtotal")], "subtotal", rowRef),
       taxAmount:     parseRequiredFinite(row[col("taxAmount")], "taxAmount", rowRef),
       freightAmount: parseRequiredFinite(row[col("freightAmount")], "freightAmount", rowRef),
@@ -1420,16 +1421,21 @@ console.log("══════════════════════�
         ` taxAmount=${fin.taxAmount ?? "(none)"}` +
         ` freightAmount=${fin.freightAmount ?? "(none)"}` +
         ` totalAmount=${fin.totalAmount ?? "(none)"}` +
-        ` currency=${fin.currency ?? "(none)"}`,
+        ` currency=${fin.currency ?? "(none)"}` +
+        ` poNumber=${fin.poNumber ?? "(none)"}`,
       );
     }
 
     // Stage 6: Check every invoice against the snapshot.
     // Match by normalized invoiceNumber; anything unmatched counts as missing.
-    // Guarded fields: vendorRawName, invoiceNumber, invoiceDate, dueDate, subtotal, taxAmount, freightAmount, totalAmount, currency.
+    // Guarded fields: vendorRawName, invoiceNumber, invoiceDate, dueDate, subtotal, taxAmount, freightAmount, totalAmount, currency, poNumber.
     let s11Correct = 0;
     let s11Total = 0;
     const s11Diffs = [];
+    // poNumber mismatches are also collected separately so each one can produce
+    // a hard ✗ FAIL line after the loop — catching PO regressions even when overall
+    // accuracy stays above the 95% threshold.
+    const s11PoDiffs = [];
 
     for (const snap of SNAPSHOT) {
       const match = s11Finals.find(
@@ -1564,6 +1570,48 @@ console.log("══════════════════════�
           s11Diffs.push(`${snap.testCaseId} paymentTerms: expected "${snap.paymentTerms}" got "${match.paymentTerms ?? "(null)"}"`);
         }
       }
+
+      // — poNumber —
+      // Blank expected (e.g. TP-002) means the invoice has no PO — skip the check
+      // entirely so an absent PO is not counted as a field miss.  Only test cases
+      // with a non-blank ground-truth value contribute to the accuracy score.
+      // Mismatches are pushed to BOTH s11Diffs (for the accuracy diagnostic) AND
+      // s11PoDiffs (for the hard ✗ FAIL gate below the loop).
+      if (snap.poNumber !== "") {
+        s11Total++;
+        if (!match) {
+          const diffMsg = `${snap.testCaseId} poNumber: no extracted invoice matched invoiceNumber="${snap.invoiceNumber}" (expected "${snap.poNumber}")`;
+          s11Diffs.push(diffMsg);
+          s11PoDiffs.push(diffMsg);
+        } else {
+          const extractedPo = String(match.poNumber ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+          const expectedPo  = snap.poNumber.trim().toLowerCase().replace(/\s+/g, " ");
+          if (extractedPo !== "" && extractedPo === expectedPo) {
+            s11Correct++;
+          } else {
+            const diffMsg = `${snap.testCaseId} poNumber: expected "${snap.poNumber}" got "${match.poNumber ?? "(null)"}"`;
+            s11Diffs.push(diffMsg);
+            s11PoDiffs.push(diffMsg);
+          }
+        }
+      }
+    }
+
+    // ── Hard gate: poNumber regressions ─────────────────────────────────────────
+    // Each nonblank expected poNumber that mismatches emits a ✗ FAIL line naming
+    // the exact test case, then the suite throws.  This fires even when overall
+    // accuracy stays above the 95% threshold (4 PO-bearing test-cases mean a
+    // single miss is only ~1 accuracy-point, not enough to trip the threshold).
+    if (s11PoDiffs.length > 0) {
+      for (const d of s11PoDiffs) {
+        console.error(`  ✗ FAIL: Suite 11 poNumber regression — ${d}`);
+        failed++;
+        failures.push(`Suite 11 poNumber regression — ${d}`);
+      }
+      throw new Error(
+        `Suite 11: ${s11PoDiffs.length} poNumber regression(s) detected — ` +
+        `see ✗ FAIL lines above for per-test-case detail`,
+      );
     }
 
     const s11Accuracy = s11Total > 0 ? (s11Correct / s11Total) * 100 : 0;
