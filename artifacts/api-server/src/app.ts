@@ -71,12 +71,18 @@ app.use(
 app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
 
 // Baseline security headers — mounted after pinoHttp, before CORS.
-// contentSecurityPolicy is disabled globally: routes/storage.ts sets its own
-// per-response CSP tailored for document preview (blob:, data:, frame-src
-// 'self'). A blanket helmet CSP would override those and break inline preview.
+// contentSecurityPolicy and frameguard are both disabled globally:
+// routes/storage.ts manages its own per-response CSP (PREVIEW_CSP, tailored
+// for document preview with blob:, data:, and frame-src 'self') and
+// deliberately omits X-Frame-Options entirely to allow the same-origin invoice
+// preview iframe. A blanket helmet CSP would override that route's header
+// logic and break inline preview; frameguard's SAMEORIGIN default breaks the
+// preview specifically in dev, where the frontend and API don't share an
+// origin.
 app.use(
   helmet({
     contentSecurityPolicy: false,
+    frameguard: false,
   }),
 );
 
