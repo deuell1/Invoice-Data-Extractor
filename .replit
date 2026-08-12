@@ -76,5 +76,11 @@ ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
 EXTRACTION_PROVIDER = "anthropic"
 ANTHROPIC_TIMEOUT_MS = "60000"
 
+[userenv.development]
+NODE_ENV = "development"
+
+[userenv.production]
+NODE_ENV = "production"
+
 [objectStorage]
 defaultBucketID = "replit-objstore-c383de07-4677-4012-b3ed-44c5ca1b86fa"
