@@ -276,6 +276,135 @@ describe("resolveActorName", () => {
       else delete process.env.CLERK_NAME_TIMEOUT_MS;
     }
   });
+
+  // ── console.warn timeout warning tests ──────────────────────────────────────
+  // These tests verify the warning signal that ops teams rely on to detect
+  // Clerk API degradation.  A future refactor that silently removes the warn
+  // call would cause the test below to fail.
+
+  it("logs console.warn with userId and timeout when Clerk API never resolves", async () => {
+    // Use a very short timeout so the test completes quickly.
+    const savedTimeout = process.env.CLERK_NAME_TIMEOUT_MS;
+    process.env.CLERK_NAME_TIMEOUT_MS = "30";
+
+    // A client whose getUser never resolves — simulates a completely hung Clerk API.
+    const hungClient: ClerkUsersClient = {
+      getUser(_userId) {
+        return new Promise(() => {
+          // intentionally never resolves
+        });
+      },
+    };
+
+    // Intercept console.warn so we can assert it was called correctly.
+    const warnCalls: unknown[][] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warnCalls.push(args);
+    };
+
+    const userId = "user_hung_clerk_test";
+
+    try {
+      const name = await resolveActorName(userId, hungClient);
+
+      assert.strictEqual(
+        name,
+        null,
+        "resolveActorName must return null when Clerk never responds",
+      );
+
+      assert.strictEqual(
+        warnCalls.length,
+        1,
+        "console.warn must be called exactly once when Clerk times out",
+      );
+
+      const warnMessage = String(warnCalls[0]?.[0] ?? "");
+
+      assert.ok(
+        warnMessage.includes(userId),
+        `console.warn message must include the userId ("${userId}"); got: "${warnMessage}"`,
+      );
+
+      assert.ok(
+        warnMessage.includes("30"),
+        `console.warn message must include the timeout value (30ms); got: "${warnMessage}"`,
+      );
+    } finally {
+      console.warn = originalWarn;
+      if (savedTimeout !== undefined) process.env.CLERK_NAME_TIMEOUT_MS = savedTimeout;
+      else delete process.env.CLERK_NAME_TIMEOUT_MS;
+    }
+  });
+
+  it("does NOT log console.warn for system actors — they bypass Clerk entirely", async () => {
+    // System actors (smoke-test, system-pipeline, system-*) short-circuit before
+    // the timeout race, so the warn branch is never reached.
+    const savedTimeout = process.env.CLERK_NAME_TIMEOUT_MS;
+    process.env.CLERK_NAME_TIMEOUT_MS = "30";
+
+    const warnCalls: unknown[][] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warnCalls.push(args);
+    };
+
+    try {
+      // None of these should ever log a timeout warning.
+      await resolveActorName("smoke-test");
+      await resolveActorName("system-pipeline");
+      await resolveActorName("system-vendor-matcher");
+
+      assert.strictEqual(
+        warnCalls.length,
+        0,
+        "console.warn must NOT be called for system/smoke-test actors",
+      );
+    } finally {
+      console.warn = originalWarn;
+      if (savedTimeout !== undefined) process.env.CLERK_NAME_TIMEOUT_MS = savedTimeout;
+      else delete process.env.CLERK_NAME_TIMEOUT_MS;
+    }
+  });
+
+  it("does NOT log console.warn when CLERK_SECRET_KEY is absent — returns null silently", async () => {
+    // When CLERK_SECRET_KEY is unset and no client is injected, the function
+    // returns null immediately without entering the timeout race, so no warn
+    // should be emitted.
+    const savedKey = process.env.CLERK_SECRET_KEY;
+    const savedTimeout = process.env.CLERK_NAME_TIMEOUT_MS;
+    process.env.CLERK_NAME_TIMEOUT_MS = "30";
+    delete process.env.CLERK_SECRET_KEY;
+
+    const warnCalls: unknown[][] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warnCalls.push(args);
+    };
+
+    try {
+      // No clerkUsers injected — falls back to env-based path which returns null immediately.
+      const name = await resolveActorName("user_no_secret_key_test");
+
+      assert.strictEqual(
+        name,
+        null,
+        "resolveActorName must return null when CLERK_SECRET_KEY is absent",
+      );
+
+      assert.strictEqual(
+        warnCalls.length,
+        0,
+        "console.warn must NOT be called when CLERK_SECRET_KEY is absent — no timeout race is entered",
+      );
+    } finally {
+      console.warn = originalWarn;
+      if (savedKey !== undefined) process.env.CLERK_SECRET_KEY = savedKey;
+      if (savedTimeout !== undefined) process.env.CLERK_NAME_TIMEOUT_MS = savedTimeout;
+      else delete process.env.CLERK_NAME_TIMEOUT_MS;
+    }
+  });
 });
 
 // ─── actorNameCache (TTL cache) ───────────────────────────────────────────────
