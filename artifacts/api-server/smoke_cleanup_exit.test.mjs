@@ -260,6 +260,40 @@ test("delete-vendor throws → failed === 1 (catch branch)", async () => {
   assert.equal(failed, 1);
 });
 
+// ── Multiple thrown errors — loop continues after first throw ─────────────────
+
+test("void-invoice throws AND delete-vendor throws → failed === 2, failures.length === 2", async () => {
+  // Custom mock that throws on two distinct steps.
+  const throwSteps = new Set(["void_invoice", "delete_vendor"]);
+  async function twoThrowApi(method, urlPath) {
+    let step = "other";
+    if (method === "POST"   && /\/invoices\/\d+\/void/.test(urlPath))       step = "void_invoice";
+    else if (method === "DELETE" && /\/invoices\/\d+/.test(urlPath))         step = "delete_invoice";
+    else if (method === "DELETE" && /\/source-documents\/\d+/.test(urlPath)) step = "delete_source_doc";
+    else if (method === "DELETE" && /\/storage\/objects\//.test(urlPath))    step = "delete_orphan";
+    else if (method === "DELETE" && /\/exports\/\d+/.test(urlPath))          step = "delete_export";
+    else if (method === "DELETE" && /\/vendors\/\d+/.test(urlPath))          step = "delete_vendor";
+
+    if (throwSteps.has(step)) throw new Error(`Simulated network error on step "${step}"`);
+    return { status: 200, ok: true, json: {}, headers: new Headers() };
+  }
+
+  const { failed, failures } = await runCleanup({ api: twoThrowApi, ...ONE_OF_EACH });
+
+  assert.equal(failed, 2, `expected failed === 2 but got ${failed}`);
+  assert.equal(failures.length, 2, `expected 2 failure messages but got ${failures.length}: ${failures}`);
+
+  // Both thrown-step messages should be present in the failures array.
+  assert.ok(
+    failures.some((f) => /void invoice 7/.test(f)),
+    `expected a "void invoice 7" failure message; got: ${failures}`,
+  );
+  assert.ok(
+    failures.some((f) => /delete vendor 42/.test(f)),
+    `expected a "delete vendor 42" failure message; got: ${failures}`,
+  );
+});
+
 // ── A single failing step does not suppress other steps ───────────────────────
 
 test("only void-invoice fails — failures array contains exactly one entry", async () => {
