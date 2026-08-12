@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { appendAudit } from "../services/invoiceShared";
 import { requireRole } from "../middlewares/requireAuth";
+import { extractionRateLimit } from "../middlewares/extractionRateLimit";
 import { applyVendorMatch, findBestVendorMatch } from "../services/vendorMatcher";
 import { triggerExtraction } from "../services/extractionService";
 import { validateInvoice, VENDOR_HARD_BLOCK_REASONS } from "../services/validationService";
@@ -570,7 +571,7 @@ router.post("/invoices", async (req, res): Promise<void> => {
 });
 
 // ─── POST /invoices/:id/extract ──────────────────────────────────────────────
-router.post("/invoices/:id/extract", async (req, res): Promise<void> => {
+router.post("/invoices/:id/extract", extractionRateLimit, async (req, res): Promise<void> => {
   const params = GetInvoiceParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });

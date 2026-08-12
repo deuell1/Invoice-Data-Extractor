@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { extractionRateLimit } from "../middlewares/extractionRateLimit";
 import { and, eq, ilike, inArray, isNull, desc, sql } from "drizzle-orm";
 import {
   db,
@@ -95,7 +96,7 @@ function buildPayload(data: SourceDocumentWithInvoices) {
 }
 
 // ─── POST /source-documents ──────────────────────────────────────────────────
-router.post("/source-documents", async (req, res): Promise<void> => {
+router.post("/source-documents", extractionRateLimit, async (req, res): Promise<void> => {
   const parsed = CreateSourceDocumentBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
