@@ -24,6 +24,7 @@
     "drizzle-orm": "catalog:",
     "express": "^5.2.1",
     "google-auth-library": "^10.7.0",
+    "helmet": "^8.3.0",
     "http-proxy-middleware": "^4.2.0",
     "pdf-lib": "^1.17.1",
     "pino": "^9.14.0",
