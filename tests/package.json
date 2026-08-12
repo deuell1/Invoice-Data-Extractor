@@ -7,9 +7,11 @@
     "test": "node --test ../uat/extraction-accuracy/preflight-check.test.mjs ../uat/extraction-accuracy/preflight-exit.test.mjs && playwright test",
     "test:headed": "playwright test --headed",
     "test:ui": "playwright test --ui",
-    "install:browsers": "playwright install --with-deps chromium"
+    "install:browsers": "playwright install --with-deps chromium",
+    "test:load": "node load/basic-load.mjs"
   },
   "devDependencies": {
-    "@playwright/test": "^1.45.0"
+    "@playwright/test": "^1.45.0",
+    "autocannon": "^8.0.0"
   }
 }

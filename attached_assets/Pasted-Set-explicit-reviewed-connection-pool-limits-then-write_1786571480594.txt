@@ -1,0 +1,46 @@
+Set explicit, reviewed connection-pool limits, then write and run a basic
+load test against read-heavy, side-effect-free endpoints only.
+
+1. In lib/db/src/index.ts, add explicit pool options to the existing Pool
+   constructor: max (default 10, but read from a new DB_POOL_MAX env var so
+   it can be tuned per-instance without a code change), idleTimeoutMillis:
+   30000, connectionTimeoutMillis: 5000. Add a comment directly above the
+   Pool constructor noting that max × the number of concurrent autoscale
+   instances must stay under Postgres's max_connections limit — this is a
+   deployment-sizing decision, not just a code default.
+
+2. Add a new script at tests/load/basic-load.mjs. Add "autocannon" as a
+   devDependency in tests/package.json (pnpm add -D autocannon --filter
+   @workspace/tests).
+
+3. Target exactly these four read-only endpoints, nothing else:
+   GET /api/invoices (invoices.ts:247)
+   GET /api/invoices/stats (invoices.ts:605)
+   GET /api/exceptions (exceptions.ts:33)
+   GET /api/vendors (vendors.ts:65)
+   Do NOT include POST /invoices/:id/extract or POST /source-documents —
+   those trigger real Anthropic API calls and cost money per request; a load
+   test must never hit them.
+
+4. These routes sit behind global requireAuth (routes/index.ts). Authenticate
+   the load test the same way smoke_test.mjs already does: read
+   SMOKE_TEST_API_KEY from the environment and send it as
+   `Authorization: Bearer <key>` on every request (see smoke_test.mjs
+   line ~53-57 for the exact pattern). Fail loudly with a clear message if
+   SMOKE_TEST_API_KEY isn't set — do not run unauthenticated and silently
+   record 401s as if they were real latency data.
+
+5. Run each of the 4 endpoints at a modest concurrency (10 connections, 30
+   seconds duration) sequentially, not simultaneously, so results aren't
+   confounded by the endpoints competing with each other for pool
+   connections. Print p50/p99 latency and error rate per endpoint. This is a
+   baseline measurement, not a stress test — the goal is a number to compare
+   against later, not finding a breaking point today.
+
+6. Add a "test:load" script to tests/package.json that runs this file, so
+   it's a documented, repeatable command rather than something run ad hoc.
+
+Report the pool settings you chose, the load-test results (p50/p99/error
+rate per endpoint), and confirm you did not touch anything in
+extractionService.ts, sourceDocumentService.ts, or the rate-limit middleware
+from P13.
