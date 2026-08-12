@@ -370,3 +370,23 @@ test("[exit-code] delete-vendor throws (network error) → exit 1", () => {
   const { code, stderr } = runFixture({ MOCK_STEP: "delete_vendor", MOCK_THROW: "1" });
   assert.equal(code, 1, `Expected exit 1 but got ${code}.\n${stderr}`);
 });
+
+test("[exit-code] delete-invoice throws (network error) → exit 1", () => {
+  const { code, stderr } = runFixture({ MOCK_STEP: "delete_invoice", MOCK_THROW: "1" });
+  assert.equal(code, 1, `Expected exit 1 but got ${code}.\n${stderr}`);
+});
+
+test("[exit-code] delete-source-doc throws (network error) → exit 1", () => {
+  const { code, stderr } = runFixture({ MOCK_STEP: "delete_source_doc", MOCK_THROW: "1" });
+  assert.equal(code, 1, `Expected exit 1 but got ${code}.\n${stderr}`);
+});
+
+test("[exit-code] delete-orphan throws (network error) → exit 1", () => {
+  const { code, stderr } = runFixture({ MOCK_STEP: "delete_orphan", MOCK_THROW: "1" });
+  assert.equal(code, 1, `Expected exit 1 but got ${code}.\n${stderr}`);
+});
+
+test("[exit-code] delete-export throws (network error) → exit 1", () => {
+  const { code, stderr } = runFixture({ MOCK_STEP: "delete_export", MOCK_THROW: "1" });
+  assert.equal(code, 1, `Expected exit 1 but got ${code}.\n${stderr}`);
+});
