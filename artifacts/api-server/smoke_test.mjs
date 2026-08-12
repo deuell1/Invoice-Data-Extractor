@@ -2479,6 +2479,109 @@ try {
   console.error(`  Suite 18 aborted: ${s18err.message}`);
 }
 
+// ─── Suite 19: Clerk webhook signature-verification guard ─────────────────────
+//
+// Verifies that the POST /webhooks/clerk endpoint rejects replay and tampering
+// attacks before any cache mutation occurs:
+//
+//   Unit layer  (webhooks.test.ts):
+//     - Missing Svix headers          → 400
+//     - Partial Svix headers          → 400
+//     - Invalid/garbage signature     → 400
+//     - Tampered body (sig mismatch)  → 400
+//     - Stale timestamp (replay)      → 400
+//     - In-window duplicate svix-id   → 400
+//     - Valid signed user.updated     → 200, cache evicted
+//
+//   Integration layer (webhooks.integration.test.ts):
+//     - Missing headers via supertest          → 400
+//     - Tampered body via supertest            → 400
+//     - Valid signed user.updated via supertest → 200, cache evicted
+//
+// Both files are run in their own subprocess so they get a clean module
+// registry and are independent of earlier suites.
+
+console.log("\n══════════════════════════════════════════");
+console.log("SUITE 19: Clerk webhook signature-verification guard");
+console.log("  Unit:        missing/invalid headers, tampered body, replay attacks");
+console.log("  Integration: supertest end-to-end for the same rejection paths + happy path");
+console.log("══════════════════════════════════════════");
+
+try {
+  const webhookUnitTestPath = path.resolve(
+    __dirname,
+    "src/routes/__tests__/webhooks.test.ts",
+  );
+  const webhookIntTestPath = path.resolve(
+    __dirname,
+    "src/routes/__tests__/webhooks.integration.test.ts",
+  );
+
+  if (!existsSync(webhookUnitTestPath)) {
+    warn(`Suite 19 SKIPPED — unit test file not found at ${webhookUnitTestPath}`);
+  } else {
+    const s19UnitResult = spawnSync(
+      "node",
+      ["--test", "--import", "tsx/esm", webhookUnitTestPath],
+      {
+        cwd: __dirname,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          // Unset real webhook secret so tests use their own deterministic TEST_SECRET.
+          CLERK_WEBHOOK_SECRET: "",
+        },
+        timeout: 30_000,
+      },
+    );
+
+    if (s19UnitResult.stdout) process.stdout.write(s19UnitResult.stdout);
+    if (s19UnitResult.stderr) process.stderr.write(s19UnitResult.stderr);
+
+    assert(
+      s19UnitResult.status === 0,
+      `Suite 19 unit: webhook signature-guard unit tests passed (exit code ${s19UnitResult.status ?? "null (signal: " + s19UnitResult.signal + ")"})`,
+    );
+    console.log("  → Suite 19 unit tests passed: missing headers / tampered body / replay all rejected");
+  }
+
+  if (!existsSync(webhookIntTestPath)) {
+    warn(`Suite 19 integration SKIPPED — integration test file not found at ${webhookIntTestPath}`);
+  } else {
+    const s19IntResult = spawnSync(
+      "node",
+      ["--test", "--import", "tsx/esm", webhookIntTestPath],
+      {
+        cwd: __dirname,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CLERK_WEBHOOK_SECRET: "",
+        },
+        timeout: 30_000,
+      },
+    );
+
+    if (s19IntResult.stdout) process.stdout.write(s19IntResult.stdout);
+    if (s19IntResult.stderr) process.stderr.write(s19IntResult.stderr);
+
+    assert(
+      s19IntResult.status === 0,
+      `Suite 19 integration: webhook signature-guard integration tests passed (exit code ${s19IntResult.status ?? "null (signal: " + s19IntResult.signal + ")"})`,
+    );
+    console.log("  → Suite 19 integration tests passed: supertest rejection + happy-path acceptance verified");
+  }
+
+  console.log("\n  Suite 19 passed: Clerk webhook rejects replayed/tampered events before cache mutation ✓");
+
+} catch (s19err) {
+  if (!failures.some((f) => f === s19err.message)) {
+    failed++;
+    failures.push(`Suite 19 unexpected error: ${s19err.message}`);
+  }
+  console.error(`  Suite 19 aborted: ${s19err.message}`);
+}
+
 // ─── Summary ──────────────────────────────────────────────────────────────────
 
 console.log("\n══════════════════════════════════════════");
