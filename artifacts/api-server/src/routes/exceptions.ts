@@ -200,6 +200,12 @@ router.post("/invoices/:id/exception/assign", async (req, res): Promise<void> =>
     return;
   }
 
+  const assignActorId = (req as any).clerkUserId as string | undefined;
+  if (!assignActorId) {
+    res.status(401).json({ error: "Authenticated actor required." });
+    return;
+  }
+
   await db
     .update(invoiceCaptureTable)
     .set({
@@ -209,7 +215,6 @@ router.post("/invoices/:id/exception/assign", async (req, res): Promise<void> =>
     })
     .where(eq(invoiceCaptureTable.id, params.data.id));
 
-  const assignActorId = (req as any).clerkUserId ?? "system";
   await appendExceptionEvent({
     invoiceId: params.data.id,
     eventType: "ASSIGNED",
@@ -251,8 +256,12 @@ router.post("/invoices/:id/exception/review", async (req, res): Promise<void> =>
     return;
   }
 
+  const reviewActorId = (req as any).clerkUserId as string | undefined;
+  if (!reviewActorId) {
+    res.status(401).json({ error: "Authenticated actor required." });
+    return;
+  }
   const reviewedAt = new Date();
-  const reviewActorId = (req as any).clerkUserId ?? "system";
 
   await db
     .update(invoiceCaptureTable)
@@ -307,12 +316,17 @@ router.post(
       return;
     }
 
+    const returnActorId = (req as any).clerkUserId as string | undefined;
+    if (!returnActorId) {
+      res.status(401).json({ error: "Authenticated actor required." });
+      return;
+    }
+
     await db
       .update(invoiceCaptureTable)
       .set({ status: "PENDING_APPROVAL" })
       .where(eq(invoiceCaptureTable.id, params.data.id));
 
-    const returnActorId = (req as any).clerkUserId ?? "system";
     await appendExceptionEvent({
       invoiceId: params.data.id,
       eventType: "RETURNED_TO_APPROVAL",

@@ -175,7 +175,11 @@ router.post("/vendors", async (req, res): Promise<void> => {
     return;
   }
 
-  const actor = ((req as any).clerkUserId as string | undefined) ?? "system";
+  const actor = (req as any).clerkUserId as string | undefined;
+  if (!actor) {
+    res.status(401).json({ error: "Authenticated actor required." });
+    return;
+  }
 
   if (parsed.data.vendorName.trim().length === 0) {
     res.status(400).json({ error: "Vendor name cannot be blank" });
@@ -260,6 +264,12 @@ router.post("/vendors/import", async (req, res): Promise<void> => {
   }
 
   const uploadedBy = (parsed.data.uploadedBy ?? "").trim() || null;
+
+  const actorClerkId = (req as any).clerkUserId as string | undefined;
+  if (!actorClerkId) {
+    res.status(401).json({ error: "Authenticated actor required." });
+    return;
+  }
 
   // Generate a stable batch ID for this import run so cleanup can scope to it.
   const batchId = `VND-${randomUUID()}`;
@@ -354,7 +364,7 @@ router.post("/vendors/import", async (req, res): Promise<void> => {
           await db.insert(vendorAuditLogTable).values({
             vendorId: inserted_vendor.id,
             action: "VENDOR_CREATED",
-            actor: uploadedBy ?? "system",
+            actor: actorClerkId,
             newValue: `${inserted_vendor.vendorCode} — ${inserted_vendor.vendorName} (bulk import, batch ${batchId})`,
           });
         }
@@ -736,7 +746,11 @@ router.patch("/vendors/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  const actor = ((req as any).clerkUserId as string | undefined) ?? "system";
+  const actor = (req as any).clerkUserId as string | undefined;
+  if (!actor) {
+    res.status(401).json({ error: "Authenticated actor required." });
+    return;
+  }
 
   // Load current vendor for comparison
   const [current] = await db
@@ -1144,7 +1158,11 @@ router.delete("/vendors/:id", requireRole("AP_MANAGER"), async (req, res): Promi
     .where(eq(invoiceCaptureTable.vendorId, id))
     .limit(1);
 
-  const actor = ((req as any).clerkUserId as string | undefined) ?? "system";
+  const actor = (req as any).clerkUserId as string | undefined;
+  if (!actor) {
+    res.status(401).json({ error: "Authenticated actor required." });
+    return;
+  }
 
   if (voidedRef) {
     await db

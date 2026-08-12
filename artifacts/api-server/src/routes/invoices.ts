@@ -519,6 +519,12 @@ router.post("/invoices", async (req, res): Promise<void> => {
     return;
   }
 
+  const actorClerkId = (req as any).clerkUserId as string | undefined;
+  if (!actorClerkId) {
+    res.status(401).json({ error: "Authenticated actor required." });
+    return;
+  }
+
   const [invoice] = await db
     .insert(invoiceCaptureTable)
     .values({
@@ -540,7 +546,7 @@ router.post("/invoices", async (req, res): Promise<void> => {
   await appendAudit({
     invoiceId: invoice.id,
     action: "CREATED",
-    actorClerkId: (req as any).clerkUserId ?? "system",
+    actorClerkId,
     actorName: (req as any).clerkActorName ?? null,
     editorRole: (req as any).clerkUserRole ?? null,
     note: `Invoice created from file: ${invoice.originalFileName}`,
@@ -926,12 +932,16 @@ router.patch("/invoices/:id", async (req, res): Promise<void> => {
   track("vendorRawName", existing.vendorRawName, parsed.data.vendorRawName, "vendorRawName");
 
   if (Object.keys(updates).length > 0) {
+    const patchActorId = (req as any).clerkUserId as string | undefined;
+    if (!patchActorId) {
+      res.status(401).json({ error: "Authenticated actor required." });
+      return;
+    }
     await db
       .update(invoiceCaptureTable)
       .set(updates)
       .where(eq(invoiceCaptureTable.id, params.data.id));
 
-    const patchActorId = (req as any).clerkUserId ?? "system";
     const patchRole = (req as any).clerkUserRole ?? "AP_PROCESSOR";
     const patchActorName = (req as any).clerkActorName ?? null;
     for (const entry of auditEntries) {
@@ -996,6 +1006,12 @@ router.patch("/invoices/:id/status", async (req, res): Promise<void> => {
     return;
   }
 
+  const actorClerkId = (req as any).clerkUserId as string | undefined;
+  if (!actorClerkId) {
+    res.status(401).json({ error: "Authenticated actor required." });
+    return;
+  }
+
   await db
     .update(invoiceCaptureTable)
     .set({
@@ -1009,7 +1025,7 @@ router.patch("/invoices/:id/status", async (req, res): Promise<void> => {
     action: "STATUS_CHANGED",
     oldValue: existing.status,
     newValue: parsed.data.status,
-    actorClerkId: (req as any).clerkUserId ?? "system",
+    actorClerkId,
     actorName: (req as any).clerkActorName ?? null,
     editorRole: (req as any).clerkUserRole ?? null,
     note: parsed.data.reason ?? undefined,
@@ -1046,7 +1062,11 @@ router.post("/invoices/:id/void", async (req, res): Promise<void> => {
     return;
   }
 
-  const voidActorId = (req as any).clerkUserId ?? "system";
+  const voidActorId = (req as any).clerkUserId as string | undefined;
+  if (!voidActorId) {
+    res.status(401).json({ error: "Authenticated actor required." });
+    return;
+  }
   await db
     .update(invoiceCaptureTable)
     .set({
@@ -1186,6 +1206,12 @@ router.patch("/invoices/:id/voucher", requireRole("AP_MANAGER"), async (req, res
     return;
   }
 
+  const actorClerkId = (req as any).clerkUserId as string | undefined;
+  if (!actorClerkId) {
+    res.status(401).json({ error: "Authenticated actor required." });
+    return;
+  }
+
   await db
     .update(invoiceCaptureTable)
     .set({ voucherId: parsed.data.voucherId, status: "POSTED" })
@@ -1196,7 +1222,7 @@ router.patch("/invoices/:id/voucher", requireRole("AP_MANAGER"), async (req, res
     action: "VOUCHER_SET",
     oldValue: existing.status,
     newValue: parsed.data.voucherId,
-    actorClerkId: (req as any).clerkUserId ?? "system",
+    actorClerkId,
     actorName: (req as any).clerkActorName ?? null,
     editorRole: (req as any).clerkUserRole ?? null,
   });
@@ -1282,7 +1308,11 @@ router.post("/invoices/:id/approve", requireRole("AP_MANAGER"), async (req, res)
     return;
   }
 
-  const approveActorId = (req as any).clerkUserId ?? "system";
+  const approveActorId = (req as any).clerkUserId as string | undefined;
+  if (!approveActorId) {
+    res.status(401).json({ error: "Authenticated actor required." });
+    return;
+  }
   const approveRole = (req as any).clerkUserRole ?? "AP_MANAGER";
   const approveNow = new Date();
   await db
@@ -1341,7 +1371,11 @@ router.post("/invoices/:id/reject", requireRole("AP_MANAGER"), async (req, res):
     return;
   }
 
-  const rejectActorId = (req as any).clerkUserId ?? "system";
+  const rejectActorId = (req as any).clerkUserId as string | undefined;
+  if (!rejectActorId) {
+    res.status(401).json({ error: "Authenticated actor required." });
+    return;
+  }
   const rejectRole = (req as any).clerkUserRole ?? "AP_MANAGER";
   const rejectNow = new Date();
   await db
@@ -1404,7 +1438,11 @@ router.post("/invoices/:id/submit", async (req, res): Promise<void> => {
   // Record the Clerk user ID of the submitter so the approval queue can scope
   // "My work" to invoices submitted by the signed-in clerk.
   const submitterId = (req as any).clerkUserId as string | undefined;
-  if (submitterId && outcome.blocking.length === 0) {
+  if (!submitterId) {
+    res.status(401).json({ error: "Authenticated actor required." });
+    return;
+  }
+  if (outcome.blocking.length === 0) {
     await db
       .update(invoiceCaptureTable)
       .set({ submittedBy: submitterId })
@@ -1416,7 +1454,7 @@ router.post("/invoices/:id/submit", async (req, res): Promise<void> => {
     action: "SUBMITTED",
     oldValue: existing.status,
     newValue: outcome.blocking.length > 0 ? "EXCEPTION" : "PENDING_APPROVAL",
-    actorClerkId: (req as any).clerkUserId ?? "system",
+    actorClerkId: submitterId,
     actorName: (req as any).clerkActorName ?? null,
     editorRole: (req as any).clerkUserRole ?? null,
   });
@@ -1430,6 +1468,12 @@ router.post("/invoices/bulk-approve", requireRole("AP_MANAGER"), async (req, res
   const parsed = BulkApproveInvoicesBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const bulkActorId = (req as any).clerkUserId as string | undefined;
+  if (!bulkActorId) {
+    res.status(401).json({ error: "Authenticated actor required." });
     return;
   }
 
@@ -1465,7 +1509,6 @@ router.post("/invoices/bulk-approve", requireRole("AP_MANAGER"), async (req, res
         continue;
       }
 
-      const bulkActorId = (req as any).clerkUserId ?? "system";
       const bulkRole = (req as any).clerkUserRole ?? "AP_MANAGER";
       const bulkNow = new Date();
       await db
