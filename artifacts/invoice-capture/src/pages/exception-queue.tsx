@@ -51,11 +51,18 @@ type Invoice = {
 };
 
 function InvoiceAuditPanel({ invoiceId }: { invoiceId: number }) {
-  const { data: logs, isLoading } = useGetInvoiceAuditLog(invoiceId, {
+  const { data: logs, isLoading, isError } = useGetInvoiceAuditLog(invoiceId, {
     query: { enabled: true, queryKey: getGetInvoiceAuditLogQueryKey(invoiceId) },
   });
   if (isLoading)
     return <div className="py-2 text-center text-xs text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin inline mr-1" />Loading…</div>;
+  if (isError)
+    return (
+      <div className="py-2 text-xs text-destructive text-center flex items-center justify-center gap-1" data-testid="audit-panel-error">
+        <AlertCircle className="h-3 w-3" />
+        Could not load audit history
+      </div>
+    );
   if (!logs || logs.length === 0)
     return <div className="py-2 text-xs text-muted-foreground text-center">No audit logs yet</div>;
   return (

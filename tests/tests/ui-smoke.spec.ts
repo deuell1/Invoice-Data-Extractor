@@ -1122,6 +1122,219 @@ test("audit viewer: error state shows retry button", async ({ page }) => {
   await expect(page.locator("body")).not.toBeEmpty();
 });
 
+// ─── 19. Exception Queue — InvoiceAuditPanel recovers from audit API 500 ─────
+
+test("exception queue audit panel shows error state when audit API returns 500 — action buttons remain usable", async ({
+  page,
+}) => {
+  const INVOICE_ID = 60;
+
+  // Mock the exceptions list to return a single invoice.
+  await page.route("**/api/exceptions**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: [
+          {
+            id: INVOICE_ID,
+            invoiceNumber: "INV-ERR-60",
+            vendorId: 2,
+            vendorName: "Beta Supplies",
+            invoiceDate: "2026-02-10",
+            totalAmount: 800,
+            taxAmount: 80,
+            poNumber: "PO-0060",
+            currency: "USD",
+            exceptionReason: "Missing vendor",
+            lowConfidenceFields: null,
+            updatedAt: "2026-02-10T12:00:00.000Z",
+            status: "EXCEPTION",
+            exceptionOwner: null,
+          },
+        ],
+        total: 1,
+      }),
+    });
+  });
+
+  // Mock the audit API for this invoice to return a server error.
+  await page.route(`**/api/invoices/${INVOICE_ID}/audit**`, async (route) => {
+    await route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "Internal server error" }),
+    });
+  });
+
+  // Mock the vendors list (loaded by the page on mount).
+  await page.route("**/api/vendors**", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: [], total: 0 }),
+      });
+    } else {
+      await route.continue();
+    }
+  });
+
+  await page.goto("/exceptions");
+
+  // Wait for the exception queue heading.
+  await expect(
+    page.getByRole("heading", { name: /exception queue/i }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  // The mocked invoice row must be visible.
+  await expect(
+    page.getByTestId(`row-exception-${INVOICE_ID}`),
+  ).toBeVisible({ timeout: 10_000 });
+
+  // Click the chevron cell to expand the audit panel.
+  await page
+    .getByTestId(`row-exception-${INVOICE_ID}`)
+    .locator("td")
+    .first()
+    .click();
+
+  // "Audit History" heading appears in the expanded row.
+  await expect(page.getByText("Audit History")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // The panel must show an error state — no frozen spinner, no crash.
+  await expect(page.getByTestId("audit-panel-error")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // The loading spinner must NOT be visible (not frozen mid-load).
+  await expect(
+    page.locator("[data-testid='audit-panel-error'] ~ *").filter({ hasText: "Loading" })
+  ).not.toBeVisible();
+
+  // Action buttons on the row must remain usable after the panel failure.
+  await expect(
+    page.getByTestId(`button-edit-${INVOICE_ID}`),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId(`button-reject-${INVOICE_ID}`),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId(`button-resolve-${INVOICE_ID}`),
+  ).toBeVisible();
+
+  // Page must remain intact — no crash or blank screen.
+  await expect(page.locator("body")).not.toBeEmpty();
+});
+
+// ─── 20. Exception Queue — InvoiceAuditPanel recovers from network abort ──────
+
+test("exception queue audit panel shows error state when audit API request is aborted — action buttons remain usable", async ({
+  page,
+}) => {
+  const INVOICE_ID = 61;
+
+  // Mock the exceptions list to return a single invoice.
+  await page.route("**/api/exceptions**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: [
+          {
+            id: INVOICE_ID,
+            invoiceNumber: "INV-NET-61",
+            vendorId: 3,
+            vendorName: "Gamma Logistics",
+            invoiceDate: "2026-03-05",
+            totalAmount: 2200,
+            taxAmount: 220,
+            poNumber: "PO-0061",
+            currency: "USD",
+            exceptionReason: "Low confidence",
+            lowConfidenceFields: "totalAmount",
+            updatedAt: "2026-03-05T09:30:00.000Z",
+            status: "EXCEPTION",
+            exceptionOwner: null,
+          },
+        ],
+        total: 1,
+      }),
+    });
+  });
+
+  // Simulate a network-level failure (request aborted) for the audit API.
+  await page.route(`**/api/invoices/${INVOICE_ID}/audit**`, async (route) => {
+    await route.abort();
+  });
+
+  // Mock the vendors list.
+  await page.route("**/api/vendors**", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: [], total: 0 }),
+      });
+    } else {
+      await route.continue();
+    }
+  });
+
+  await page.goto("/exceptions");
+
+  // Wait for the exception queue heading.
+  await expect(
+    page.getByRole("heading", { name: /exception queue/i }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  // The mocked invoice row must be visible.
+  await expect(
+    page.getByTestId(`row-exception-${INVOICE_ID}`),
+  ).toBeVisible({ timeout: 10_000 });
+
+  // Click the chevron cell to expand the audit panel.
+  await page
+    .getByTestId(`row-exception-${INVOICE_ID}`)
+    .locator("td")
+    .first()
+    .click();
+
+  // "Audit History" heading appears in the expanded row.
+  await expect(page.getByText("Audit History")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // The panel must show an error state — no frozen spinner, no crash.
+  await expect(page.getByTestId("audit-panel-error")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // Action buttons on the row must remain usable after the panel failure.
+  await expect(
+    page.getByTestId(`button-edit-${INVOICE_ID}`),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId(`button-reject-${INVOICE_ID}`),
+  ).toBeVisible();
+  await expect(
+    page.getByTestId(`button-resolve-${INVOICE_ID}`),
+  ).toBeVisible();
+
+  // Page must remain intact — no crash or blank screen.
+  await expect(page.locator("body")).not.toBeEmpty();
+});
+
 // ─── 4. Invoice List ─────────────────────────────────────────────────────────
 
 test("invoice list page renders with filter controls", async ({ page }) => {
