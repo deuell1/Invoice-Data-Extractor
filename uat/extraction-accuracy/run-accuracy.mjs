@@ -24,8 +24,10 @@
 // ground-truth CSV, then run this scorer.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { readFileSync, writeFileSync } from "node:fs";
-import { checkBaselineCorrections } from "./preflight.mjs";
+import { readFileSync, writeFileSync, readdirSync } from "node:fs";
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { checkBaselineCorrections, CORRECTIONS_REGISTRY, BASELINE_PREFLIGHT, validateCorrectionsCoverage } from "./preflight.mjs";
 
 const API_BASE = process.env.API_BASE || "http://localhost:8080/api";
 
@@ -257,6 +259,47 @@ function scoreCase(gt, actual) {
     });
   }
   return results;
+}
+
+// ─── corrections-registry preflight ──────────────────────────────────────────
+// Abort at startup if the corrections registry is inconsistent with the files
+// actually present on disk.  This catches four classes of drift:
+//   • UNREGISTERED  — a new apply-*-corrections file has no registry entry
+//   • STALE         — the registry references a file that no longer exists
+//   • EMPTY_COVERAGE — a registered file maps to no BASELINE_PREFLIGHT ids
+//   • UNKNOWN_ID    — a registered file references a non-existent preflight id
+// Any of these would allow a scoring run that silently lacks the guard its
+// corrections file requires, producing a misleading accuracy figure.
+{
+  const __dir = dirname(fileURLToPath(import.meta.url));
+  const filesOnDisk = readdirSync(__dir).filter((f) =>
+    /^apply-.*-corrections\.(sql|mjs)$/.test(f),
+  );
+  const violations = validateCorrectionsCoverage(
+    CORRECTIONS_REGISTRY,
+    BASELINE_PREFLIGHT,
+    filesOnDisk,
+  );
+  if (violations.length > 0) {
+    console.error(
+      "ERROR: Corrections-registry contract violation(s) detected.",
+    );
+    console.error(
+      "The accuracy harness cannot run until every apply-*-corrections.{sql,mjs}",
+    );
+    console.error(
+      "file is registered in CORRECTIONS_REGISTRY with valid BASELINE_PREFLIGHT ids.",
+    );
+    console.error("");
+    for (const v of violations) {
+      console.error(`  • ${v}`);
+    }
+    console.error("");
+    console.error(
+      "See the MAINTENANCE CHECKLIST in preflight.mjs for the required steps.",
+    );
+    process.exit(2);
+  }
 }
 
 // ─── main ────────────────────────────────────────────────────────────────────
