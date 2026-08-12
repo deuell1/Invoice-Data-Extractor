@@ -19,6 +19,14 @@ export const pool = new Pool({
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 5_000,
 });
+
+// node-postgres emits 'error' on idle clients (e.g. the server closes the
+// connection while it sits in the pool).  Without a listener, Node's default
+// behaviour is to throw an uncaught exception and crash the process.
+pool.on("error", (err) => {
+  console.error("[db] Unexpected error on idle Postgres client", err);
+});
+
 export const db = drizzle(pool, { schema });
 
 export * from "./schema";

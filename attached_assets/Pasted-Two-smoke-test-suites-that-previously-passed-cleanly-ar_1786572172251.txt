@@ -1,0 +1,52 @@
+Two smoke-test suites that previously passed cleanly are now failing with a
+specific, unusual signature: every individual test assertion inside Suites 16
+and 17 shows a pass, but the subprocess node --test spawns for each one still
+exits with code 1. This started in the same commit that added max,
+idleTimeoutMillis, and connectionTimeoutMillis to the shared Pool in
+lib/db/src/index.ts (commit bca64d4). Do not assume that commit is the cause —
+confirm it, or rule it out, before changing anything.
+
+1. Reproduce first, in isolation:
+   node --test --import tsx/esm artifacts/api-server/src/lib/__tests__/warnVendorAuditOrphans.test.ts
+   Run it 5 times in a row. Report the exit code and any stderr each time —
+   specifically look for "UnhandledPromiseRejection", "Error: Connection
+   terminated due to connection timeout", or any error logged AFTER the two
+   "✔" test lines print. Do the same for whatever file Suite 17 spawns
+   (find vendorDeleteTestPath in smoke_test.mjs around line 2135 for the
+   exact path).
+
+2. warnVendorAuditOrphans.test.ts imports the shared `db`/`pool` singleton
+   from @workspace/db and never calls pool.end() — the process relies on
+   natural exit. Check whether lib/db/src/index.ts's pool has an `error`
+   event listener attached. If it does not, add one:
+     pool.on("error", (err) => {
+       logger.error({ err }, "Unexpected error on idle Postgres client");
+     });
+   An unhandled 'error' event on a pg Pool crashes the process by design —
+   this is a known node-postgres behavior, not a hypothetical. If the new
+   idleTimeoutMillis is causing a background client to error while idle
+   (e.g., between test 1 and test 2, or during the after() hook), and
+   nothing is listening for that event, that alone would produce exactly
+   the symptom observed: assertions already passed, then an unrelated
+   async error crashes the process afterward.
+
+3. Separately, check whether connectionTimeoutMillis: 5_000 is too tight for
+   this environment. This smoke run executes 19 suites back-to-back against
+   a shared, non-trivial dev database (1000+ vendor rows, 1167+ audit rows
+   from accumulated testing) — if a fresh subprocess's pool ever has to wait
+   more than 5s to acquire a connection under that load, it will now throw
+   where it previously would not have (no timeout was set at all before).
+   If step 1's reproduction shows a connection-timeout error specifically,
+   loosen this to 10_000 and re-test.
+
+4. After whatever fix step 2 and/or 3 points to, re-run the FULL smoke suite
+   (node artifacts/api-server/smoke_test.mjs) three times in a row, not
+   once. A single clean pass is not enough evidence given this looks
+   load/timing-dependent — three consecutive clean runs (modulo the two
+   known pre-existing failures in Suites 13/14, which are unrelated
+   dev-database debris and out of scope for this prompt) is the bar.
+
+Do not touch tests/load/basic-load.mjs or the pool's `max`/DB_POOL_MAX
+setting — those are unrelated to this specific regression. Report exactly
+which of steps 2/3 turned out to be the actual cause, based on evidence from
+step 1, not guesswork.

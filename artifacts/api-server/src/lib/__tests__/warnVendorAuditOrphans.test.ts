@@ -31,7 +31,7 @@ import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { sql } from "drizzle-orm";
 
-import { db } from "@workspace/db";
+import { db, pool } from "@workspace/db";
 import { vendorIdTable, vendorAuditLogTable } from "@workspace/db";
 import { logger } from "../logger.js";
 import { warnVendorAuditOrphans } from "../fkCoverageCheck.js";
@@ -152,6 +152,10 @@ after(async () => {
     }
     testVendorId = null;
   }
+  // Close the pool so the process can exit immediately.  Without this,
+  // idleTimeoutMillis (30 s) keeps connections alive and the subprocess
+  // outlives the smoke suite's spawnSync deadline, producing a SIGTERM kill.
+  await pool.end();
 });
 
 // ─── Tests ───────────────────────────────────────────────────────────────────
