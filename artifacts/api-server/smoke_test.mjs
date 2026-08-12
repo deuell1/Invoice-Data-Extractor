@@ -1733,6 +1733,35 @@ if (suite4SourceId == null) {
   console.log(`  → actor attribution verified: ${auditJ.length} total rows, actorClerkId + actorName present on all`);
 }
 
+// ─── Pre-Suite-13 cleanup: remove accumulated test-residue orphaned rows ──────
+//
+// warnVendorAuditOrphans.test.ts (Suite 16) manufactures orphaned
+// vendor_audit_log rows via session_replication_role = replica.  When the
+// subprocess is killed before its after() hook runs (e.g. due to timeout or
+// signal), those rows are left behind.  Over many runs they accumulate and
+// cause Suite 13's baseline assertion (orphanedRows === 0) to fail even in a
+// healthy database.
+//
+// This step runs a lightweight cleanup script that deletes only rows with
+// actor = 'orphan-test-setup' (the marker written by the test) that have no
+// matching vendor_id row.  It runs before Suite 13 so the baseline reflects
+// real production issues, not test residue.
+{
+  const cleanupOrphanScript = path.resolve(__dirname, "smoke_cleanup_orphan_testdata.mjs");
+  if (existsSync(cleanupOrphanScript)) {
+    const cleanupOrphanResult = spawnSync(
+      "node",
+      ["--import", "tsx/esm", cleanupOrphanScript],
+      { cwd: __dirname, encoding: "utf8", env: { ...process.env }, timeout: 15_000 },
+    );
+    if (cleanupOrphanResult.stdout) process.stdout.write(cleanupOrphanResult.stdout);
+    if (cleanupOrphanResult.stderr) process.stderr.write(cleanupOrphanResult.stderr);
+    if (cleanupOrphanResult.status !== 0) {
+      warn(`Pre-Suite-13 orphan cleanup exited ${cleanupOrphanResult.status} — Suite 13 baseline may show accumulated test rows`);
+    }
+  }
+}
+
 // ─── Suite 13: vendor_audit_log ON DELETE CASCADE integrity check ─────────────
 //
 // Verifies two things:
@@ -2142,6 +2171,317 @@ try {
     failures.push(`Suite 17 unexpected error: ${s17err.message}`);
   }
   console.error(`  Suite 17 aborted: ${s17err.message}`);
+}
+
+// ─── Suite 18: vendor cleanup DELETE_SAFE and DELETE_AND_DEACTIVATE modes ────
+//
+// Verifies the two non-FULL_RESET cleanup modes behave correctly when an
+// imported vendor is referenced by an active invoice:
+//
+//   DELETE_SAFE
+//     - Unreferenced imported vendors are deleted.
+//     - Referenced imported vendors are SKIPPED (not deleted, not deactivated).
+//
+//   DELETE_AND_DEACTIVATE
+//     - Unreferenced imported vendors are deleted.
+//     - Referenced imported vendors are DEACTIVATED (isActive=false), not deleted.
+//
+// Each scenario creates a pair of imported vendors (one unreferenced, one with
+// an invoice attached), runs the cleanup, then asserts the correct outcome for
+// each vendor.  The invoice is voided+deleted and the surviving vendor is
+// removed in the finally block so the test leaves no residue.
+
+console.log("\n══════════════════════════════════════════");
+console.log("SUITE 18: vendor cleanup DELETE_SAFE and DELETE_AND_DEACTIVATE");
+console.log("  (a) DELETE_SAFE: referenced vendor skipped; unreferenced deleted");
+console.log("  (b) DELETE_AND_DEACTIVATE: referenced vendor deactivated; unreferenced deleted");
+console.log("══════════════════════════════════════════");
+
+try {
+  // After Suites 15–17 each block the event loop with spawnSync for ~5 s, the
+  // keep-alive TCP connection that undici cached may have been closed server-side
+  // during the idle window.  Send a throwaway health check so that undici detects
+  // the stale connection and opens a fresh one before any Suite 18 assertions run.
+  await api("GET", "/healthz").catch(() => {});
+
+  // ── (a) DELETE_SAFE ────────────────────────────────────────────────────────
+  {
+    console.log("\n  [18a] DELETE_SAFE scenario");
+
+    // Create two imported vendors via /vendors/import so they carry importBatchId.
+    // Both vendors land in the SAME batch (same POST call → same batchId).
+    const s18aRef  = { vendorCode: `S18A-REF-${RUN_ID}`,  vendorName: `Suite18A Referenced ${RUN_ID}`  };
+    const s18aFree = { vendorCode: `S18A-FREE-${RUN_ID}`, vendorName: `Suite18A Unreferenced ${RUN_ID}` };
+
+    const { status: impS18a, json: impJ18a } = await api("POST", "/vendors/import", {
+      vendors: [
+        { vendorCode: s18aRef.vendorCode,  vendorName: s18aRef.vendorName,  isActive: true },
+        { vendorCode: s18aFree.vendorCode, vendorName: s18aFree.vendorName, isActive: true },
+      ],
+      uploadedBy: "smoke-test-suite-18a",
+    });
+    assert(impS18a === 200, `Suite 18a: POST /vendors/import returns 200 (got ${impS18a}: ${JSON.stringify(impJ18a).slice(0, 200)})`);
+    assert(impJ18a.inserted === 2, `Suite 18a: 2 vendors imported (got ${impJ18a.inserted})`);
+
+    // Locate the two vendor IDs and capture their shared importBatchId.
+    // All vendors from the same POST /vendors/import share the same batchId.
+    let refVendorId, freeVendorId, importBatchId18a;
+    for (const v of [s18aRef, s18aFree]) {
+      const { json: vj } = await api("GET", `/vendors?search=${encodeURIComponent(v.vendorCode)}&limit=5`);
+      const match = (vj.data ?? []).find((r) => r.vendorCode === v.vendorCode);
+      assert(match, `Suite 18a: found vendor ${v.vendorCode}`);
+      assert(
+        typeof match.importBatchId === "string" && match.importBatchId.length > 0,
+        `Suite 18a: vendor ${v.vendorCode} has a non-empty importBatchId (got ${JSON.stringify(match.importBatchId)})`,
+      );
+      if (importBatchId18a == null) {
+        importBatchId18a = match.importBatchId;
+      } else {
+        assert(
+          match.importBatchId === importBatchId18a,
+          `Suite 18a: both vendors share the same importBatchId (ref=${importBatchId18a}, free=${match.importBatchId})`,
+        );
+      }
+      if (v.vendorCode === s18aRef.vendorCode)  refVendorId  = match.id;
+      else                                       freeVendorId = match.id;
+      // Always track for cleanup; will remove from list when explicitly deleted below.
+      createdVendorIds.push(match.id);
+    }
+    assert(refVendorId    != null, `Suite 18a: refVendorId resolved`);
+    assert(freeVendorId   != null, `Suite 18a: freeVendorId resolved`);
+    assert(importBatchId18a != null, `Suite 18a: importBatchId resolved`);
+    console.log(`  → ref vendor id=${refVendorId}, free vendor id=${freeVendorId}, batchId=${importBatchId18a}`);
+
+    // Create an invoice referencing the ref vendor (makes it "referenced").
+    const { status: invS18a, json: invJ18a } = await api("POST", "/invoices", {
+      vendorId: refVendorId,
+      vendorRawName: s18aRef.vendorName,
+      invoiceNumber: `S18A-INV-${RUN_ID}`,
+      invoiceDate: "2026-06-01",
+      dueDate: "2026-07-01",
+      totalAmount: 100,
+      currency: "USD",
+      originalFileName: `s18a-${RUN_ID}.pdf`,
+      fileObjectPath: `/objects/test/${RUN_ID}/s18a.pdf`,
+    });
+    assert(invS18a === 201, `Suite 18a: POST /invoices returns 201 (got ${invS18a}: ${JSON.stringify(invJ18a).slice(0, 200)})`);
+    const refInvoiceId18a = invJ18a.id;
+    createdInvoiceIds.push(refInvoiceId18a);
+    console.log(`  → reference invoice id=${refInvoiceId18a} pointing at vendor id=${refVendorId}`);
+
+    // Preview: scoped to this batch only (importBatchId).
+    // — freeVendor (unreferenced) must appear in toDelete
+    // — refVendor  (referenced)   must NOT appear in toDelete (it is skipped)
+    // — toDelete must contain EXACTLY 1 vendor (the batch has only 2, and only 1 is unreferenced)
+    const { status: prevS18a, json: prevJ18a } = await api("POST", "/vendors/cleanup", {
+      mode: "DELETE_SAFE",
+      actor: "smoke-test-suite-18a",
+      reason: "Suite 18a DELETE_SAFE preview",
+      importBatchId: importBatchId18a,
+      confirm: false,
+    });
+    assert(prevS18a === 200, `Suite 18a preview: POST /vendors/cleanup returns 200 (got ${prevS18a}: ${JSON.stringify(prevJ18a).slice(0, 300)})`);
+    assert(prevJ18a.preview === true, `Suite 18a preview: response.preview is true`);
+    assert(prevJ18a.mode === "DELETE_SAFE", `Suite 18a preview: mode=DELETE_SAFE (got "${prevJ18a.mode}")`);
+    const previewDeleteIds18a = (prevJ18a.toDelete ?? []).map((v) => v.id);
+    assert(
+      previewDeleteIds18a.includes(freeVendorId),
+      `Suite 18a preview: unreferenced vendor (${freeVendorId}) appears in toDelete`,
+    );
+    assert(
+      !previewDeleteIds18a.includes(refVendorId),
+      `Suite 18a preview: referenced vendor (${refVendorId}) does NOT appear in toDelete`,
+    );
+    assert(
+      prevJ18a.toDelete.length === 1,
+      `Suite 18a preview: exactly 1 vendor in toDelete for this batch (got ${prevJ18a.toDelete.length})`,
+    );
+    assert(prevJ18a.deleted === 0, `Suite 18a preview: deleted=0 (no-op preview, got ${prevJ18a.deleted})`);
+    console.log(`  → preview correct: toDelete=${previewDeleteIds18a.length} vendor(s) in batch; ref vendor excluded`);
+
+    // Commit DELETE_SAFE — also scoped to the same batch.
+    const { status: cmtS18a, json: cmtJ18a } = await api("POST", "/vendors/cleanup", {
+      mode: "DELETE_SAFE",
+      actor: "smoke-test-suite-18a",
+      reason: "Suite 18a DELETE_SAFE commit",
+      importBatchId: importBatchId18a,
+      confirm: true,
+    });
+    assert(cmtS18a === 200, `Suite 18a commit: POST /vendors/cleanup returns 200 (got ${cmtS18a}: ${JSON.stringify(cmtJ18a).slice(0, 300)})`);
+    assert(cmtJ18a.preview === false, `Suite 18a commit: preview=false`);
+    // Exactly 1 deleted (the unreferenced vendor) and 0 deactivated.
+    assert(cmtJ18a.deleted === 1, `Suite 18a commit: exactly 1 vendor deleted for this batch (got ${cmtJ18a.deleted})`);
+    assert(cmtJ18a.deactivated === 0, `Suite 18a commit: deactivated=0 for DELETE_SAFE (got ${cmtJ18a.deactivated})`);
+    console.log(`  → commit: deleted=${cmtJ18a.deleted}, deactivated=${cmtJ18a.deactivated}`);
+
+    // Remove free vendor from cleanup list — already deleted.
+    const freeIdx18a = createdVendorIds.indexOf(freeVendorId);
+    if (freeIdx18a !== -1) createdVendorIds.splice(freeIdx18a, 1);
+
+    // Assert: unreferenced vendor is gone.
+    const { status: freeChk18a } = await api("GET", `/vendors/${freeVendorId}`);
+    assert(freeChk18a === 404, `Suite 18a: unreferenced vendor ${freeVendorId} was deleted (got status ${freeChk18a})`);
+
+    // Assert: referenced vendor still exists and is still active.
+    const { status: refChk18aS, json: refChk18aJ } = await api("GET", `/vendors/${refVendorId}`);
+    assert(refChk18aS === 200, `Suite 18a: referenced vendor ${refVendorId} still exists after DELETE_SAFE (got ${refChk18aS})`);
+    assert(
+      refChk18aJ.isActive === true,
+      `Suite 18a: referenced vendor is still active after DELETE_SAFE (isActive=${refChk18aJ.isActive})`,
+    );
+    console.log(`  → referenced vendor ${refVendorId} intact and active — correctly skipped by DELETE_SAFE ✓`);
+  }
+
+  // ── (b) DELETE_AND_DEACTIVATE ──────────────────────────────────────────────
+  {
+    console.log("\n  [18b] DELETE_AND_DEACTIVATE scenario");
+
+    // Create two imported vendors in a SEPARATE batch from 18a.
+    // Using a different uploadedBy to keep the runs distinguishable in logs.
+    const s18bRef  = { vendorCode: `S18B-REF-${RUN_ID}`,  vendorName: `Suite18B Referenced ${RUN_ID}`  };
+    const s18bFree = { vendorCode: `S18B-FREE-${RUN_ID}`, vendorName: `Suite18B Unreferenced ${RUN_ID}` };
+
+    const { status: impS18b, json: impJ18b } = await api("POST", "/vendors/import", {
+      vendors: [
+        { vendorCode: s18bRef.vendorCode,  vendorName: s18bRef.vendorName,  isActive: true },
+        { vendorCode: s18bFree.vendorCode, vendorName: s18bFree.vendorName, isActive: true },
+      ],
+      uploadedBy: "smoke-test-suite-18b",
+    });
+    assert(impS18b === 200, `Suite 18b: POST /vendors/import returns 200 (got ${impS18b}: ${JSON.stringify(impJ18b).slice(0, 200)})`);
+    assert(impJ18b.inserted === 2, `Suite 18b: 2 vendors imported (got ${impJ18b.inserted})`);
+
+    // Locate the two vendor IDs and confirm they share a common importBatchId.
+    let refVendorId18b, freeVendorId18b, importBatchId18b;
+    for (const v of [s18bRef, s18bFree]) {
+      const { json: vj } = await api("GET", `/vendors?search=${encodeURIComponent(v.vendorCode)}&limit=5`);
+      const match = (vj.data ?? []).find((r) => r.vendorCode === v.vendorCode);
+      assert(match, `Suite 18b: found vendor ${v.vendorCode}`);
+      assert(
+        typeof match.importBatchId === "string" && match.importBatchId.length > 0,
+        `Suite 18b: vendor ${v.vendorCode} has a non-empty importBatchId (got ${JSON.stringify(match.importBatchId)})`,
+      );
+      if (importBatchId18b == null) {
+        importBatchId18b = match.importBatchId;
+      } else {
+        assert(
+          match.importBatchId === importBatchId18b,
+          `Suite 18b: both vendors share the same importBatchId (ref=${importBatchId18b}, free=${match.importBatchId})`,
+        );
+      }
+      if (v.vendorCode === s18bRef.vendorCode)  refVendorId18b  = match.id;
+      else                                       freeVendorId18b = match.id;
+      createdVendorIds.push(match.id);
+    }
+    assert(refVendorId18b    != null, `Suite 18b: refVendorId resolved`);
+    assert(freeVendorId18b   != null, `Suite 18b: freeVendorId resolved`);
+    assert(importBatchId18b  != null, `Suite 18b: importBatchId resolved`);
+    console.log(`  → ref vendor id=${refVendorId18b}, free vendor id=${freeVendorId18b}, batchId=${importBatchId18b}`);
+
+    // Create an invoice referencing the ref vendor.
+    const { status: invS18b, json: invJ18b } = await api("POST", "/invoices", {
+      vendorId: refVendorId18b,
+      vendorRawName: s18bRef.vendorName,
+      invoiceNumber: `S18B-INV-${RUN_ID}`,
+      invoiceDate: "2026-06-01",
+      dueDate: "2026-07-01",
+      totalAmount: 200,
+      currency: "USD",
+      originalFileName: `s18b-${RUN_ID}.pdf`,
+      fileObjectPath: `/objects/test/${RUN_ID}/s18b.pdf`,
+    });
+    assert(invS18b === 201, `Suite 18b: POST /invoices returns 201 (got ${invS18b}: ${JSON.stringify(invJ18b).slice(0, 200)})`);
+    const refInvoiceId18b = invJ18b.id;
+    createdInvoiceIds.push(refInvoiceId18b);
+    console.log(`  → reference invoice id=${refInvoiceId18b} pointing at vendor id=${refVendorId18b}`);
+
+    // Preview: scoped to this batch only.
+    // — freeVendor (unreferenced) must appear in toDelete
+    // — refVendor  (referenced)   must appear in toDeactivate (not toDelete)
+    // — exactly 1 in toDelete and 1 in toDeactivate for this batch
+    const { status: prevS18b, json: prevJ18b } = await api("POST", "/vendors/cleanup", {
+      mode: "DELETE_AND_DEACTIVATE",
+      actor: "smoke-test-suite-18b",
+      reason: "Suite 18b DELETE_AND_DEACTIVATE preview",
+      importBatchId: importBatchId18b,
+      confirm: false,
+    });
+    assert(prevS18b === 200, `Suite 18b preview: POST /vendors/cleanup returns 200 (got ${prevS18b}: ${JSON.stringify(prevJ18b).slice(0, 300)})`);
+    assert(prevJ18b.preview === true, `Suite 18b preview: response.preview is true`);
+    assert(prevJ18b.mode === "DELETE_AND_DEACTIVATE", `Suite 18b preview: mode=DELETE_AND_DEACTIVATE (got "${prevJ18b.mode}")`);
+    const previewDeleteIds18b     = (prevJ18b.toDelete     ?? []).map((v) => v.id);
+    const previewDeactivateIds18b = (prevJ18b.toDeactivate ?? []).map((v) => v.id);
+    assert(
+      previewDeleteIds18b.includes(freeVendorId18b),
+      `Suite 18b preview: unreferenced vendor (${freeVendorId18b}) appears in toDelete`,
+    );
+    assert(
+      previewDeactivateIds18b.includes(refVendorId18b),
+      `Suite 18b preview: referenced vendor (${refVendorId18b}) appears in toDeactivate`,
+    );
+    assert(!previewDeleteIds18b.includes(refVendorId18b), `Suite 18b preview: ref vendor NOT in toDelete`);
+    assert(
+      prevJ18b.toDelete.length === 1,
+      `Suite 18b preview: exactly 1 vendor in toDelete for this batch (got ${prevJ18b.toDelete.length})`,
+    );
+    assert(
+      prevJ18b.toDeactivate.length === 1,
+      `Suite 18b preview: exactly 1 vendor in toDeactivate for this batch (got ${prevJ18b.toDeactivate.length})`,
+    );
+    assert(prevJ18b.deleted === 0, `Suite 18b preview: deleted=0 (no-op preview, got ${prevJ18b.deleted})`);
+    console.log(`  → preview correct: toDelete=${previewDeleteIds18b.length}, toDeactivate=${previewDeactivateIds18b.length}`);
+
+    // Commit DELETE_AND_DEACTIVATE — scoped to the same batch.
+    const { status: cmtS18b, json: cmtJ18b } = await api("POST", "/vendors/cleanup", {
+      mode: "DELETE_AND_DEACTIVATE",
+      actor: "smoke-test-suite-18b",
+      reason: "Suite 18b DELETE_AND_DEACTIVATE commit",
+      importBatchId: importBatchId18b,
+      confirm: true,
+    });
+    assert(cmtS18b === 200, `Suite 18b commit: POST /vendors/cleanup returns 200 (got ${cmtS18b}: ${JSON.stringify(cmtJ18b).slice(0, 300)})`);
+    assert(cmtJ18b.preview === false, `Suite 18b commit: preview=false`);
+    // Exactly 1 deleted (unreferenced) and exactly 1 deactivated (referenced) in this batch.
+    assert(cmtJ18b.deleted === 1, `Suite 18b commit: exactly 1 vendor deleted for this batch (got ${cmtJ18b.deleted})`);
+    assert(cmtJ18b.deactivated === 1, `Suite 18b commit: exactly 1 vendor deactivated for this batch (got ${cmtJ18b.deactivated})`);
+    console.log(`  → commit: deleted=${cmtJ18b.deleted}, deactivated=${cmtJ18b.deactivated}`);
+
+    // Remove free vendor from cleanup list — already deleted.
+    const freeIdx18b = createdVendorIds.indexOf(freeVendorId18b);
+    if (freeIdx18b !== -1) createdVendorIds.splice(freeIdx18b, 1);
+
+    // Assert: unreferenced vendor is gone.
+    const { status: freeChk18b } = await api("GET", `/vendors/${freeVendorId18b}`);
+    assert(freeChk18b === 404, `Suite 18b: unreferenced vendor ${freeVendorId18b} was deleted (got status ${freeChk18b})`);
+
+    // Assert: referenced vendor still exists but is NOW deactivated.
+    const { status: refChk18bS, json: refChk18bJ } = await api("GET", `/vendors/${refVendorId18b}`);
+    assert(refChk18bS === 200, `Suite 18b: referenced vendor ${refVendorId18b} still exists after DELETE_AND_DEACTIVATE (got ${refChk18bS})`);
+    assert(
+      refChk18bJ.isActive === false,
+      `Suite 18b: referenced vendor is DEACTIVATED after DELETE_AND_DEACTIVATE (isActive=${refChk18bJ.isActive})`,
+    );
+    console.log(`  → referenced vendor ${refVendorId18b} deactivated (isActive=false) — correctly handled by DELETE_AND_DEACTIVATE ✓`);
+
+    // Verify a VENDOR_DEACTIVATED audit row was written for the ref vendor.
+    const { status: audS18b, json: audJ18b } = await api("GET", `/vendors/${refVendorId18b}/audit`);
+    assert(audS18b === 200, `Suite 18b: GET /vendors/:id/audit returns 200 (got ${audS18b})`);
+    const deactivatedRow = (audJ18b ?? []).find((r) => r.action === "VENDOR_DEACTIVATED");
+    assert(
+      deactivatedRow != null,
+      `Suite 18b: VENDOR_DEACTIVATED audit row exists after DELETE_AND_DEACTIVATE`,
+    );
+    console.log(`  → VENDOR_DEACTIVATED audit row confirmed for vendor ${refVendorId18b} ✓`);
+  }
+
+  console.log("\n  Suite 18 passed: DELETE_SAFE and DELETE_AND_DEACTIVATE modes verified ✓");
+
+} catch (s18err) {
+  if (!failures.some((f) => f === s18err.message)) {
+    failed++;
+    failures.push(`Suite 18 unexpected error: ${s18err.message}`);
+  }
+  console.error(`  Suite 18 aborted: ${s18err.message}`);
 }
 
 // ─── Summary ──────────────────────────────────────────────────────────────────

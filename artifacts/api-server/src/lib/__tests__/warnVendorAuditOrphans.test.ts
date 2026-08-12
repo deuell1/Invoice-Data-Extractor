@@ -76,6 +76,19 @@ let testAuditRowId: number | null = null;
 // ─── Setup: insert vendor + audit row, then delete vendor bypassing CASCADE ───
 
 before(async () => {
+  // 0. Pre-cleanup: remove any orphaned rows left by previous test runs.
+  //    These accumulate when the process is killed before after() can run.
+  //    We identify them by the actor tag written in step 2 below.
+  try {
+    await db.execute(sql`
+      DELETE FROM vendor_audit_log
+      WHERE actor = 'orphan-test-setup'
+        AND vendor_id NOT IN (SELECT id FROM vendor_id)
+    `);
+  } catch {
+    // best-effort — pre-existing rows are non-critical for this test
+  }
+
   // 1. Insert a minimal vendor row.
   const [vendor] = await db
     .insert(vendorIdTable)
