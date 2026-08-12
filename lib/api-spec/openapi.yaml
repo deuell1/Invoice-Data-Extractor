@@ -2120,6 +2120,12 @@ components:
           type: string
         fileHash:
           type: ["string", "null"]
+        duplicateOfSourceDocumentId:
+          type: ["integer", "null"]
+          description: >-
+            ID of the most recent non-removed source document with the same
+            content hash, when a duplicate file upload is detected. Null when
+            no duplicate was found. Advisory only — does not block processing.
         sourceChannel:
           type: string
         uploadedBy:
@@ -2202,6 +2208,20 @@ components:
         removedCount:
           type: integer
           description: Count of voided/removed invoices belonging to this source document.
+        duplicateSourceDocument:
+          type: ["object", "null"]
+          description: >-
+            Summary of the matched source document when duplicateOfSourceDocumentId
+            is set on the source, for UI display without an extra round-trip.
+            Null when no duplicate was detected.
+          properties:
+            id:
+              type: integer
+            originalFileName:
+              type: string
+            uploadedAt:
+              type: string
+              format: date-time
 
     RemovalInput:
       type: object

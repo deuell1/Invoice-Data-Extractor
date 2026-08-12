@@ -410,6 +410,11 @@ export interface SourceDocument {
   fileObjectPath: string;
   /** @nullable */
   fileHash?: string | null;
+  /**
+     * ID of the most recent non-removed source document with the same content hash, when a duplicate file upload is detected. Null when no duplicate was found. Advisory only — does not block processing.
+     * @nullable
+     */
+  duplicateOfSourceDocumentId?: number | null;
   sourceChannel: string;
   /** @nullable */
   uploadedBy?: string | null;
@@ -456,6 +461,16 @@ export interface SourceDocumentInput {
   fileHash?: string | null;
 }
 
+/**
+ * Summary of the matched source document when duplicateOfSourceDocumentId is set on the source, for UI display without an extra round-trip. Null when no duplicate was detected.
+ * @nullable
+ */
+export type SourceDocumentWithInvoicesDuplicateSourceDocument = {
+  id?: number;
+  originalFileName?: string;
+  uploadedAt?: string;
+} | null;
+
 export interface SourceDocumentWithInvoices {
   source: SourceDocument;
   invoices: Invoice[];
@@ -466,6 +481,11 @@ export interface SourceDocumentWithInvoices {
   pendingCount: number;
   /** Count of voided/removed invoices belonging to this source document. */
   removedCount: number;
+  /**
+     * Summary of the matched source document when duplicateOfSourceDocumentId is set on the source, for UI display without an extra round-trip. Null when no duplicate was detected.
+     * @nullable
+     */
+  duplicateSourceDocument?: SourceDocumentWithInvoicesDuplicateSourceDocument;
 }
 
 export interface RemovalInput {

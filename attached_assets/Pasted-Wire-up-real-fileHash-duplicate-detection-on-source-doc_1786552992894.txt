@@ -1,0 +1,38 @@
+Wire up real fileHash duplicate detection on source-document upload, as a
+non-blocking warning (per the scope doc's "Duplicate file warning" control —
+this must not block upload, unlike the vendorId+invoiceNumber hard block).
+
+1. Add a nullable duplicateOfSourceDocumentId (integer, references
+   source_documents.id) column to lib/db/src/schema/source_documents.ts.
+   Push the schema change without losing existing rows.
+
+2. In artifacts/api-server/src/services/sourceDocumentService.ts's
+   createSourceDocument(), before inserting the new row: if input.fileHash is
+   present, look up the most recent non-removed source document
+   (removedAt IS NULL) with the same fileHash. If found, set
+   duplicateOfSourceDocumentId to its id on the new row. Do not block
+   creation and do not skip processing — this is advisory only.
+
+3. Surface it in the API response: add duplicateOfSourceDocumentId (and,
+   if useful, the matched document's originalFileName/uploadedAt) to
+   buildPayload() in routes/sourceDocuments.ts, and to the OpenAPI schema for
+   the source-document response, then regenerate:
+     pnpm --filter @workspace/api-spec run codegen
+   Never hand-edit lib/api-zod or lib/api-client-react directly.
+
+4. Surface it in the UI: on the Source Documents list/detail page, show a
+   non-blocking warning badge ("Possible duplicate upload — matches
+   [filename] uploaded [date]") when duplicateOfSourceDocumentId is set.
+   Match the existing visual pattern used for the fuzzy vendor-name duplicate
+   WARNING elsewhere in the app — do not invent a new visual language for it.
+
+5. Add an audit trail entry: when a duplicate fileHash is detected, insert an
+   invoice_audit_log-style note (or the equivalent source-document-level log
+   if one exists) recording the match, so it's visible in review — not just
+   in the API response.
+
+Do not touch the existing vendorId+invoiceNumber duplicate-check logic in
+validationService.ts — this is a separate, file-level check that runs
+earlier in the pipeline, before any invoice rows exist.
+
+Report the files changed and confirm codegen ran cleanly.

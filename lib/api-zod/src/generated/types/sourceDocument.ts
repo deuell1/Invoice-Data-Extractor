@@ -13,6 +13,11 @@ export interface SourceDocument {
   fileObjectPath: string;
   /** @nullable */
   fileHash?: string | null;
+  /**
+     * ID of the most recent non-removed source document with the same content hash, when a duplicate file upload is detected. Null when no duplicate was found. Advisory only — does not block processing.
+     * @nullable
+     */
+  duplicateOfSourceDocumentId?: number | null;
   sourceChannel: string;
   /** @nullable */
   uploadedBy?: string | null;

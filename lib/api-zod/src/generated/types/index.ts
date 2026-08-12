@@ -94,6 +94,7 @@ export * from './sourceDocumentListResponse';
 export * from './sourceDocumentProcessingStatus';
 export * from './sourceDocumentSummary';
 export * from './sourceDocumentWithInvoices';
+export * from './sourceDocumentWithInvoicesDuplicateSourceDocument';
 export * from './statusValue';
 export * from './uploadUrlRequest';
 export * from './uploadUrlResponse';

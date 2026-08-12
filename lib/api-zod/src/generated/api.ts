@@ -1516,6 +1516,7 @@ export const ListSourceDocumentsResponse = zod.object({
   "originalFileName": zod.string(),
   "fileObjectPath": zod.string(),
   "fileHash": zod.string().nullish(),
+  "duplicateOfSourceDocumentId": zod.number().nullish().describe('ID of the most recent non-removed source document with the same content hash, when a duplicate file upload is detected. Null when no duplicate was found. Advisory only — does not block processing.'),
   "sourceChannel": zod.string(),
   "uploadedBy": zod.string().nullish(),
   "uploadedAt": zod.coerce.date(),
@@ -1575,6 +1576,7 @@ export const GetSourceDocumentResponse = zod.object({
   "originalFileName": zod.string(),
   "fileObjectPath": zod.string(),
   "fileHash": zod.string().nullish(),
+  "duplicateOfSourceDocumentId": zod.number().nullish().describe('ID of the most recent non-removed source document with the same content hash, when a duplicate file upload is detected. Null when no duplicate was found. Advisory only — does not block processing.'),
   "sourceChannel": zod.string(),
   "uploadedBy": zod.string().nullish(),
   "uploadedAt": zod.coerce.date(),
@@ -1662,7 +1664,12 @@ export const GetSourceDocumentResponse = zod.object({
   "extractedCount": zod.number(),
   "exceptionCount": zod.number(),
   "pendingCount": zod.number(),
-  "removedCount": zod.number().describe('Count of voided\/removed invoices belonging to this source document.')
+  "removedCount": zod.number().describe('Count of voided\/removed invoices belonging to this source document.'),
+  "duplicateSourceDocument": zod.object({
+  "id": zod.number().optional(),
+  "originalFileName": zod.string().optional(),
+  "uploadedAt": zod.coerce.date().optional()
+}).nullish().describe('Summary of the matched source document when duplicateOfSourceDocumentId is set on the source, for UI display without an extra round-trip. Null when no duplicate was detected.')
 })
 
 
@@ -1715,6 +1722,7 @@ export const RemoveSourceDocumentResponse = zod.object({
   "originalFileName": zod.string(),
   "fileObjectPath": zod.string(),
   "fileHash": zod.string().nullish(),
+  "duplicateOfSourceDocumentId": zod.number().nullish().describe('ID of the most recent non-removed source document with the same content hash, when a duplicate file upload is detected. Null when no duplicate was found. Advisory only — does not block processing.'),
   "sourceChannel": zod.string(),
   "uploadedBy": zod.string().nullish(),
   "uploadedAt": zod.coerce.date(),
@@ -1802,7 +1810,12 @@ export const RemoveSourceDocumentResponse = zod.object({
   "extractedCount": zod.number(),
   "exceptionCount": zod.number(),
   "pendingCount": zod.number(),
-  "removedCount": zod.number().describe('Count of voided\/removed invoices belonging to this source document.')
+  "removedCount": zod.number().describe('Count of voided\/removed invoices belonging to this source document.'),
+  "duplicateSourceDocument": zod.object({
+  "id": zod.number().optional(),
+  "originalFileName": zod.string().optional(),
+  "uploadedAt": zod.coerce.date().optional()
+}).nullish().describe('Summary of the matched source document when duplicateOfSourceDocumentId is set on the source, for UI display without an extra round-trip. Null when no duplicate was detected.')
 })
 
 

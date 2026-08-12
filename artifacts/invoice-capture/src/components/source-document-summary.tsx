@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
+import { format } from "date-fns";
 import {
   useGetSourceDocument,
   getGetSourceDocumentQueryKey,
@@ -81,7 +82,7 @@ export function SourceDocumentSummary({ sourceDocumentId }: { sourceDocumentId: 
     );
   }
 
-  const { source, invoices, invoiceCount, extractedCount, exceptionCount, pendingCount, removedCount } = data;
+  const { source, invoices, invoiceCount, extractedCount, exceptionCount, pendingCount, removedCount, duplicateSourceDocument } = data;
   const detecting = source.processingStatus === "PENDING" || source.processingStatus === "DETECTING";
   const detectionFailed = source.processingStatus === "EXCEPTION";
   const isRemoved = source.removedAt != null;
@@ -135,6 +136,31 @@ export function SourceDocumentSummary({ sourceDocumentId }: { sourceDocumentId: 
               This file was removed{source.removalReason ? `: ${source.removalReason}` : "."} Its invoices are hidden
               from active queues.
             </span>
+          </div>
+        )}
+        {duplicateSourceDocument && (
+          <div
+            className="flex items-start gap-3 rounded-lg border border-amber-500/50 bg-amber-500/10 px-4 py-3 text-sm text-amber-700"
+            data-testid="source-duplicate-warning"
+          >
+            <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium">Possible duplicate upload</p>
+              <p className="text-xs mt-0.5 opacity-80">
+                This file's content matches{" "}
+                <span className="font-medium">{duplicateSourceDocument.originalFileName}</span>
+                {duplicateSourceDocument.uploadedAt
+                  ? ` uploaded ${format(new Date(duplicateSourceDocument.uploadedAt), "MMM d, yyyy")}`
+                  : ""}
+                .{" "}
+                <Link
+                  href={`/sources/${duplicateSourceDocument.id}`}
+                  className="underline underline-offset-2"
+                >
+                  View original
+                </Link>
+              </p>
+            </div>
           </div>
         )}
         {detecting && (

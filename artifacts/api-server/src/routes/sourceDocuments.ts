@@ -75,6 +75,13 @@ function buildPayload(data: SourceDocumentWithInvoices) {
   const extractedCount = active.filter((i) => i.extractionStatus === "COMPLETED").length;
   const exceptionCount = active.filter((i) => i.status === "EXCEPTION").length;
   const invoiceCount = active.length;
+  const duplicateSourceDocument = data.duplicateSourceDocument
+    ? {
+        id: data.duplicateSourceDocument.id,
+        originalFileName: data.duplicateSourceDocument.originalFileName,
+        uploadedAt: isoOrNull(data.duplicateSourceDocument.uploadedAt) as string,
+      }
+    : null;
   return {
     source: data.source,
     invoices,
@@ -83,6 +90,7 @@ function buildPayload(data: SourceDocumentWithInvoices) {
     exceptionCount,
     pendingCount: Math.max(0, invoiceCount - extractedCount - exceptionCount),
     removedCount,
+    duplicateSourceDocument,
   };
 }
 

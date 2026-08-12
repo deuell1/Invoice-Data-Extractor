@@ -7,6 +7,7 @@
  */
 import type { Invoice } from './invoice';
 import type { SourceDocument } from './sourceDocument';
+import type { SourceDocumentWithInvoicesDuplicateSourceDocument } from './sourceDocumentWithInvoicesDuplicateSourceDocument';
 
 export interface SourceDocumentWithInvoices {
   source: SourceDocument;
@@ -18,4 +19,9 @@ export interface SourceDocumentWithInvoices {
   pendingCount: number;
   /** Count of voided/removed invoices belonging to this source document. */
   removedCount: number;
+  /**
+     * Summary of the matched source document when duplicateOfSourceDocumentId is set on the source, for UI display without an extra round-trip. Null when no duplicate was detected.
+     * @nullable
+     */
+  duplicateSourceDocument?: SourceDocumentWithInvoicesDuplicateSourceDocument;
 }

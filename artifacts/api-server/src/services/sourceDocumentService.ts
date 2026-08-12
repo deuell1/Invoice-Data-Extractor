@@ -5,7 +5,7 @@ import {
   sourceDocumentsTable,
   exceptionEventTable,
 } from "@workspace/db";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, and, isNull, desc } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { triggerExtraction } from "./extractionService";
@@ -58,6 +58,27 @@ export interface CreateSourceDocumentInput {
 export async function createSourceDocument(
   input: CreateSourceDocumentInput,
 ): Promise<number> {
+  // Check for a duplicate file: look up the most recent non-removed source
+  // document with the same content hash. Advisory only — does not block upload
+  // or processing (per spec: "Duplicate file warning" is non-blocking).
+  let duplicateOfSourceDocumentId: number | null = null;
+  if (input.fileHash) {
+    const [existing] = await db
+      .select({ id: sourceDocumentsTable.id })
+      .from(sourceDocumentsTable)
+      .where(
+        and(
+          eq(sourceDocumentsTable.fileHash, input.fileHash),
+          isNull(sourceDocumentsTable.removedAt),
+        ),
+      )
+      .orderBy(desc(sourceDocumentsTable.createdAt))
+      .limit(1);
+    if (existing) {
+      duplicateOfSourceDocumentId = existing.id;
+    }
+  }
+
   const [doc] = await db
     .insert(sourceDocumentsTable)
     .values({
@@ -65,6 +86,7 @@ export async function createSourceDocument(
       fileObjectPath: input.fileObjectPath,
       fileHash: input.fileHash ?? null,
       processingStatus: "PENDING",
+      duplicateOfSourceDocumentId,
     })
     .returning({ id: sourceDocumentsTable.id });
 
@@ -166,6 +188,15 @@ export async function processSourceDocument(
           ` (pages ${detected.pageStart}-${detected.pageEnd})`,
       });
 
+      if (doc.duplicateOfSourceDocumentId != null) {
+        await db.insert(invoiceAuditLogTable).values({
+          invoiceId: invoice.id,
+          action: "DUPLICATE_FILE_DETECTED",
+          actorClerkId: "system-pipeline",
+          note: `Source file content matches source document #${doc.duplicateOfSourceDocumentId}. Possible duplicate upload — verify before processing.`,
+        });
+      }
+
       if (detection.exceptionReason) {
         // Detection could not confidently split the document (or it was a
         // multi-invoice image). Route to exception for manual review; do NOT
@@ -205,9 +236,17 @@ export async function processSourceDocument(
   }
 }
 
+export interface DuplicateSourceDocumentRef {
+  id: number;
+  originalFileName: string;
+  uploadedAt: Date;
+}
+
 export interface SourceDocumentWithInvoices {
   source: typeof sourceDocumentsTable.$inferSelect;
   invoices: Array<typeof invoiceCaptureTable.$inferSelect>;
+  /** Populated when duplicateOfSourceDocumentId is set, for UI display. */
+  duplicateSourceDocument: DuplicateSourceDocumentRef | null;
 }
 
 /** Load a source document with its invoices ordered by sequence. */
@@ -222,13 +261,27 @@ export async function getSourceDocumentWithInvoices(
 
   if (!source) return null;
 
-  const invoices = await db
-    .select()
-    .from(invoiceCaptureTable)
-    .where(eq(invoiceCaptureTable.sourceDocumentId, sourceDocumentId))
-    .orderBy(asc(invoiceCaptureTable.invoiceSequence), asc(invoiceCaptureTable.id));
+  const [invoices, duplicateSourceDocument] = await Promise.all([
+    db
+      .select()
+      .from(invoiceCaptureTable)
+      .where(eq(invoiceCaptureTable.sourceDocumentId, sourceDocumentId))
+      .orderBy(asc(invoiceCaptureTable.invoiceSequence), asc(invoiceCaptureTable.id)),
+    source.duplicateOfSourceDocumentId != null
+      ? db
+          .select({
+            id: sourceDocumentsTable.id,
+            originalFileName: sourceDocumentsTable.originalFileName,
+            uploadedAt: sourceDocumentsTable.uploadedAt,
+          })
+          .from(sourceDocumentsTable)
+          .where(eq(sourceDocumentsTable.id, source.duplicateOfSourceDocumentId))
+          .limit(1)
+          .then((rows) => rows[0] ?? null)
+      : Promise.resolve(null),
+  ]);
 
-  return { source, invoices };
+  return { source, invoices, duplicateSourceDocument };
 }
 
 export interface RemovalInput {

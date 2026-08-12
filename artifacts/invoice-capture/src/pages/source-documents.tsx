@@ -25,7 +25,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  FileText, Loader2, Search, ChevronLeft, ChevronRight, FileSearch, History, Eye,
+  FileText, Loader2, Search, ChevronLeft, ChevronRight, FileSearch, History, Eye, AlertTriangle,
 } from "lucide-react";
 import { format } from "date-fns";
 import { AuditActor } from "@/components/audit-actor";
@@ -252,13 +252,19 @@ export function SourceDocuments() {
                   const isRemoved = !!doc.removedAt;
                   return (
                     <TableRow key={doc.id} data-testid={`row-source-${doc.id}`}>
-                      <TableCell className="font-medium max-w-xs truncate">
-                        <span className={isRemoved ? "line-through text-muted-foreground" : ""}>
+                      <TableCell className="font-medium max-w-xs">
+                        <span className={`block truncate ${isRemoved ? "line-through text-muted-foreground" : ""}`}>
                           {doc.originalFileName}
                         </span>
                         {isRemoved && (
-                          <Badge variant="outline" className="ml-2 text-muted-foreground border-muted-foreground/40 text-xs">
+                          <Badge variant="outline" className="mt-0.5 text-muted-foreground border-muted-foreground/40 text-xs">
                             Removed
+                          </Badge>
+                        )}
+                        {doc.duplicateOfSourceDocumentId != null && (
+                          <Badge variant="outline" className="mt-0.5 border-amber-500/50 bg-amber-500/10 text-amber-700 text-xs gap-1 font-normal">
+                            <AlertTriangle className="h-3 w-3" />
+                            Possible duplicate
                           </Badge>
                         )}
                       </TableCell>

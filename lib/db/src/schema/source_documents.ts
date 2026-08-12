@@ -21,6 +21,7 @@ export const sourceDocumentsTable = pgTable("source_documents", {
   originalFileName: text("original_file_name").notNull(),
   fileObjectPath: text("file_object_path").notNull(),
   fileHash: text("file_hash"),
+  duplicateOfSourceDocumentId: integer("duplicate_of_source_document_id"),
   sourceChannel: text("source_channel").notNull().default("UPLOAD"),
   uploadedBy: text("uploaded_by"),
   uploadedAt: timestamp("uploaded_at", { withTimezone: true })
