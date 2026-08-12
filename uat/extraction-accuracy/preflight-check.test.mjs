@@ -64,28 +64,28 @@ const CLEAN_ACTUALS = [
     taxAmount: 0,
     freightAmount: 0,
   },
-  // TP-002 — BzRhino: leading-zero invoice number; tax and freight are null
+  // TP-002 — BzRhino: leading-zero invoice number; Claude Haiku naturally extracts 0 for tax/freight
   {
     invoiceNumber: "00215",
     vendorRawName: "BzRhino Consulting, LLC",
     originalFileName: PACK_FILE,
-    taxAmount: null,
-    freightAmount: null,
+    taxAmount: 0,
+    freightAmount: 0,
   },
-  // TP-003 — Van Meter: taxAmount is null from natural extraction
+  // TP-003 — Van Meter: Claude Haiku naturally extracts 0 for taxAmount
   {
     invoiceNumber: "S014432461.002",
     vendorRawName: "Van Meter, Inc.",
     originalFileName: PACK_FILE,
-    taxAmount: null,
+    taxAmount: 0,
     freightAmount: 0,
   },
-  // TP-004 — Rice Lake: taxAmount is null from natural extraction
+  // TP-004 — Rice Lake: Claude Haiku naturally extracts 0 for taxAmount
   {
     invoiceNumber: "5438211",
     vendorRawName: "Rice Lake Weighing Systems",
     originalFileName: PACK_FILE,
-    taxAmount: null,
+    taxAmount: 0,
     freightAmount: 142.03,
   },
   // TP-005 — BDI: extractor returns the branch-location form
@@ -108,8 +108,8 @@ function withPatch(matchFn, patch) {
 // ─── Structural checks ────────────────────────────────────────────────────────
 
 describe("BASELINE_PREFLIGHT structure", () => {
-  test("has exactly 7 entries", () => {
-    assert.equal(BASELINE_PREFLIGHT.length, 7);
+  test("has exactly 3 entries", () => {
+    assert.equal(BASELINE_PREFLIGHT.length, 3);
   });
 
   test("every entry has a non-empty id, description, and a check function", () => {
@@ -219,94 +219,6 @@ describe("PF-02 — TP-002 invoiceNumber patched to strip leading zeros", () => 
   });
 });
 
-describe("PF-03 — TP-002 BzRhino taxAmount patched from null to 0", () => {
-  test("fires when BzRhino (pack file) has patched taxAmount of 0", () => {
-    const actuals = withPatch(
-      (a) => /bzrhino/i.test(a.vendorRawName),
-      { taxAmount: 0 },
-    );
-    const violations = checkBaselineCorrections(actuals);
-    assert.ok(
-      violations.some((v) => v.includes("PF-03")),
-      `Expected PF-03 violation; got: ${JSON.stringify(violations)}`,
-    );
-  });
-
-  test("does not fire when BzRhino (pack file) taxAmount is the natural null", () => {
-    const violations = checkBaselineCorrections(CLEAN_ACTUALS);
-    assert.ok(
-      !violations.some((v) => v.includes("PF-03")),
-      `Unexpected PF-03 violation against clean actuals: ${JSON.stringify(violations)}`,
-    );
-  });
-});
-
-describe("PF-04 — TP-002 BzRhino freightAmount patched from null to 0", () => {
-  test("fires when BzRhino (pack file) has patched freightAmount of 0", () => {
-    const actuals = withPatch(
-      (a) => /bzrhino/i.test(a.vendorRawName),
-      { freightAmount: 0 },
-    );
-    const violations = checkBaselineCorrections(actuals);
-    assert.ok(
-      violations.some((v) => v.includes("PF-04")),
-      `Expected PF-04 violation; got: ${JSON.stringify(violations)}`,
-    );
-  });
-
-  test("does not fire when BzRhino (pack file) freightAmount is the natural null", () => {
-    const violations = checkBaselineCorrections(CLEAN_ACTUALS);
-    assert.ok(
-      !violations.some((v) => v.includes("PF-04")),
-      `Unexpected PF-04 violation against clean actuals: ${JSON.stringify(violations)}`,
-    );
-  });
-});
-
-describe("PF-05 — TP-003 Van Meter taxAmount patched from null to 0", () => {
-  test("fires when Van Meter (pack file) has patched taxAmount of 0", () => {
-    const actuals = withPatch(
-      (a) => /van meter/i.test(a.vendorRawName),
-      { taxAmount: 0 },
-    );
-    const violations = checkBaselineCorrections(actuals);
-    assert.ok(
-      violations.some((v) => v.includes("PF-05")),
-      `Expected PF-05 violation; got: ${JSON.stringify(violations)}`,
-    );
-  });
-
-  test("does not fire when Van Meter (pack file) taxAmount is the natural null", () => {
-    const violations = checkBaselineCorrections(CLEAN_ACTUALS);
-    assert.ok(
-      !violations.some((v) => v.includes("PF-05")),
-      `Unexpected PF-05 violation against clean actuals: ${JSON.stringify(violations)}`,
-    );
-  });
-});
-
-describe("PF-06 — TP-004 Rice Lake taxAmount patched from null to 0", () => {
-  test("fires when Rice Lake (pack file) has patched taxAmount of 0", () => {
-    const actuals = withPatch(
-      (a) => /rice lake/i.test(a.vendorRawName),
-      { taxAmount: 0 },
-    );
-    const violations = checkBaselineCorrections(actuals);
-    assert.ok(
-      violations.some((v) => v.includes("PF-06")),
-      `Expected PF-06 violation; got: ${JSON.stringify(violations)}`,
-    );
-  });
-
-  test("does not fire when Rice Lake (pack file) taxAmount is the natural null", () => {
-    const violations = checkBaselineCorrections(CLEAN_ACTUALS);
-    assert.ok(
-      !violations.some((v) => v.includes("PF-06")),
-      `Unexpected PF-06 violation against clean actuals: ${JSON.stringify(violations)}`,
-    );
-  });
-});
-
 describe("PF-07 — TP-005 BDI vendorRawName patched to short form", () => {
   test("fires when BDI invoice 9504895965 (pack file) has the patched vendorRawName 'BDI'", () => {
     const actuals = withPatch(
@@ -331,8 +243,8 @@ describe("PF-07 — TP-005 BDI vendorRawName patched to short form", () => {
 
 // ─── Multi-violation test ─────────────────────────────────────────────────────
 
-describe("checkBaselineCorrections — all seven patches applied simultaneously", () => {
-  test("reports all 7 violated entries when every DB patch is present", () => {
+describe("checkBaselineCorrections — all three patches applied simultaneously", () => {
+  test("reports all 3 violated entries when every remaining DB patch is present", () => {
     const allPatched = [
       { invoiceNumber: "19237741",      vendorRawName: "Automation Direct",          originalFileName: PACK_FILE, taxAmount: 0,    freightAmount: 0 },
       { invoiceNumber: "215",           vendorRawName: "BzRhino Consulting, LLC",    originalFileName: PACK_FILE, taxAmount: 0,    freightAmount: 0 },
@@ -343,8 +255,8 @@ describe("checkBaselineCorrections — all seven patches applied simultaneously"
     const violations = checkBaselineCorrections(allPatched);
     assert.equal(
       violations.length,
-      7,
-      `Expected 7 violations; got ${violations.length}:\n${violations.join("\n")}`,
+      3,
+      `Expected 3 violations; got ${violations.length}:\n${violations.join("\n")}`,
     );
     for (const pf of BASELINE_PREFLIGHT) {
       assert.ok(

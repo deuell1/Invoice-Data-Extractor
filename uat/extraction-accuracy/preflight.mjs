@@ -3,7 +3,7 @@
 //
 // The accuracy scorer must never produce a misleading result because someone
 // manually patched the database rows that back the five test-pack invoices.
-// This module encodes the seven field values that indicate such a patch has
+// This module encodes the three field values that indicate such a patch has
 // been applied — values that appear in the database ONLY when the DB has been
 // manually corrected, never as a result of natural extraction.
 //
@@ -66,54 +66,6 @@ export const BASELINE_PREFLIGHT = [
         (a) =>
           /bzrhino/i.test(String(a.vendorRawName ?? "")) &&
           String(a.invoiceNumber ?? "").trim() === "215",
-      ),
-  },
-  {
-    id: "PF-03",
-    description:
-      "TP-002 BzRhino taxAmount is 0 from a DB patch; " +
-      "natural extraction returns null — the true accuracy gap is hidden when this patch is present",
-    check: (packActuals) =>
-      packActuals.some(
-        (a) =>
-          /bzrhino/i.test(String(a.vendorRawName ?? "")) &&
-          a.taxAmount === 0,
-      ),
-  },
-  {
-    id: "PF-04",
-    description:
-      "TP-002 BzRhino freightAmount is 0 from a DB patch; " +
-      "natural extraction returns null",
-    check: (packActuals) =>
-      packActuals.some(
-        (a) =>
-          /bzrhino/i.test(String(a.vendorRawName ?? "")) &&
-          a.freightAmount === 0,
-      ),
-  },
-  {
-    id: "PF-05",
-    description:
-      "TP-003 Van Meter taxAmount is 0 from a DB patch; " +
-      "natural extraction returns null",
-    check: (packActuals) =>
-      packActuals.some(
-        (a) =>
-          /van meter/i.test(String(a.vendorRawName ?? "")) &&
-          a.taxAmount === 0,
-      ),
-  },
-  {
-    id: "PF-06",
-    description:
-      "TP-004 Rice Lake taxAmount is 0 from a DB patch; " +
-      "natural extraction returns null",
-    check: (packActuals) =>
-      packActuals.some(
-        (a) =>
-          /rice lake/i.test(String(a.vendorRawName ?? "")) &&
-          a.taxAmount === 0,
       ),
   },
   {

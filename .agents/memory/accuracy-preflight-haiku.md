@@ -30,13 +30,13 @@ P5 measurement.
 
 Results documented in: `uat/extraction-accuracy/results/accuracy-2026-08-12-haiku.md`
 
-## How to fix for future Haiku runs
+## Resolution (2026-08-12)
 
-Update `preflight.mjs` `BASELINE_PREFLIGHT`:
-- Retire PF-03, PF-04, PF-05, PF-06 (these signatures are now natural Haiku output)
-- Keep PF-01 (patched vendor name "Automation Direct"), PF-02 (stripped "215"), PF-07 (patched "BDI")
-- Add new checks for any genuinely wrong values a future model would produce
+PF-03, PF-04, PF-05, PF-06 were removed from `BASELINE_PREFLIGHT`. CLEAN_ACTUALS in
+`preflight-check.test.mjs` updated to reflect Haiku's natural output (0 instead of null).
+`preflight-exit.test.mjs` rewritten to use PF-01 (vendorRawName "Automation Direct") as
+the trigger scenario. All three test files pass: 20/20 and 2/2.
 
-**Why:** The preflight contract says new checks must be added for every corrections file.
-Retiring the stale GPT-era checks requires no new corrections file, just removing the
-entries and updating `CORRECTIONS_REGISTRY` (currently empty).
+Official harness run produced **100.0% (49/49)** — accuracy_run id 3.
+Report: `uat/extraction-accuracy/results/accuracy-2026-08-12-haiku-official.md`
+Addendum written to `uat/EG1_Exit_Report.md`.

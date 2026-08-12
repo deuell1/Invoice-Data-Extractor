@@ -42,12 +42,13 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(__dirname, "run-accuracy.mjs");
 
 // ─── Minimal ground-truth CSV ─────────────────────────────────────────────────
-// One BzRhino row — enough to exercise PF-03 (taxAmount patch) and to have a
-// valid, parseable CSV.  Uses the pack source file so matchActual() can bind.
+// One AutomationDirect row — enough to exercise PF-01 (vendorRawName patch) and
+// to have a valid, parseable CSV.  Uses the pack source file so matchActual()
+// can bind.
 const GT_HEADER =
   "testCaseId,sourceFileName,invoiceNumber,vendorRawName,invoiceDate,dueDate,paymentTerms,poNumber,subtotal,taxAmount,freightAmount,totalAmount,currency";
 const GT_ROW =
-  `TP-T,${PACK_FILE},00215,BzRhino Consulting LLC,5/18/2026,6/2/2026,,,,,,125,USD`;
+  `TP-T,${PACK_FILE},19237741,AutomationDirect.com Inc.,5/21/2026,6/20/2026,,,,,,10013.25,USD`;
 const MINIMAL_GT_CSV = [GT_HEADER, GT_ROW].join("\n");
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -95,18 +96,19 @@ function runScript(port, csvPath) {
 
 // ─── Process-level tests ──────────────────────────────────────────────────────
 
-test("exits 2 before scoring when pack invoice has DB-patched taxAmount (PF-03)", async () => {
-  // BzRhino invoice with taxAmount=0 (the DB-patched value; natural extraction returns null)
+test("exits 2 before scoring when pack invoice has DB-patched vendorRawName (PF-01)", async () => {
+  // AutomationDirect invoice with the trade name "Automation Direct"
+  // (the DB-patched value; natural extraction produces "AutomationDirect.com, Inc.")
   const patchedPackInvoices = [
     {
-      invoiceNumber: "00215",
-      vendorRawName: "BzRhino Consulting, LLC",
-      originalFileName: PACK_FILE,   // designated test-pack file
-      invoiceDate: "2026-05-18",
-      dueDate: "2026-06-02",
-      taxAmount: 0,                   // DB-patched: was null
-      freightAmount: null,
-      totalAmount: 125,
+      invoiceNumber: "19237741",
+      vendorRawName: "Automation Direct",  // DB-patched: natural extraction returns "AutomationDirect.com, Inc."
+      originalFileName: PACK_FILE,          // designated test-pack file
+      invoiceDate: "2026-05-21",
+      dueDate: "2026-06-20",
+      taxAmount: 0,
+      freightAmount: 0,
+      totalAmount: 10013.25,
       currency: "USD",
     },
   ];
@@ -141,18 +143,18 @@ test("exits 2 before scoring when pack invoice has DB-patched taxAmount (PF-03)"
 });
 
 test("does not exit 2 when the same patched-looking value appears on a non-pack invoice", async () => {
-  // Same BzRhino taxAmount=0, but originates from a DIFFERENT source file.
+  // Same AutomationDirect patched vendorRawName, but originates from a DIFFERENT source file.
   // The preflight is scoped to PACK_FILE so it must NOT fire here.
   const patchedNonPackInvoices = [
     {
-      invoiceNumber: "00215",
-      vendorRawName: "BzRhino Consulting, LLC",
-      originalFileName: "some_other_file.pdf",  // NOT the designated pack file
-      invoiceDate: "2026-05-18",
-      dueDate: "2026-06-02",
-      taxAmount: 0,                              // same value, but not a pack invoice
-      freightAmount: null,
-      totalAmount: 125,
+      invoiceNumber: "19237741",
+      vendorRawName: "Automation Direct",         // same patched value, but not a pack invoice
+      originalFileName: "some_other_file.pdf",    // NOT the designated pack file
+      invoiceDate: "2026-05-21",
+      dueDate: "2026-06-20",
+      taxAmount: 0,
+      freightAmount: 0,
+      totalAmount: 10013.25,
       currency: "USD",
     },
   ];

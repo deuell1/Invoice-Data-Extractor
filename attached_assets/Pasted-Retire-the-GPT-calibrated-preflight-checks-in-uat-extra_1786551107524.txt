@@ -1,0 +1,52 @@
+Retire the GPT-calibrated preflight checks in
+uat/extraction-accuracy/preflight.mjs that now false-positive on Claude
+Haiku's correct output, then officially re-run and record the Haiku
+accuracy measurement. Do this in order, verifying each step.
+
+1. In uat/extraction-accuracy/preflight.mjs, remove the BASELINE_PREFLIGHT
+   entries PF-03, PF-04, PF-05, and PF-06 (BzRhino taxAmount/freightAmount,
+   Van Meter taxAmount, Rice Lake taxAmount — all keyed on "=== 0"). Keep
+   PF-01, PF-02, and PF-07 exactly as they are — they detect a specific wrong
+   string, not a value Claude's correct extraction also produces. Renumber
+   nothing; just remove the three entries and update the file's header
+   comment (currently says "seven field values") to say "three."
+
+2. Update uat/extraction-accuracy/preflight-check.test.mjs to match: change
+   the `BASELINE_PREFLIGHT.length` assertion from 7 to 3, and remove the four
+   describe() blocks for PF-03 through PF-06. Leave the PF-01, PF-02, PF-07,
+   pack-scoping, and CORRECTIONS_REGISTRY test blocks untouched.
+
+3. uat/extraction-accuracy/preflight-exit.test.mjs uses PF-03 (BzRhino
+   taxAmount) as its example scenario for the "exits 2 before scoring"
+   integration test. Rewrite that one test to use PF-01 (TP-001
+   vendorRawName patched to "Automation Direct") as the trigger scenario
+   instead, since PF-01 remains valid. Do not remove the exit-code-2
+   behavior itself — only the fixture value that triggers it.
+
+4. Confirm the boot log shows provider Anthropic, model
+   claude-haiku-4-5-20251001, and mock mode OFF before scoring anything.
+
+5. Run: node uat/extraction-accuracy/run-accuracy.mjs ground-truth.csv 80
+   --out uat/extraction-accuracy/results/accuracy-2026-08-12-haiku-official.md
+   Do not modify ground-truth.csv or run-accuracy.mjs's scoring logic to
+   produce this result — only the preflight module and its tests changed in
+   steps 1-3.
+
+6. Record the run via the existing POST /accuracy-runs endpoint so it
+   appears in-app (the /accuracy page), matching how run id 1 (OpenAI,
+   2026-08-07) and run id 2 (OpenAI control, 2026-08-10) were recorded.
+
+7. Add a new dated addendum section to the BOTTOM of uat/EG1_Exit_Report.md
+   — do not edit or remove the existing "Addendum — 2026-08-10" section above
+   it. Title it "Addendum — 2026-08-12: Anthropic/Haiku accuracy measurement"
+   and include: the preflight retirement rationale from this prompt, the
+   run-accuracy.mjs result from step 5 (official harness, not the Suite-11
+   substitute used in accuracy-2026-08-12-haiku.md), the accuracy_run id from
+   step 6, and a note that accuracy-2026-08-12-haiku.md's 100% figure is
+   superseded by this run as the authoritative harness-scored number. Do not
+   change the original EG-1 FAIL determination or the 2026-08-10 addendum —
+   append only.
+
+Report the measured number, the accuracy_run id, and confirm all three test
+files (preflight.mjs, preflight-check.test.mjs, preflight-exit.test.mjs)
+still pass.
