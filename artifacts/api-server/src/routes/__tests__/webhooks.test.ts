@@ -20,7 +20,7 @@ import { createHmac } from "node:crypto";
 // ─── Module imports (must come before dynamic import of the route module) ──────
 
 // We import actorNameCache directly so tests can seed / inspect it.
-import { actorNameCache } from "../../middlewares/requireAuth.js";
+import { actorNameCache, resolveActorName } from "../../middlewares/requireAuth.js";
 // Import the replay-tracking map so tests can reset it between runs.
 import { seenMessageIds } from "../webhooks.js";
 
@@ -320,7 +320,59 @@ describe("POST /webhooks/clerk", () => {
     );
   });
 
-  // ── 6. Unhandled event types ──────────────────────────────────────────────
+  // ── 6. End-to-end rename: webhook evicts cache, next resolveActorName picks up new name ──
+
+  it("resolveActorName returns the new name after a user.updated webhook evicts the stale cache entry", async () => {
+    const userId = "user_renamed_e2e";
+
+    // Seed the cache with the old name so it would be returned without the webhook.
+    actorNameCache.set(userId, { name: "Old Name", expiresAt: Date.now() + 300_000 });
+    assert.strictEqual(actorNameCache.has(userId), true, "pre-condition: stale cache entry must exist");
+
+    // Fire the user.updated webhook — this should evict the cache entry.
+    const rawPayload = JSON.stringify({ type: "user.updated", data: { id: userId } });
+    const body = Buffer.from(rawPayload);
+    const headers = buildSvixHeaders("msg_rename_e2e_1", NOW_SEC, body, TEST_SECRET);
+    const { req, res } = buildReqRes(body, headers);
+    await callHandler(req, res);
+
+    assert.strictEqual(res.statusCode, 200, "webhook must return 200");
+    assert.strictEqual(
+      actorNameCache.has(userId),
+      false,
+      "cache entry must be evicted by the webhook",
+    );
+
+    // Now call resolveActorName with a mock Clerk client that returns the new name.
+    // Because the cache was evicted, it must hit the mock client (not serve the old cached value).
+    const mockClerkUsers = {
+      async getUser(_id: string) {
+        return { firstName: "New", lastName: "Name" };
+      },
+    };
+
+    const result = await resolveActorName(userId, mockClerkUsers);
+
+    assert.strictEqual(
+      result,
+      "New Name",
+      "resolveActorName must return the new name from Clerk after the cache was evicted by the webhook",
+    );
+
+    // The new name should now be cached for subsequent calls.
+    assert.strictEqual(
+      actorNameCache.has(userId),
+      true,
+      "resolved new name must be stored in cache for subsequent calls",
+    );
+    assert.strictEqual(
+      actorNameCache.get(userId)?.name,
+      "New Name",
+      "cached value must be the new name, not the old one",
+    );
+  });
+
+  // ── 7. Unhandled event types ──────────────────────────────────────────────
 
   it("returns 200 for unhandled event types without touching the cache", async () => {
     const userId = "user_created_event";
