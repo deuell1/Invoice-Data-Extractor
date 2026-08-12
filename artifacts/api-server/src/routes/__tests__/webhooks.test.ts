@@ -21,6 +21,8 @@ import { createHmac } from "node:crypto";
 
 // We import actorNameCache directly so tests can seed / inspect it.
 import { actorNameCache } from "../../middlewares/requireAuth.js";
+// Import the replay-tracking map so tests can reset it between runs.
+import { seenMessageIds } from "../webhooks.js";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -129,6 +131,8 @@ describe("POST /webhooks/clerk", () => {
     process.env.CLERK_WEBHOOK_SECRET = TEST_SECRET;
     // Clear the actor name cache so tests don't bleed into each other.
     actorNameCache.clear();
+    // Clear the replay-tracking map so message IDs don't bleed between tests.
+    seenMessageIds.clear();
   });
 
   after(() => {
@@ -253,7 +257,70 @@ describe("POST /webhooks/clerk", () => {
     assert.strictEqual(actorNameCache.has(otherId), true, "other users must NOT be evicted");
   });
 
-  // ── 5. Unhandled event types ──────────────────────────────────────────────
+  // ── 5. Replay and tampering attacks ──────────────────────────────────────
+
+  it("returns 400 when the identical signed request is delivered a second time (in-window replay)", async () => {
+    const rawPayload = JSON.stringify({ type: "user.updated", data: { id: "user_replay_inwindow" } });
+    const body = Buffer.from(rawPayload);
+    const msgId = "msg_replay_inwindow_1";
+    const headers = buildSvixHeaders(msgId, NOW_SEC, body, TEST_SECRET);
+
+    // First delivery — must succeed.
+    const { req: req1, res: res1 } = buildReqRes(body, headers);
+    await callHandler(req1, res1);
+    assert.strictEqual(res1.statusCode, 200, "first delivery must be accepted (200)");
+
+    // Second delivery of the identical signed request — must be rejected.
+    const { req: req2, res: res2 } = buildReqRes(body, headers);
+    await callHandler(req2, res2);
+    assert.strictEqual(
+      res2.statusCode,
+      400,
+      "second delivery of the same svix-id must be rejected with 400 (in-window replay protection)",
+    );
+  });
+
+  it("returns 400 when the Svix timestamp is stale (timestamp-expiry protection)", async () => {
+    // A timestamp 6 minutes in the past falls outside the Svix tolerance window (~5 min).
+    const staleTimestamp = NOW_SEC - 6 * 60;
+
+    const rawPayload = JSON.stringify({ type: "user.updated", data: { id: "user_replay" } });
+    const body = Buffer.from(rawPayload);
+    // Build headers with a valid signature but for the stale timestamp.
+    const headers = buildSvixHeaders("msg_replay_1", staleTimestamp, body, TEST_SECRET);
+    const { req, res } = buildReqRes(body, headers);
+
+    await callHandler(req, res);
+
+    assert.strictEqual(
+      res.statusCode,
+      400,
+      "stale-timestamp request must be rejected with 400 (replay protection)",
+    );
+  });
+
+  it("returns 400 when the body has been tampered after signing", async () => {
+    // Sign the original payload …
+    const originalPayload = JSON.stringify({ type: "user.updated", data: { id: "user_tampered" } });
+    const originalBody = Buffer.from(originalPayload);
+    const headers = buildSvixHeaders("msg_tamper_1", NOW_SEC, originalBody, TEST_SECRET);
+
+    // … then swap in a different body before sending.
+    const tamperedBody = Buffer.from(
+      JSON.stringify({ type: "user.updated", data: { id: "user_evil" } }),
+    );
+    const { req, res } = buildReqRes(tamperedBody, headers);
+
+    await callHandler(req, res);
+
+    assert.strictEqual(
+      res.statusCode,
+      400,
+      "tampered-body request must be rejected with 400 (signature mismatch)",
+    );
+  });
+
+  // ── 6. Unhandled event types ──────────────────────────────────────────────
 
   it("returns 200 for unhandled event types without touching the cache", async () => {
     const userId = "user_created_event";

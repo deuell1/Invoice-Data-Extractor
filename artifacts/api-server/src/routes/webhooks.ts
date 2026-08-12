@@ -26,6 +26,38 @@ import { logger } from "../lib/logger.js";
 
 const webhooksRouter = Router();
 
+// ─── In-window replay protection ─────────────────────────────────────────────
+// Svix's tolerance window is ±5 minutes.  We retain seen message IDs for 6
+// minutes so that any valid message delivered twice within the window is
+// rejected on the second delivery.
+
+/** How long (ms) to retain a seen svix-id before evicting it. */
+const REPLAY_WINDOW_MS = 6 * 60 * 1000; // 6 minutes
+
+/** svix-id → absolute expiry timestamp (ms since epoch). */
+export const seenMessageIds = new Map<string, number>();
+
+/** Record a message ID as seen; prune expired entries at the same time. */
+function recordMessageId(msgId: string): void {
+  const now = Date.now();
+  // Prune stale entries so the Map stays bounded.
+  for (const [id, expiresAt] of seenMessageIds) {
+    if (expiresAt <= now) seenMessageIds.delete(id);
+  }
+  seenMessageIds.set(msgId, now + REPLAY_WINDOW_MS);
+}
+
+/** Return true if this message ID has already been processed. */
+function isDuplicateMessage(msgId: string): boolean {
+  const expiresAt = seenMessageIds.get(msgId);
+  if (expiresAt === undefined) return false;
+  if (expiresAt <= Date.now()) {
+    seenMessageIds.delete(msgId);
+    return false;
+  }
+  return true;
+}
+
 webhooksRouter.post("/clerk", async (req: Request, res: Response) => {
   const secret = process.env.CLERK_WEBHOOK_SECRET;
   if (!secret) {
@@ -65,6 +97,14 @@ webhooksRouter.post("/clerk", async (req: Request, res: Response) => {
     res.status(400).json({ error: "Invalid webhook signature" });
     return;
   }
+
+  // Reject in-window replays (same svix-id delivered more than once).
+  if (isDuplicateMessage(svixId)) {
+    logger.warn({ svixId }, "Clerk webhook replay detected — duplicate svix-id rejected");
+    res.status(400).json({ error: "Duplicate webhook delivery" });
+    return;
+  }
+  recordMessageId(svixId);
 
   const event = payload as { type?: string; data?: { id?: string } };
 
