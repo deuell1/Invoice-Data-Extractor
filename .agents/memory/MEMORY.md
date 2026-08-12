@@ -22,3 +22,5 @@
 - [Role-based access control](rbac.md) — AP_MANAGER vs AP_CLERK enforced via requireRole() middleware; role from Clerk publicMetadata; smoke-test bypass defaults to AP_MANAGER; frontend useRole()/useIsManager() hooks read publicMetadata.
 - [Clerk queue scoping pattern](clerk-queue-scoping.md) — AP_CLERK always server-scoped on /exceptions and /invoices; truly-unassigned = BOTH owner fields null; display-name-only assignments not visible to other clerks.
 - [Extraction accuracy harness](accuracy-harness.md) — run run-accuracy.mjs through a localhost auth-injecting proxy (harness stays auth-agnostic/frozen); row binding needs exact invoiceNumber incl. leading zeros; re-score needs no re-extraction.
+- [Anthropic port](anthropic-port.md) — dual-key setup (Replit integration proxy first, direct ANTHROPIC_API_KEY fallback); schema normalization rules; forced tool-use; boot-log model name cosmetic quirk.
+- [Accuracy harness preflight vs Haiku](accuracy-preflight-haiku.md) — PF-03 to PF-06 flag taxAmount=0 as a DB patch, but Claude Haiku naturally extracts 0; harness is blocked for Haiku runs; use Suite 11 smoke result as authoritative substitute.

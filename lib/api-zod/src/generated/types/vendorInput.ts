@@ -12,7 +12,7 @@ export interface VendorInput {
   /** @minLength 1 */
   vendorName: string;
   /**
-     * Identified actor performing the creation (required by the API route; no auth system in pilot)
+     * Identified actor performing the creation (Clerk user ID; resolved from session on authenticated routes)
      * @nullable
      */
   actor?: string | null;

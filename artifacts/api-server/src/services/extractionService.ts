@@ -5,21 +5,22 @@ import { validateInvoice } from "./validationService";
 import { logger } from "../lib/logger";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { extractPdfPageRange } from "../lib/pdfUtils";
-import { callAnthropicStructured } from "./anthropicStructured";
+import { callAnthropicStructured, ANTHROPIC_MODEL, isAnthropicConfigured } from "./anthropicStructured";
 import type { AnthropicUserContent } from "./anthropicStructured";
 
 /**
  * Extraction service.
  *
- * When OPENAI_API_KEY is configured, real extraction runs against the uploaded
- * document using the OpenAI Responses API with Structured Outputs (a strict
- * JSON schema). Until then, a deterministic development mock produces plausible
- * field values so the full pipeline (review, vendor matching, exception routing)
- * can be exercised end-to-end without the key.
+ * When Anthropic is configured (via Replit AI Integrations proxy or a direct
+ * ANTHROPIC_API_KEY), real extraction runs against the uploaded document using
+ * the Anthropic Messages API with forced tool-use (schema enforced server-side).
+ * EXTRACTION_MOCK_MODE=true activates the deterministic development mock
+ * instead; without either a key or mock mode the runner fails closed with a
+ * PROVIDER_ERROR.
  *
  * The service NEVER assigns a vendorId directly — it only produces a
  * vendorRawName, which is then run through the controlled vendor matching
- * pipeline. The API key is read only from the environment and is never logged
+ * pipeline. API keys are read only from the environment and are never logged
  * or returned to clients.
  */
 
@@ -67,9 +68,7 @@ export type ExtractedFields = {
 };
 
 export function isExtractionConfigured(): boolean {
-  const provider = (process.env.EXTRACTION_PROVIDER ?? "openai").toLowerCase();
-  if (provider === "anthropic") return Boolean(process.env.ANTHROPIC_API_KEY);
-  return Boolean(process.env.OPENAI_API_KEY);
+  return isAnthropicConfigured();
 }
 
 /** Coarse failure categories used for troubleshooting (never user secrets). */
@@ -98,8 +97,6 @@ export class ExtractionError extends Error {
 /** Maximum document size accepted for automatic extraction (bytes). */
 const MAX_EXTRACTION_FILE_BYTES = 25 * 1024 * 1024; // 25 MB
 
-/** Extraction request timeout (ms); override with OPENAI_TIMEOUT_MS. */
-const EXTRACTION_TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS) || 60_000;
 
 /** Confidence threshold (0-100 scale) below which a field is "low confidence". */
 const LOW_CONFIDENCE_THRESHOLD = 85;
@@ -220,8 +217,6 @@ function mockExtract(invoiceId: number, fileName: string): ExtractedFields {
 
 const SUPPORTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"];
 
-/** Default to a current vision-capable model; override with OPENAI_MODEL. */
-const DEFAULT_MODEL = "gpt-4o";
 
 /** Best-effort content type from a filename when storage metadata is absent. */
 function inferContentType(fileName: string): string {
@@ -309,6 +304,17 @@ function categorizeExtractionError(err: unknown): {
       category: "PROVIDER_ERROR",
       message: "Extraction service authentication failed. Please verify the service configuration.",
     };
+  }
+  if (status === 400) {
+    // Billing-related 400s (credit exhausted) are a provider configuration issue,
+    // not a transient or user-resolvable failure.
+    const errMsg = ((err as { message?: string })?.message ?? "").toLowerCase();
+    if (errMsg.includes("credit") || errMsg.includes("billing") || errMsg.includes("balance")) {
+      return {
+        category: "PROVIDER_ERROR",
+        message: "Extraction service billing error. Please check the service configuration.",
+      };
+    }
   }
   if (status === 429) {
     return {
@@ -552,157 +558,15 @@ function mapModelOutput(parsed: RawModelOutput, rawExtraction: string): Extracte
   };
 }
 
-async function openAiExtract(
-  fileObjectPath: string,
-  fileName: string,
-  pageRange?: { pageStart: number; pageEnd: number } | null,
-): Promise<ExtractedFields> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    // Caller guards on isExtractionConfigured(); this is a defensive backstop.
-    throw new Error("Extraction service is not configured.");
-  }
-  const model = process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
-
-  // Fetch the uploaded document bytes from object storage.
-  const storage = new ObjectStorageService();
-  const file = await storage.getObjectEntityFile(fileObjectPath);
-  const [metadata] = await file.getMetadata();
-  let [buffer] = await file.download();
-  const contentType =
-    (typeof metadata.contentType === "string" && metadata.contentType) || inferContentType(fileName);
-
-  // Multi-invoice source documents: extract this invoice from only its own
-  // pages. Splitting happens in-memory; the original stored file is untouched.
-  if (contentType === "application/pdf" && pageRange) {
-    try {
-      buffer = await extractPdfPageRange(buffer, pageRange.pageStart, pageRange.pageEnd);
-    } catch (err) {
-      // Do NOT fall back to the full document: extracting the whole packet would
-      // pull fields from the wrong invoice and silently corrupt this capture.
-      // Route to exception so the page boundaries can be reviewed manually.
-      logger.error(
-        { fileObjectPath, pageRange, err: (err as Error)?.message },
-        "openAiExtract: failed to split PDF page range",
-      );
-      throw new ExtractionError(
-        "UNSUPPORTED_FILE",
-        `Could not isolate pages ${pageRange.pageStart}-${pageRange.pageEnd} from the source file. Review the page split or enter the fields manually.`,
-      );
-    }
-  }
-
-  // Validate file size and type BEFORE building/sending the OpenAI request.
-  if (buffer.length > MAX_EXTRACTION_FILE_BYTES) {
-    throw new ExtractionError(
-      "UNSUPPORTED_FILE",
-      `Document is too large for automatic extraction (max ${Math.floor(
-        MAX_EXTRACTION_FILE_BYTES / (1024 * 1024),
-      )} MB). Enter the invoice fields manually.`,
-    );
-  }
-  const isPdf = contentType === "application/pdf";
-  const isImage = SUPPORTED_IMAGE_TYPES.includes(contentType);
-  if (!isPdf && !isImage) {
-    throw new ExtractionError(
-      "UNSUPPORTED_FILE",
-      "Unsupported document type for automatic extraction. Upload a PDF or image, or enter the fields manually.",
-    );
-  }
-  const base64 = buffer.toString("base64");
-
-  const { default: OpenAI } = await import("openai");
-  const client = new OpenAI({ apiKey, timeout: EXTRACTION_TIMEOUT_MS, maxRetries: 1 });
-
-  const userContent: Array<Record<string, unknown>> = [
-    { type: "input_text", text: `Extract the fields from this invoice ("${fileName}").` },
-  ];
-
-  if (contentType === "application/pdf") {
-    userContent.push({
-      type: "input_file",
-      filename: fileName,
-      file_data: `data:application/pdf;base64,${base64}`,
-    });
-  } else if (SUPPORTED_IMAGE_TYPES.includes(contentType)) {
-    userContent.push({
-      type: "input_image",
-      image_url: `data:${contentType};base64,${base64}`,
-      detail: "auto",
-    });
-  } else {
-    // Defensive: type is already validated above.
-    throw new ExtractionError(
-      "UNSUPPORTED_FILE",
-      "Unsupported document type for automatic extraction. Upload a PDF or image, or enter the fields manually.",
-    );
-  }
-
-  let raw = "{}";
-  try {
-    const response = await client.responses.create({
-      model,
-      input: [
-        { role: "system", content: [{ type: "input_text", text: SYSTEM_PROMPT }] },
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        { role: "user", content: userContent as any },
-      ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "invoice_extraction",
-          strict: true,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          schema: EXTRACTION_JSON_SCHEMA as any,
-        },
-      },
-    });
-    raw = response.output_text ?? "{}";
-  } catch (err) {
-    const { category, message } = categorizeExtractionError(err);
-    // Log only safe diagnostics (category + status + provider request id);
-    // never the raw provider message, which may echo headers/credentials.
-    logger.error(
-      {
-        category,
-        status: (err as { status?: number })?.status,
-          // SDK 0.116.0: Anthropic uses requestID (camelCase); OpenAI uses request_id.
-        requestId:
-          (err as { request_id?: string })?.request_id ??
-          (err as { requestID?: string })?.requestID ??
-          null,
-      },
-      "openAiExtract: OpenAI request failed",
-    );
-    throw new ExtractionError(category, message);
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    logger.error({ rawLength: raw.length }, "openAiExtract: model returned non-JSON output");
-    throw new ExtractionError(
-      "INVALID_RESPONSE",
-      "Automatic extraction failed to read the document. You can retry or enter the fields manually.",
-    );
-  }
-
-  // Valid JSON can still be structurally wrong; reject it before persisting.
-  assertValidModelShape(parsed);
-
-  return mapModelOutput(parsed, raw);
-}
-
 // ─── Live Anthropic extraction ──────────────────────────────────────────────
-// Parallel path to openAiExtract; selected when EXTRACTION_PROVIDER=anthropic.
+// The sole extraction path — Anthropic Claude Haiku via forced tool-use.
 
 async function anthropicExtract(
   fileObjectPath: string,
   fileName: string,
   pageRange?: { pageStart: number; pageEnd: number } | null,
 ): Promise<ExtractedFields> {
-  if (!process.env.ANTHROPIC_API_KEY) {
+  if (!isAnthropicConfigured()) {
     throw new Error("Extraction service is not configured.");
   }
 
@@ -773,15 +637,16 @@ async function anthropicExtract(
     });
   }
 
-  // The SYSTEM_PROMPT is provider-agnostic; append a JSON-only instruction for Claude.
-  const systemPrompt =
-    SYSTEM_PROMPT +
-    " Return ONLY valid JSON that matches the schema exactly — no markdown code fences," +
-    " no explanatory prose, no trailing text.";
-
-  let raw = "{}";
+  // Forced tool-use enforces the schema server-side — no JSON-only instruction needed.
+  let result: unknown;
   try {
-    raw = await callAnthropicStructured({ systemPrompt, userContent });
+    result = await callAnthropicStructured({
+      systemPrompt: SYSTEM_PROMPT,
+      userContent,
+      toolName: "extract_invoice",
+      toolDescription: "Extract structured invoice header data from the document.",
+      inputSchema: EXTRACTION_JSON_SCHEMA as Record<string, unknown>,
+    });
   } catch (err) {
     const { category, message } = categorizeExtractionError(err);
     // Log only safe diagnostics — never the raw provider message, which may echo credentials.
@@ -797,19 +662,10 @@ async function anthropicExtract(
     throw new ExtractionError(category, message);
   }
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    logger.error({ rawLength: raw.length }, "anthropicExtract: model returned non-JSON output");
-    throw new ExtractionError(
-      "INVALID_RESPONSE",
-      "Automatic extraction failed to read the document. You can retry or enter the fields manually.",
-    );
-  }
-
-  assertValidModelShape(parsed);
-  return mapModelOutput(parsed, raw);
+  // With forced tool-use the model returns a structured object directly —
+  // no JSON.parse step. Validate shape before mapping to ExtractedFields.
+  assertValidModelShape(result);
+  return mapModelOutput(result, JSON.stringify(result));
 }
 
 // ─── Orchestration ───────────────────────────────────────────────────────────
@@ -847,17 +703,30 @@ export async function runExtraction(invoiceId: number): Promise<void> {
     .where(eq(invoiceCaptureTable.id, invoiceId));
 
   try {
-    const usingMock = !isExtractionConfigured();
-    const provider = (process.env.EXTRACTION_PROVIDER ?? "openai").toLowerCase();
+    const isMockMode = process.env.EXTRACTION_MOCK_MODE === "true";
     const pageRange =
       invoice.pageStart != null && invoice.pageEnd != null
         ? { pageStart: invoice.pageStart, pageEnd: invoice.pageEnd }
         : null;
-    const fields = usingMock
-      ? mockExtract(invoice.id, invoice.originalFileName)
-      : provider === "anthropic"
-        ? await anthropicExtract(invoice.fileObjectPath, invoice.originalFileName, pageRange)
-        : await openAiExtract(invoice.fileObjectPath, invoice.originalFileName, pageRange);
+    let fields: ExtractedFields;
+    if (isMockMode) {
+      logger.warn(
+        { invoiceId },
+        "runExtraction: EXTRACTION_MOCK_MODE is on — writing fabricated data to invoice_capture",
+      );
+      const mockFields = mockExtract(invoice.id, invoice.originalFileName);
+      fields = {
+        ...mockFields,
+        extractionNotes: "[MOCK MODE] " + (mockFields.extractionNotes ?? ""),
+      };
+    } else if (!isExtractionConfigured()) {
+      throw new ExtractionError(
+        "PROVIDER_ERROR",
+        "Extraction is not configured. The API key for the extraction provider is missing.",
+      );
+    } else {
+      fields = await anthropicExtract(invoice.fileObjectPath, invoice.originalFileName, pageRange);
+    }
 
     await db
       .update(invoiceCaptureTable)
@@ -893,7 +762,7 @@ export async function runExtraction(invoiceId: number): Promise<void> {
       invoiceId,
       action: "EXTRACTED",
       actorClerkId: "system-pipeline",
-      note: `Extraction completed via ${usingMock ? "development mock" : provider === "anthropic" ? "Anthropic" : "OpenAI"} (confidence ${(fields.confidenceScore * 100).toFixed(0)}%)`,
+      note: `Extraction completed via ${isMockMode ? "development mock" : "Anthropic"} (confidence ${(fields.confidenceScore * 100).toFixed(0)}%)`,
     });
 
     // Run controlled vendor matching on the extracted raw name.
@@ -920,7 +789,15 @@ export async function runExtraction(invoiceId: number): Promise<void> {
     });
 
     logger.error(
-      { invoiceId, documentId: invoice.documentId, attempt, fileType, category, summary: message },
+      {
+        invoiceId,
+        documentId: invoice.documentId,
+        attempt,
+        fileType,
+        category,
+        summary: message,
+        errMessage: (err as { message?: string })?.message,
+      },
       "runExtraction failed",
     );
 
@@ -957,4 +834,30 @@ export function triggerExtraction(invoiceId: number): void {
   setImmediate(() => {
     void runExtraction(invoiceId);
   });
+}
+
+/**
+ * Log the resolved extraction configuration at startup.
+ * Logs model name, mock-mode flag, and whether the API key is present.
+ * NEVER logs the key value — only a boolean `configured: true/false`.
+ *
+ * Must be called from index.ts after env vars are loaded.
+ */
+export function logExtractionBootInfo(): void {
+  const rawProvider = process.env.EXTRACTION_PROVIDER;
+  if (rawProvider && rawProvider.toLowerCase() !== "anthropic") {
+    logger.warn(
+      { EXTRACTION_PROVIDER: rawProvider },
+      "Extraction: EXTRACTION_PROVIDER is set but ignored — provider is always Anthropic",
+    );
+  }
+  logger.info(
+    {
+      provider: "anthropic",
+      model: ANTHROPIC_MODEL,
+      mockMode: process.env.EXTRACTION_MOCK_MODE === "true",
+      keyConfigured: isExtractionConfigured(),
+    },
+    "Extraction service configuration",
+  );
 }

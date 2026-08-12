@@ -1336,21 +1336,16 @@ console.log("══════════════════════�
     console.log(`  → UAT PDF loaded: ${(uatPdf.length / 1024).toFixed(1)} KB`);
 
     // ── Preflight: confirm extraction service is reachable ──────────────────────
-    // Suite 11 depends on real extraction (OpenAI or Anthropic). When the API key
+    // Suite 11 depends on real extraction (Anthropic Claude). When ANTHROPIC_API_KEY
     // is absent or the service is unreachable the suite would otherwise hang for
     // 90–120 s before timing out with a misleading error. Skip cleanly instead so
     // the run does not count this suite as a failure.
-    // Mirror the provider logic from extractionService.isExtractionConfigured().
-    const s11ExtractionProvider = (process.env.EXTRACTION_PROVIDER ?? "openai").toLowerCase();
-    const s11ExtractionAvailable =
-      s11ExtractionProvider === "anthropic"
-        ? Boolean((process.env.ANTHROPIC_API_KEY ?? "").trim())
-        : Boolean((process.env.OPENAI_API_KEY ?? "").trim());
+    const s11ExtractionAvailable = Boolean((process.env.ANTHROPIC_API_KEY ?? "").trim());
 
     if (!s11ExtractionAvailable) {
       warn(
         `Suite 11 SKIPPED — extraction service is not configured ` +
-        `(provider="${s11ExtractionProvider}", key absent); ` +
+        `(ANTHROPIC_API_KEY absent); ` +
         `skipping without failure so CI is not gated on external-service availability`,
       );
     } else {

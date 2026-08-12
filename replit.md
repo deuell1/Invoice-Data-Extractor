@@ -4,7 +4,7 @@ A single-tenant accounts-payable automation system that processes supplier invoi
 
 ## Core Pipeline
 
-Upload → Extract (OpenAI OCR) → Vendor Match (fuzzy) → Validate / Tie-Out → Review / Exception Queue → Approve → Voucher → Post → CSV Export
+Upload → Extract (Claude Haiku 4.5) → Vendor Match (fuzzy) → Validate / Tie-Out → Review / Exception Queue → Approve → Voucher → Post → CSV Export
 
 ## Repository Map
 
@@ -35,7 +35,7 @@ Upload → Extract (OpenAI OCR) → Vendor Match (fuzzy) → Validate / Tie-Out 
 
 3. **Vendor match is the critical gate**: `vendorMatchingService.ts` uses fuzzy matching (85 % threshold) on `vendorRawName`. An invoice with no vendor match sits in EXCEPTION and cannot proceed to APPROVED. Missing-vendor is a non-overridable hard block at approval.
 
-4. **Extraction confidence is 0–1 (overall) / 0–100 (per-field)**: `extractionService.ts` normalises OpenAI output to these scales. Do not conflate the two when reading `confidenceScore` vs `fieldConfidence` values.
+4. **Extraction confidence is 0–1 (overall) / 0–100 (per-field)**: `extractionService.ts` normalises Claude Haiku 4.5 output to these scales via forced tool-use (schema enforced server-side). Do not conflate the two when reading `confidenceScore` vs `fieldConfidence` values.
 
 ## User Preferences
 

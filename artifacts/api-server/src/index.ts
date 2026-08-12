@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { assertFkCoverage, warnVendorAuditOrphans } from "./lib/fkCoverageCheck";
+import { logExtractionBootInfo } from "./services/extractionService";
 
 const rawPort = process.env["PORT"];
 
@@ -23,6 +24,7 @@ if (Number.isNaN(port) || port <= 0) {
 // the server refuses to start with a clear remediation message.
 assertFkCoverage()
   .then(() => warnVendorAuditOrphans())
+  .then(() => { logExtractionBootInfo(); })
   .then(() => {
     app.listen(port, (err) => {
       if (err) {

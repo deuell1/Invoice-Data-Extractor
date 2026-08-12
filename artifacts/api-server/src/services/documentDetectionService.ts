@@ -1,6 +1,6 @@
 import { logger } from "../lib/logger";
 import { getPdfPageCount } from "../lib/pdfUtils";
-import { callAnthropicStructured } from "./anthropicStructured";
+import { callAnthropicStructured, isAnthropicConfigured } from "./anthropicStructured";
 import type { AnthropicUserContent } from "./anthropicStructured";
 
 /**
@@ -13,23 +13,16 @@ import type { AnthropicUserContent } from "./anthropicStructured";
  * extract each from only its own pages.
  *
  * - PDFs: page count comes from pdf-lib; the invoice boundaries are detected
- *   with the OpenAI Responses API using Structured Outputs.
+ *   with the Anthropic Messages API using forced tool-use.
  * - Images: treated as a single invoice. If the model clearly sees multiple
  *   invoices in one image, the document is routed to exception (images cannot
  *   be split programmatically).
  *
- * When no API key is configured, a safe fallback treats the whole document as a
- * single invoice so the rest of the pipeline keeps working in development.
+ * When ANTHROPIC_API_KEY is absent, a safe fallback treats the whole document
+ * as a single invoice so the rest of the pipeline keeps working in development.
  */
 
 const SUPPORTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/gif"];
-const DEFAULT_MODEL = "gpt-4o";
-const DETECTION_TIMEOUT_MS = Number(process.env.OPENAI_TIMEOUT_MS) || 60_000;
-
-/** Resolve the configured extraction provider (defaults to "openai"). */
-function detectionProvider(): string {
-  return (process.env.EXTRACTION_PROVIDER ?? "openai").toLowerCase();
-}
 
 /** Canonical exception reasons produced by detection. */
 export const DETECTION_REASON = {
@@ -60,9 +53,7 @@ export interface DetectionResult {
 }
 
 export function isDetectionConfigured(): boolean {
-  const provider = (process.env.EXTRACTION_PROVIDER ?? "openai").toLowerCase();
-  if (provider === "anthropic") return Boolean(process.env.ANTHROPIC_API_KEY);
-  return Boolean(process.env.OPENAI_API_KEY);
+  return isAnthropicConfigured();
 }
 
 function inferIsImage(contentType: string): boolean {
@@ -193,11 +184,8 @@ async function detectPdfAnthropic(
   const base64 = buffer.toString("base64");
 
   // Embed schema shape inline — Claude does not enforce JSON schemas natively.
-  const systemPrompt =
-    PDF_SYSTEM_PROMPT +
-    " Return ONLY valid JSON with this exact shape — no markdown, no prose:" +
-    ' {"invoiceCount": integer, "uncertain": boolean, "invoices":' +
-    ' [{"invoiceSequence": integer, "pageStart": integer, "pageEnd": integer, "reason": string|null}]}';
+  // Forced tool-use enforces the schema server-side — no JSON-shape instruction needed.
+  const systemPrompt = PDF_SYSTEM_PROMPT;
 
   const userContent: AnthropicUserContent = [
     {
@@ -211,8 +199,13 @@ async function detectPdfAnthropic(
   });
 
   try {
-    const raw = await callAnthropicStructured({ systemPrompt, userContent });
-    const parsed = JSON.parse(raw) as PdfDetectionOutput;
+    const parsed = await callAnthropicStructured({
+      systemPrompt,
+      userContent,
+      toolName: "detect_pdf_invoices",
+      toolDescription: "Identify the number of invoices in this PDF and their page ranges.",
+      inputSchema: PDF_DETECTION_SCHEMA as Record<string, unknown>,
+    }) as PdfDetectionOutput;
 
     const ranges = normalizeRanges(parsed, pageCount);
     if (!ranges) {
@@ -232,6 +225,7 @@ async function detectPdfAnthropic(
         fileName,
         status: (err as { status?: number })?.status,
         constructorName: (err as { constructor?: { name?: string } })?.constructor?.name,
+        errMessage: (err as { message?: string })?.message,
       },
       "detectPdfAnthropic: detection request failed",
     );
@@ -252,10 +246,8 @@ async function detectImageAnthropic(
     | "image/gif";
   const base64 = buffer.toString("base64");
 
-  const systemPrompt =
-    IMAGE_SYSTEM_PROMPT +
-    " Return ONLY valid JSON with this exact shape — no markdown, no prose:" +
-    ' {"invoiceCount": integer, "reason": string|null}';
+  // Forced tool-use enforces the schema server-side — no JSON-shape instruction needed.
+  const systemPrompt = IMAGE_SYSTEM_PROMPT;
 
   const userContent: AnthropicUserContent = [
     { type: "text", text: `How many separate invoices are in this image ("${fileName}")?` },
@@ -266,8 +258,13 @@ async function detectImageAnthropic(
   });
 
   try {
-    const raw = await callAnthropicStructured({ systemPrompt, userContent });
-    const parsed = JSON.parse(raw) as { invoiceCount?: unknown };
+    const parsed = await callAnthropicStructured({
+      systemPrompt,
+      userContent,
+      toolName: "detect_image_invoices",
+      toolDescription: "Count the number of separate invoices visible in this image.",
+      inputSchema: IMAGE_DETECTION_SCHEMA as Record<string, unknown>,
+    }) as { invoiceCount?: unknown };
     const count = toInt(parsed.invoiceCount) ?? 1;
 
     if (count > 1) {
@@ -288,15 +285,12 @@ async function detectImageAnthropic(
   }
 }
 
-// ─── OpenAI detection paths ───────────────────────────────────────────────────
-
 async function detectPdf(buffer: Buffer, fileName: string): Promise<DetectionResult> {
   let pageCount: number;
   try {
     pageCount = await getPdfPageCount(buffer);
   } catch (err) {
     logger.error({ err: (err as Error)?.message }, "detectPdf: failed to read PDF page count");
-    // Cannot even read the PDF — treat as single invoice but flag for review.
     return singleInvoice(1, DETECTION_REASON.DETECTION_FAILED);
   }
 
@@ -310,72 +304,7 @@ async function detectPdf(buffer: Buffer, fileName: string): Promise<DetectionRes
     return singleInvoice(pageCount);
   }
 
-  // Branch on provider: Anthropic path uses the Messages API; OpenAI uses Responses API.
-  if (detectionProvider() === "anthropic") {
-    return detectPdfAnthropic(buffer, fileName, pageCount);
-  }
-
-  const apiKey = process.env.OPENAI_API_KEY;
-  const model = process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
-  const base64 = buffer.toString("base64");
-
-  try {
-    const { default: OpenAI } = await import("openai");
-    const client = new OpenAI({ apiKey, timeout: DETECTION_TIMEOUT_MS, maxRetries: 1 });
-
-    const response = await client.responses.create({
-      model,
-      input: [
-        { role: "system", content: [{ type: "input_text", text: PDF_SYSTEM_PROMPT }] },
-        {
-          role: "user",
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          content: [
-            {
-              type: "input_text",
-              text: `This PDF ("${fileName}") has ${pageCount} pages. Identify the invoices and their page ranges.`,
-            },
-            {
-              type: "input_file",
-              filename: fileName,
-              file_data: `data:application/pdf;base64,${base64}`,
-            },
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          ] as any,
-        },
-      ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "invoice_detection",
-          strict: true,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          schema: PDF_DETECTION_SCHEMA as any,
-        },
-      },
-    });
-
-    const raw = response.output_text ?? "{}";
-    const parsed = JSON.parse(raw) as PdfDetectionOutput;
-
-    const ranges = normalizeRanges(parsed, pageCount);
-    if (!ranges) {
-      logger.warn({ fileName, pageCount }, "detectPdf: model ranges invalid; routing to exception");
-      return singleInvoice(pageCount, DETECTION_REASON.RANGE_UNCLEAR);
-    }
-
-    if (parsed.uncertain === true) {
-      return { pageCount, invoiceCount: ranges.length, invoices: ranges, exceptionReason: DETECTION_REASON.RANGE_UNCLEAR };
-    }
-
-    return { pageCount, invoiceCount: ranges.length, invoices: ranges, exceptionReason: null };
-  } catch (err) {
-    logger.error(
-      { fileName, status: (err as { status?: number })?.status, name: (err as Error)?.name },
-      "detectPdf: detection request failed",
-    );
-    return singleInvoice(pageCount, DETECTION_REASON.DETECTION_FAILED);
-  }
+  return detectPdfAnthropic(buffer, fileName, pageCount);
 }
 
 async function detectImage(buffer: Buffer, contentType: string, fileName: string): Promise<DetectionResult> {
@@ -383,62 +312,7 @@ async function detectImage(buffer: Buffer, contentType: string, fileName: string
     return singleInvoice(1);
   }
 
-  // Branch on provider: Anthropic path uses the Messages API; OpenAI uses Responses API.
-  if (detectionProvider() === "anthropic") {
-    return detectImageAnthropic(buffer, contentType, fileName);
-  }
-
-  const apiKey = process.env.OPENAI_API_KEY;
-  const model = process.env.OPENAI_MODEL?.trim() || DEFAULT_MODEL;
-  const base64 = buffer.toString("base64");
-
-  try {
-    const { default: OpenAI } = await import("openai");
-    const client = new OpenAI({ apiKey, timeout: DETECTION_TIMEOUT_MS, maxRetries: 1 });
-
-    const response = await client.responses.create({
-      model,
-      input: [
-        { role: "system", content: [{ type: "input_text", text: IMAGE_SYSTEM_PROMPT }] },
-        {
-          role: "user",
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          content: [
-            { type: "input_text", text: `How many separate invoices are in this image ("${fileName}")?` },
-            { type: "input_image", image_url: `data:${contentType};base64,${base64}`, detail: "auto" },
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          ] as any,
-        },
-      ],
-      text: {
-        format: {
-          type: "json_schema",
-          name: "image_invoice_detection",
-          strict: true,
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          schema: IMAGE_DETECTION_SCHEMA as any,
-        },
-      },
-    });
-
-    const raw = response.output_text ?? "{}";
-    const parsed = JSON.parse(raw) as { invoiceCount?: unknown };
-    const count = toInt(parsed.invoiceCount) ?? 1;
-
-    if (count > 1) {
-      // Images cannot be split programmatically — route to manual review.
-      return singleInvoice(1, DETECTION_REASON.IMAGE_MULTIPLE);
-    }
-    return singleInvoice(1);
-  } catch (err) {
-    logger.error(
-      { fileName, status: (err as { status?: number })?.status, name: (err as Error)?.name },
-      "detectImage: detection request failed; defaulting to single invoice",
-    );
-    // A detection failure on an image is non-fatal — default to a single invoice
-    // and let extraction proceed normally.
-    return singleInvoice(1);
-  }
+  return detectImageAnthropic(buffer, contentType, fileName);
 }
 
 /**

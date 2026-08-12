@@ -479,11 +479,6 @@ export interface RemovalInput {
      * @nullable
      */
   note?: string | null;
-  /**
-     * Actor performing the removal (permissions deferred).
-     * @nullable
-     */
-  actor?: string | null;
 }
 
 export interface HardDeleteInput {
@@ -576,7 +571,7 @@ export interface VendorInput {
   /** @minLength 1 */
   vendorName: string;
   /**
-     * Identified actor performing the creation (required by the API route; no auth system in pilot)
+     * Identified actor performing the creation (Clerk user ID; resolved from session on authenticated routes)
      * @nullable
      */
   actor?: string | null;

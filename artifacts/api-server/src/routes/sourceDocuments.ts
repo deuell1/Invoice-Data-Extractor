@@ -131,6 +131,14 @@ router.get("/source-documents/:id", async (req, res): Promise<void> => {
 // Soft-remove a source document and void all of its child invoices with a
 // required reason.
 router.post("/source-documents/:id/remove", async (req, res): Promise<void> => {
+  // Actor must come from the authenticated session — never accept a client-supplied
+  // identity on this route (the most destructive in the app).
+  const actorId = (req as any).clerkUserId as string | undefined;
+  if (!actorId) {
+    res.status(401).json({ error: "Authenticated actor required." });
+    return;
+  }
+
   const params = RemoveSourceDocumentParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: params.error.message });
@@ -145,7 +153,7 @@ router.post("/source-documents/:id/remove", async (req, res): Promise<void> => {
   const data = await removeSourceDocument(params.data.id, {
     reason: parsed.data.reason,
     note: parsed.data.note ?? null,
-    actor: (req as any).clerkUserId ?? parsed.data.actor ?? null,
+    actor: actorId,
     actorRole: (req as any).clerkUserRole ?? null,
   });
   if (!data) {

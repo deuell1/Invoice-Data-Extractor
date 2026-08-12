@@ -1,0 +1,448 @@
+# Replit Agent Prompt Sequence — Remove OpenAI, Anthropic-Only Stack
+
+**Written against head commit `05acc00`**, verified by direct file read.
+**Goal:** a single, explicit, schema-enforced Anthropic extraction path — then a trustworthy accuracy number.
+
+**Run one prompt per message.** Verify before advancing. Order matters here more than usual: P2 hardens the path that P3 makes the *only* path. Deleting OpenAI before the Anthropic path is sound leaves you with no fallback while debugging.
+
+**Standing rules — repeat to the agent if it drifts:**
+- No Phase 2 features. No app rebuild. No refactoring of unrelated files.
+- Do not touch `uat/extraction-accuracy/run-accuracy.mjs`, `preflight.mjs`, or `ground-truth.csv` unless the prompt says so.
+- **Do not edit `uat/EG1_Exit_Report.md`, `Phase1_UAT_Exit_Report.md`, or `Phase1_Defect_Remediation_Report.md`.** These are dated audit records. The fact that EG-1 ran on OpenAI is history and stays on the record.
+- Never print, log, or write secret values.
+- Never write a `vendorId` from extracted text.
+- Report exactly which files changed and why.
+
+---
+
+## P0 — Fix the malformed env values (do this yourself, no agent)
+
+`.replit` currently contains:
+
+```
+[userenv.shared]
+ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
+EXTRACTION_PROVIDER = "EXTRACTION_PROVIDER=anthropic"
+ANTHROPIC_TIMEOUT_MS = "ANTHROPIC_TIMEOUT_MS=60000"
+```
+
+The variable name is pasted inside the value on two of the three. At runtime:
+
+| Var | Actual value | Effect |
+|---|---|---|
+| `EXTRACTION_PROVIDER` | `"EXTRACTION_PROVIDER=anthropic"` | ≠ `"anthropic"` → **falls through to the OpenAI branch** |
+| `ANTHROPIC_TIMEOUT_MS` | `"ANTHROPIC_TIMEOUT_MS=60000"` | `Number()` → `NaN` → lands on the 60000 default by luck |
+| `ANTHROPIC_MODEL` | correct | fine |
+
+Change to:
+
+```
+[userenv.shared]
+ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
+EXTRACTION_PROVIDER = "anthropic"
+ANTHROPIC_TIMEOUT_MS = "60000"
+```
+
+Restart the API. Do this first — it costs nothing and it is very likely the root cause of the provider confusion.
+
+---
+
+## P1 — Make the silent mock fallback fail loudly
+
+**Why:** `extractionService.ts:850` sets `usingMock = !isExtractionConfigured()`. Missing key → `mockExtract()` (line 135) writes seeded, fabricated vendor names and amounts to `invoice_capture` with no error. Combined with P0's typo, this is how a run can look fine and mean nothing.
+
+### Prompt
+
+```
+In artifacts/api-server/src/services/extractionService.ts, the extraction runner
+falls back to mockExtract() whenever isExtractionConfigured() returns false. That
+silent fallback writes fabricated invoice data to invoice_capture and makes test
+runs untrustworthy. Change it to fail closed, and make mock mode an explicit
+developer opt-in.
+
+Requirements:
+
+1. Introduce EXTRACTION_MOCK_MODE. Mock extraction runs ONLY when
+   process.env.EXTRACTION_MOCK_MODE === "true".
+
+2. Rewrite provider selection at the extraction runner (around line 850):
+   - EXTRACTION_MOCK_MODE === "true"  -> run mockExtract() as today
+   - else if !isExtractionConfigured() -> throw ExtractionError with category
+     "PROVIDER_ERROR" and message: "Extraction is not configured. The API key for
+     the extraction provider is missing." Do not include any key material or env
+     var values in the message.
+   - else -> run the configured provider path as today
+
+3. Make active mock mode unmistakable:
+   - Log a warning per extraction via artifacts/api-server/src/lib/logger.ts,
+     including the invoice id.
+   - Prefix the invoice's extractionNotes with the literal "[MOCK MODE] ".
+
+4. Add a boot-time log where startup logging already lives (app.ts or index.ts):
+   log the resolved extraction provider, the resolved model name, and whether
+   mock mode is on. Log the model NAME only. For the key, log only a boolean
+   "configured: true/false" — never the value, never a prefix or suffix of it.
+
+Do not change mockExtract()'s field generation. Do not change
+isExtractionConfigured(). Do not touch the extraction functions themselves in
+this prompt. Report the files you changed.
+```
+
+### Verification
+
+```bash
+grep -n "EXTRACTION_MOCK_MODE" artifacts/api-server/src/services/extractionService.ts
+grep -rn "MOCK MODE" artifacts/api-server/src
+grep -n "usingMock" artifacts/api-server/src/services/extractionService.ts
+pnpm --filter @workspace/api-server exec tsc --noEmit
+```
+
+In the running app: upload one invoice with the key present → extracts normally. Temporarily unset the key and upload → the invoice lands with an extraction error and **no populated fields**.
+
+---
+
+## P2 — Forced tool-use and stop_reason handling on the Anthropic path
+
+**Why:** `anthropicStructured.ts` asks for raw JSON in the system prompt and strips markdown fences with a regex. No `tools`, no `input_schema`, no `tool_choice` exist anywhere in the repo, and no `stop_reason` check exists — a `max_tokens` truncation currently fails only incidentally when `JSON.parse` throws, miscategorized as `INVALID_RESPONSE`. `maxRetries` is 1, not the documented 2.
+
+`.agents/memory/anthropic-port.md` states *"Strict JSON not native: append JSON-only instruction to system prompt for Claude since it doesn't enforce a schema natively."* **That is incorrect** — forced tool-use enforces the schema server-side. Correcting that belief is part of this prompt.
+
+**This must land before P3.** After P3 there is no second provider to fall back on.
+
+### Prompt
+
+```
+artifacts/api-server/src/services/anthropicStructured.ts asks the model for raw
+JSON in a system prompt and strips markdown code fences from the text response.
+Replace that with the Anthropic Messages API's forced tool-use mechanism, which
+enforces the output schema server-side, and add explicit stop-reason handling.
+
+Note: the project memory file .agents/memory/anthropic-port.md claims Claude
+"doesn't enforce a schema natively." That is wrong — forced tool-use does.
+Correct that line as part of this task.
+
+Requirements:
+
+1. Change callAnthropicStructured to take a JSON Schema. New signature:
+
+   callAnthropicStructured(params: {
+     systemPrompt: string;
+     userContent: AnthropicUserContent;
+     toolName: string;
+     toolDescription: string;
+     inputSchema: Record<string, unknown>;
+   }): Promise<unknown>
+
+2. Pass the schema as a single tool and force its use:
+   tools: [{ name: params.toolName, description: params.toolDescription,
+             input_schema: params.inputSchema }]
+   tool_choice: { type: "tool", name: params.toolName }
+
+3. Read the result from the tool_use content block's `input` field and return it
+   as a parsed object. DELETE the markdown code-fence stripping regex entirely —
+   it is unreachable now and its presence invites regression.
+
+4. Check stop_reason explicitly BEFORE reading any content. Throw a distinct,
+   descriptive Error for:
+   - "max_tokens" -> output truncated; must never be parsed as a successful
+     extraction
+   - "refusal"    -> model declined; must fail loudly
+   Any stop_reason other than "tool_use" (or "end_turn" when a tool_use block is
+   nevertheless present) must throw rather than fall through.
+
+5. If no tool_use block is present, throw. No text fallback.
+
+6. Change maxRetries from 1 to 2.
+
+7. Update callers — anthropicExtract() in extractionService.ts (around line 698)
+   and detectPdfAnthropic() / detectImageAnthropic() in
+   documentDetectionService.ts — to pass JSON Schemas equivalent to the field
+   sets they currently request in prose.
+
+   CRITICAL: the schema must describe the SAME fields with the SAME names and
+   types the current prompts request. Do not add, rename, remove, or retype any
+   extraction field. The extraction field names must continue to match the
+   ground-truth CSV header exactly: vendorRawName, invoiceNumber, invoiceDate,
+   dueDate, paymentTerms, poNumber, subtotal, taxAmount, freightAmount,
+   totalAmount, currency (plus discountAmount and otherChargesAmount, which the
+   tie-out logic depends on).
+
+8. Preserve these prompt rules verbatim in meaning — they are hard-won:
+   - vendorRawName and invoiceNumber are captured EXACTLY as printed: no
+     normalization, no stripping of leading zeros, no substituting a trade name
+     for a legal name.
+   - A printed $0.00 is a zero, not a null.
+
+9. Keep the SDK 0.116.0 error-shape notes at the top of the file
+   (err.constructor.name, err.requestID) and leave the timeout and
+   categorization behavior in extractionService.ts intact.
+
+Report the files you changed and print the JSON Schemas you generated.
+```
+
+### Verification
+
+```bash
+grep -rn "tool_choice\|input_schema" artifacts/api-server/src
+grep -rn "stop_reason" artifacts/api-server/src
+grep -n "max_tokens\|refusal" artifacts/api-server/src/services/anthropicStructured.ts
+grep -n "maxRetries" artifacts/api-server/src/services/anthropicStructured.ts   # expect 2
+pnpm --filter @workspace/api-server exec tsc --noEmit
+node artifacts/api-server/smoke_test.mjs    # baseline was 177 passed / 0 failed
+```
+
+**Do the field-parity check by eye — this is the quietest failure mode in the sequence.** Compare the schema property names against the CSV header:
+
+```bash
+head -1 uat/extraction-accuracy/ground-truth.csv
+```
+
+A single renamed property will extract successfully, score as a miss, and look like model error.
+
+Then force the truncation path once: temporarily lower `max_tokens`, extract one invoice, confirm it errors loudly instead of saving partial fields, restore `max_tokens` to 4096.
+
+---
+
+## P3 — Remove OpenAI from the stack
+
+**Why:** every `?? "openai"` default and every `gpt-4o` constant is a place the system can silently do the wrong thing — as P0 proved. With OpenAI gone, a misconfigured provider throws on boot instead of routing invoices to an unintended vendor.
+
+**Do not run this until P2 has landed and you have extracted at least one invoice successfully on the Anthropic path.**
+
+### Prompt
+
+```
+Remove OpenAI from the extraction stack entirely. Anthropic (Claude Haiku 4.5)
+becomes the only extraction and detection provider. This is a deletion pass —
+remove code, do not add features.
+
+Files and specific sites to change:
+
+1. artifacts/api-server/src/services/extractionService.ts
+   - Delete the openAiExtract() function and its OpenAI SDK dynamic import
+     (around lines 560-615).
+   - Delete DEFAULT_MODEL = "gpt-4o" (line ~224).
+   - Delete the provider branch in the extraction runner (line ~851) so
+     anthropicExtract() is called unconditionally (subject to the
+     EXTRACTION_MOCK_MODE check added earlier).
+   - Rewrite isExtractionConfigured() (line ~70) to check only
+     ANTHROPIC_API_KEY.
+   - Rename EXTRACTION_TIMEOUT_MS's source from OPENAI_TIMEOUT_MS to
+     ANTHROPIC_TIMEOUT_MS (line ~102), default 60000.
+   - Fix the stale doc comment at line ~14 that refers to OPENAI_API_KEY.
+   - Fix the comment at line ~698 describing anthropicExtract as a "parallel
+     path to openAiExtract" — it is now the only path.
+
+2. artifacts/api-server/src/services/documentDetectionService.ts
+   - Delete the OpenAI detection functions and their dynamic imports (around
+     lines 318-324 and 391-397).
+   - Delete DEFAULT_MODEL = "gpt-4o" (line ~26).
+   - Delete detectionProvider() (line ~31) and the provider branches that call
+     it, so the Anthropic detection functions are called unconditionally.
+   - Rewrite isDetectionConfigured() (lines ~62-66) to check only
+     ANTHROPIC_API_KEY.
+   - Rename DETECTION_TIMEOUT_MS's source from OPENAI_TIMEOUT_MS to
+     ANTHROPIC_TIMEOUT_MS (line ~27), default 60000.
+
+3. EXTRACTION_PROVIDER handling: with one provider there is nothing to select.
+   Remove the env var from the code paths above. If it is still set in the
+   environment to any value other than "anthropic", log a single startup WARNING
+   that the variable is ignored — do not throw, and do not branch on it.
+
+4. artifacts/api-server/package.json — remove the "openai": "^6.44.0"
+   dependency, then run `pnpm install` at the workspace root and commit the
+   updated lockfile.
+
+5. artifacts/api-server/smoke_test.mjs lines ~1344-1348 — Suite 11 reads
+   EXTRACTION_PROVIDER and OPENAI_API_KEY to decide whether to run. Rewrite it
+   to gate on ANTHROPIC_API_KEY only.
+
+6. Pin the model with a comment stating that floating aliases are not permitted
+   for audit reproducibility. ANTHROPIC_MODEL in anthropicStructured.ts already
+   defaults to the pinned snapshot claude-haiku-4-5-20251001 — keep that and add
+   the rationale comment if absent.
+
+7. Documentation:
+   - replit.md: change the Core Pipeline line "Extract (OpenAI OCR)" to name
+     Claude Haiku 4.5. Update Architecture Decision #4, which says
+     extractionService "normalises OpenAI output".
+   - .agents/memory/anthropic-port.md: remove the line saying OPENAI_API_KEY is
+     "still needed only when EXTRACTION_PROVIDER=openai", and update the Active
+     provider env vars section to reflect a single-provider stack.
+
+8. DO NOT edit uat/EG1_Exit_Report.md, Phase1_UAT_Exit_Report.md, or
+   Phase1_Defect_Remediation_Report.md. Those are dated audit records; the fact
+   that EG-1 was measured on OpenAI must remain on the record.
+
+After the deletion, run a repo-wide search for the strings "openai", "OPENAI",
+and "gpt-4" outside of node_modules and the three protected reports above, and
+report anything still remaining. Report the files you changed.
+```
+
+### Verification
+
+```bash
+grep -rn "openai\|OPENAI\|gpt-4" --include=*.ts --include=*.mjs --include=*.json \
+  artifacts lib uat scripts | grep -v node_modules
+# expect: no matches
+
+grep -rn "EXTRACTION_PROVIDER" artifacts lib | grep -v node_modules
+grep -rn "OpenAI" replit.md .agents/memory/anthropic-port.md   # expect: no matches
+grep -c "OpenAI" uat/EG1_Exit_Report.md                        # expect: unchanged, >0
+
+pnpm install
+pnpm --filter @workspace/api-server exec tsc --noEmit
+node artifacts/api-server/smoke_test.mjs
+pnpm --filter @workspace/tests test
+```
+
+Then remove `OPENAI_API_KEY`, `OPENAI_MODEL`, and `OPENAI_TIMEOUT_MS` from the Replit Secrets pane yourself. Restart and confirm the P1 boot log shows Anthropic, the pinned model, and mock mode off.
+
+---
+
+## P4 — Remove the client-supplied actor fallback
+
+**Why:** `sourceDocuments.ts:148` reads `actor: (req as any).clerkUserId ?? parsed.data.actor ?? null` on the soft-remove route. `requireAuth` is global at `routes/index.ts:21`, so `clerkUserId` should always win — but a client-supplied identity fallback on your most destructive route is one auth regression from being a spoofing vector.
+
+### Prompt
+
+```
+In artifacts/api-server/src/routes/sourceDocuments.ts, the
+POST /source-documents/:id/remove handler resolves the actor as:
+
+  actor: (req as any).clerkUserId ?? parsed.data.actor ?? null
+
+This is the most destructive route in the app and must never accept a
+client-supplied identity, even as a fallback.
+
+Requirements:
+
+1. Remove the parsed.data.actor fallback. Resolve the actor solely from
+   (req as any).clerkUserId.
+
+2. If clerkUserId is absent, fail closed: return 401 with
+   { error: "Authenticated actor required." } and do NOT call
+   removeSourceDocument. An unattributed removal must be impossible.
+
+3. Remove the now-unused `actor` field from RemoveSourceDocumentBody in
+   lib/api-spec/openapi.yaml, then regenerate:
+     pnpm --filter @workspace/api-spec run codegen
+   Never hand-edit anything under lib/api-zod or lib/api-client-react.
+
+4. Find every caller that sends `actor` in the remove request body — check
+   artifacts/api-server/smoke_test.mjs, e2e_test.mjs, the smoke cleanup scripts,
+   and the invoice-capture frontend — and remove that field.
+
+5. While in the OpenAPI spec: it still contains descriptions claiming no auth
+   system exists. Clerk auth is live via global requireAuth at
+   artifacts/api-server/src/routes/index.ts:21 with role guards. Correct those
+   stale descriptions. Change nothing else — no endpoint paths, status codes, or
+   other field names.
+
+Report the files you changed and confirm codegen ran cleanly.
+```
+
+### Verification
+
+```bash
+grep -rn "parsed.data.actor\|data.actor" artifacts/api-server/src   # expect: no matches
+grep -rn "no auth\|without auth\|authentication is not" lib/api-spec/openapi.yaml
+node artifacts/api-server/smoke_test.mjs
+```
+
+---
+
+## P5 — Re-extract the pack and run the harness on Haiku
+
+**Why:** this produces your first real Claude accuracy number on the 49-field harness. EG-1's remaining 4 misses are null taxes from invoices extracted before the printed-$0.00 rule landed and never re-extracted; `extractionService.ts` now coerces `taxAmount ?? 0` on write.
+
+**Run P0–P4 first.** A number produced before P0 and P1 land cannot be attributed to a provider with confidence.
+
+### Prompt
+
+```
+Re-run the Phase 1 extraction accuracy measurement against the existing test
+pack on the Anthropic path, without altering the measurement instruments.
+
+Context: the pack is a single 13-page, 5-invoice PDF at
+uat/extraction-accuracy/pack/invoice_Ingestor_5_invoice_test_1786035375284.pdf
+with 5 labeled rows (TP-001..TP-005) in
+uat/extraction-accuracy/ground-truth.csv. Per uat/EG1_Exit_Report.md the pack
+invoices were ids 83-87, extracted on the OpenAI path before the printed-$0.00
+rule was added.
+
+Steps:
+
+1. Before changing anything, report the current extraction_status,
+   vendorRawName, invoiceNumber, taxAmount, and freightAmount for the pack
+   invoices, so there is a before/after record.
+
+2. Confirm the boot log shows provider Anthropic, model
+   claude-haiku-4-5-20251001, and mock mode OFF. If mock mode is on, stop.
+
+3. Re-extract the pack invoices through the normal application re-extract
+   endpoint — the same one the UI's re-run action uses. Do NOT patch
+   invoice_capture directly and do NOT insert expected values into the database.
+   uat/extraction-accuracy/preflight.mjs exists to detect exactly that and will
+   abort the run.
+
+4. Verify no pack invoice's extractionNotes contains "[MOCK MODE]". If any does,
+   stop and report — the run is invalid.
+
+5. Run the harness at the Phase 1 threshold of 80, not the tool default of 95:
+
+   API_BASE=<api base url> node uat/extraction-accuracy/run-accuracy.mjs \
+     uat/extraction-accuracy/ground-truth.csv 80 \
+     --out uat/extraction-accuracy/results/accuracy-<today>-haiku.md
+
+6. Do NOT modify run-accuracy.mjs, preflight.mjs, ground-truth.csv, or any
+   extraction prompt to influence the result. If the preflight guard aborts,
+   report the violation verbatim rather than working around it.
+
+7. Report: overall accuracy; per-field breakdown; counts of correct / incorrect
+   / missing; the provider and pinned model string that produced the run; and a
+   field-level list of every remaining miss showing what is printed on the
+   document versus what was extracted.
+
+Do not update EG1_Exit_Report.md's determination — the Phase 1 disposition is the
+owner's call. Write the new run to the results directory and report the number.
+```
+
+### Verification
+
+```bash
+git diff --stat uat/extraction-accuracy/run-accuracy.mjs \
+  uat/extraction-accuracy/preflight.mjs \
+  uat/extraction-accuracy/ground-truth.csv
+# expect: no changes. If any changed, the run is void — revert and re-run.
+
+ls -la uat/extraction-accuracy/results/
+grep -rn "MOCK MODE" uat/extraction-accuracy/results/ || echo clean
+```
+
+Reference points: OpenAI scored 69.4% at EG-1 and 91.8% on the control re-score. Suite 11 scored Claude at 100% (35/35) against the OpenAI-baselined snapshot. Anything in the low 90s or above on the 49-field harness is consistent with prior evidence; a sharp drop points at P2's schema field names, not at the model.
+
+---
+
+## P6 — Close the last OPEN area yourself (no agent)
+
+`Phase1_UAT_Exit_Report.md` area 16 — inline document viewer in Microsoft Edge — is the only functional area still OPEN. Headers and code were verified; the browser couldn't be driven from the agent environment.
+
+Walk `uat/edge-rendering-checklist.md` in Edge: one PDF inline, one JPG or PNG inline, one `?download=1` producing an attachment. Five minutes, and the Phase 1 sheet has nothing left on it but the accuracy number.
+
+---
+
+## Deferred — none of these block a trustworthy test run
+
+| Item | Where | Note |
+|---|---|---|
+| `?? "system"` fallback | `invoices.ts` 543, 934, 1012, 1049, 1199, 1285, 1344, 1419, 1468; `exceptions.ts` 212, 255, 315; `vendors.ts` 178, 357, 739, 1147 | ~17 mechanical sites. Should fail closed, matching P4's pattern. One dedicated pass. |
+| `audit.ts` default | `lib/db/src/schema/audit.ts:18` — `actor_clerk_id` defaults to `"unattributed-legacy"` | Removing the default is a migration. Sequence with the `?? "system"` pass, not before. |
+| `fileHash` duplicate check | accepted `sourceDocuments.ts:101`, persisted `sourceDocumentService.ts:66`, column `source_documents.ts:23`, never read | Documented control that exists on paper only. |
+| `Extraction Service Timeout` routing | `TIMEOUT` category exists (`extractionService.ts:78`, `:301`) but maps to `extractionError`, not an Exception Queue reason | Add the reason and route it. |
+| Defect D2 — partial `editorRole` | SUBMITTED, VOUCHER_SET, EXCEPTION_ASSIGNED, EXCEPTION_REVIEWED, STATUS_CHANGE record actor but not role | Low. |
+| Defect D4 — intermittent 500 on hard delete | FK-related, smoke cleanup only; VOID works | Test-data hygiene, not an AP-flow defect. |
+| Detection exception vocabulary | `documentDetectionService.ts` DETECTION_REASON — 4 reasons absent from the documented controlled list | Documentation drift; reconcile the list. |
+
+**Close as N/A — these files do not exist in the repo:** `extractionCompare.ts`, `HAIKU_REVIEWER_RUNBOOK.md`, `po_header` / `poHeader` (no schema, no code), `extraction_review` table.
+

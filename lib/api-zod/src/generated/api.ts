@@ -405,8 +405,7 @@ export const VoidInvoiceParams = zod.object({
 
 export const VoidInvoiceBody = zod.object({
   "reason": zod.string().min(1).describe('Required reason for voiding\/removing the record.'),
-  "note": zod.string().nullish().describe('Optional free-text note.'),
-  "actor": zod.string().nullish().describe('Actor performing the removal (permissions deferred).')
+  "note": zod.string().nullish().describe('Optional free-text note.')
 })
 
 export const voidInvoiceResponseCurrencyDefault = `USD`;
@@ -1193,7 +1192,7 @@ export const createVendorBodyAliasesDefault = [];
 export const CreateVendorBody = zod.object({
   "vendorCode": zod.string().min(1),
   "vendorName": zod.string().min(1),
-  "actor": zod.string().nullish().describe('Identified actor performing the creation (required by the API route; no auth system in pilot)'),
+  "actor": zod.string().nullish().describe('Identified actor performing the creation (Clerk user ID; resolved from session on authenticated routes)'),
   "legalName": zod.string().nullish(),
   "dba": zod.string().nullish(),
   "taxId": zod.string().nullish(),
@@ -1234,7 +1233,7 @@ export const ImportVendorsBody = zod.object({
   "vendors": zod.array(zod.object({
   "vendorCode": zod.string().min(1),
   "vendorName": zod.string().min(1),
-  "actor": zod.string().nullish().describe('Identified actor performing the creation (required by the API route; no auth system in pilot)'),
+  "actor": zod.string().nullish().describe('Identified actor performing the creation (Clerk user ID; resolved from session on authenticated routes)'),
   "legalName": zod.string().nullish(),
   "dba": zod.string().nullish(),
   "taxId": zod.string().nullish(),
@@ -1701,8 +1700,7 @@ export const RemoveSourceDocumentParams = zod.object({
 
 export const RemoveSourceDocumentBody = zod.object({
   "reason": zod.string().min(1).describe('Required reason for voiding\/removing the record.'),
-  "note": zod.string().nullish().describe('Optional free-text note.'),
-  "actor": zod.string().nullish().describe('Actor performing the removal (permissions deferred).')
+  "note": zod.string().nullish().describe('Optional free-text note.')
 })
 
 export const removeSourceDocumentResponseInvoicesItemCurrencyDefault = `USD`;

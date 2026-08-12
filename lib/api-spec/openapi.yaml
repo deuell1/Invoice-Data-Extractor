@@ -2215,9 +2215,6 @@ components:
         note:
           type: ["string", "null"]
           description: Optional free-text note.
-        actor:
-          type: ["string", "null"]
-          description: Actor performing the removal (permissions deferred).
 
     HardDeleteInput:
       type: object
@@ -2354,7 +2351,7 @@ components:
           minLength: 1
         actor:
           type: ["string", "null"]
-          description: Identified actor performing the creation (required by the API route; no auth system in pilot)
+          description: Identified actor performing the creation (Clerk user ID; resolved from session on authenticated routes)
         legalName:
           type: ["string", "null"]
         dba:
