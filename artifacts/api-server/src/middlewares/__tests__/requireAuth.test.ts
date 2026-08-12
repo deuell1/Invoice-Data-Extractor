@@ -215,6 +215,42 @@ describe("resolveActorName", () => {
     }
   });
 
+  it("does NOT cache the null result after a timeout — next request must retry Clerk", async () => {
+    // Regression guard: caching null for the full TTL after a timeout silences
+    // actor names for every subsequent request during the cache window.  The
+    // correct behaviour is to skip cacheSet so the next request retries Clerk.
+    const savedTimeout = process.env.CLERK_NAME_TIMEOUT_MS;
+    process.env.CLERK_NAME_TIMEOUT_MS = "50"; // very short timeout
+
+    let callCount = 0;
+    const slowClient: ClerkUsersClient = {
+      async getUser(_userId) {
+        callCount += 1;
+        await new Promise((resolve) => setTimeout(resolve, 300)); // exceeds timeout
+        return { firstName: "Slow", lastName: "User" };
+      },
+    };
+
+    try {
+      const userId = "user_timeout_no_cache_test";
+
+      // First call — should time out and return null.
+      const firstResult = await resolveActorName(userId, slowClient);
+      assert.strictEqual(firstResult, null, "should return null on timeout");
+
+      // The cache must NOT contain an entry for this userId after a timeout.
+      // If it did, a recovering Clerk API would still be bypassed for the full TTL.
+      assert.strictEqual(
+        actorNameCache.has(userId),
+        false,
+        "timeout results must NOT be cached — next request must retry Clerk instead of getting stale null",
+      );
+    } finally {
+      if (savedTimeout !== undefined) process.env.CLERK_NAME_TIMEOUT_MS = savedTimeout;
+      else delete process.env.CLERK_NAME_TIMEOUT_MS;
+    }
+  });
+
   it("returns the formatted name when the Clerk API responds within CLERK_NAME_TIMEOUT_MS", async () => {
     // Set a generous timeout — the fast mock will finish well within it.
     const savedTimeout = process.env.CLERK_NAME_TIMEOUT_MS;

@@ -169,7 +169,11 @@ export async function resolveActorName(
       console.warn(
         `[requireAuth] Clerk name resolution timed out for userId=${userId} (timeout=${timeoutMs}ms)`,
       );
-      cacheSet(userId, null);
+      // Do NOT cache the null result of a timeout — the Clerk API may just be
+      // temporarily slow.  Caching null for the full TTL would silence actor
+      // names for every subsequent request during the cache window.  By
+      // skipping cacheSet here, the next request retries Clerk and will
+      // populate the cache as soon as Clerk recovers.
       return null;
     }
 
