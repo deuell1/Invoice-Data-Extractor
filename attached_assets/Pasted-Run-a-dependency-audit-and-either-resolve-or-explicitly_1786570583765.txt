@@ -1,0 +1,39 @@
+Run a dependency audit and either resolve or explicitly accept each finding,
+then make the check repeatable.
+
+1. Run: pnpm audit --prod
+   Confirm you see exactly 3 findings: uuid (moderate, via
+   @google-cloud/storage's auth chain), qs (moderate, via express/body-parser),
+   body-parser (low, via express — now reachable through three paths
+   including express-rate-limit, added in P13).
+
+2. For each finding, check whether a newer patched version is reachable
+   within the existing semver ranges in package.json (pnpm update should
+   pick it up without a manual bump) or whether it's pinned by a direct
+   dependency (@google-cloud/storage, @clerk/express, express itself) that
+   hasn't released a fix yet. Try `pnpm update` first and re-run the audit
+   to see what it clears on its own before assuming anything needs a manual
+   override.
+
+3. For anything that can't be patched yet because it's blocked upstream, add
+   a targeted override in pnpm-workspace.yaml's `overrides` section (which
+   already exists and is used for other transitive pins) — but only if the
+   override version is confirmed compatible (run the full typecheck + smoke
+   suite after adding it, not just the audit).
+
+4. For anything that still can't be resolved after steps 2-3, document it
+   explicitly in a new SECURITY-AUDIT-EXCEPTIONS.md at the repo root: the
+   advisory, why it can't be patched yet, and the actual risk given how the
+   app uses that dependency. For example: does this app's usage of
+   @google-cloud/storage ever pass attacker-controlled input through the
+   affected uuid code path, or is it purely internal? Does this app ever set
+   a custom body-parser `limit` value (grep for it), which is the specific
+   condition the body-parser advisory requires to matter?
+
+5. Add a `pnpm run audit` script to the root package.json that runs
+   `pnpm audit --prod`, so this is a documented, one-command recurring check
+   rather than something that has to be remembered.
+
+Do not run `pnpm audit --fix` blindly — verify each change against the
+typecheck and full smoke suite before committing. Report the findings, what
+got patched, what got overridden, and what's documented as an exception.
