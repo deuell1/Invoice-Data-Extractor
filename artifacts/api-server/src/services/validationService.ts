@@ -21,6 +21,15 @@ export const VENDOR_REASON = {
   ON_HOLD: "Vendor On Hold",
 } as const;
 
+// ─── Canonical extraction exception reasons ───────────────────────────────────
+// Fixed strings stored in exceptionReason so the Exception Queue can filter on
+// them without parsing free-text messages. Only TIMEOUT is controlled here;
+// other extraction failure categories (UNSUPPORTED_FILE, INVALID_RESPONSE,
+// PROVIDER_ERROR, UNKNOWN) continue to store their free-text detail.
+export const EXTRACTION_REASON = {
+  TIMEOUT: "Extraction Service Timeout",
+} as const;
+
 export const VENDOR_HARD_BLOCK_REASONS: readonly string[] = [
   VENDOR_REASON.NAME_NOT_EXTRACTED,
   VENDOR_REASON.NOT_FOUND,

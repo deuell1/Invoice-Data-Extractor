@@ -1,7 +1,7 @@
 import { db, invoiceCaptureTable, invoiceAuditLogTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { applyVendorMatch } from "./vendorMatcher";
-import { validateInvoice } from "./validationService";
+import { validateInvoice, EXTRACTION_REASON } from "./validationService";
 import { logger } from "../lib/logger";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { extractPdfPageRange } from "../lib/pdfUtils";
@@ -813,7 +813,16 @@ export async function runExtraction(invoiceId: number): Promise<void> {
         extractionErrorDetail: detail,
         lastExtractedAt: new Date(),
         ...(routeToException
-          ? { status: "EXCEPTION" as const, exceptionReason: `Extraction Failed: ${message}` }
+          ? {
+              status: "EXCEPTION" as const,
+              // TIMEOUT gets a fixed, filterable string; all other categories
+              // (UNSUPPORTED_FILE, INVALID_RESPONSE, PROVIDER_ERROR, UNKNOWN)
+              // keep the free-text detail so operators see what went wrong.
+              exceptionReason:
+                category === "TIMEOUT"
+                  ? EXTRACTION_REASON.TIMEOUT
+                  : `Extraction Failed: ${message}`,
+            }
           : {}),
       })
       .where(eq(invoiceCaptureTable.id, invoiceId));
