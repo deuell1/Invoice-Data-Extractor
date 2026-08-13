@@ -1,0 +1,150 @@
+This is a three-file reorganization. Follow the steps in order and do not
+improvise beyond what's specified — every content block below is exact,
+not a summary for you to rewrite.
+
+STEP 1 — Edit KNOWN_ISSUES.md
+
+Delete the section from the line "## Load test built but never executed for
+real numbers" through the line "**Revisit:** Immediately after this file
+lands — see the next planned step." (currently lines 70-83) — that entire
+section is now stale, fully superseded by the "Baseline load-test results"
+section immediately below it.
+
+Delete the section from "## extractionCompare.ts, HAIKU_REVIEWER_RUNBOOK.md,
+extraction_review — N/A, superseded" through the line ending "No action
+needed. Not a gap." (currently lines 112-121) — this is moving to
+FUTURE_USE.md, not staying here (see Step 3).
+
+Do not touch anything else in KNOWN_ISSUES.md — the three remaining entries
+(CLERK_WEBHOOK_SECRET, monitoring, dev-database debris) and the Baseline
+load-test results section stay exactly as they are, word for word.
+
+STEP 2 — Create PHASE_1.md at the repo root
+
+The content of Phase_1.docx (the original build plan) is not in this repo
+and was never committed anywhere in it. Its final section is a 26-item
+literal acceptance checklist that Phase1_Signoff.md (in uat/) explicitly
+flagged as "not found in this repository" and substituted a 16-area
+functional checklist instead. This file is the reconciliation between the
+two — create it with this exact content:
+
+# Phase 1 — Original Acceptance Checklist
+
+This is the literal 26-item checklist from the original Phase 1 build plan
+(Phase_1.docx), which was never committed to this repo. uat/Phase1_Signoff.md
+is the official sign-off record and uses a differently-organized 16-area
+functional checklist instead, because this literal list wasn't available
+to it at the time. This file maps each literal item to what verifies it, so
+the two documents agree rather than silently diverging.
+
+| # | Original checklist item | Verified by | Status |
+|---|---|---|---|
+| 1 | User can upload PDF/image invoice | Phase1_Signoff.md area 1 | PASS |
+| 2 | System generates DocumentID | sourceDocumentService.ts:176 — format confirmed `INV-CAP-000001` | PASS |
+| 3 | System stores original file unchanged | Phase1_Signoff.md area 1 | PASS |
+| 4 | System creates invoice_capture record | Phase1_Signoff.md area 2 | PASS |
+| 5 | System extracts VendorRawName | Phase1_Signoff.md area 3 (accuracy_run id 3, 100.0%) | PASS |
+| 6 | System extracts InvoiceNumber | Phase1_Signoff.md area 3 | PASS |
+| 7 | System extracts InvoiceDate | Phase1_Signoff.md area 3 | PASS |
+| 8 | System extracts DueDate or PaymentTerms | Phase1_Signoff.md area 3 | PASS |
+| 9 | System extracts InvoiceTotal | Phase1_Signoff.md area 3 | PASS |
+| 10 | System extracts PO number when visible | Phase1_Signoff.md area 3 | PASS |
+| 11 | System stores ExtractionConfidence as a percentage | extractionService.ts — Claude output and threshold checks (>=85%) operate on 0-100 scale; stored internally as a 0-1 decimal, converted back to % at every display/logging point | PASS (see note below) |
+| 12 | System matches VendorID from Vendor_ID table | Phase1_Signoff.md area 5 | PASS |
+| 13 | System does not use OCR to assign VendorID directly | Non-negotiable rule enforced throughout — VendorID never derived from extracted text | PASS |
+| 14 | System flags missing required fields | Phase1_Signoff.md area 7 | PASS |
+| 15 | System flags low confidence below 85% | Phase1_Signoff.md area 7 | PASS |
+| 16 | System checks duplicate VendorID + InvoiceNumber | Phase1_Signoff.md area 8 | PASS |
+| 17 | System routes exceptions to queue | Phase1_Signoff.md area 9 | PASS |
+| 18 | AP reviewer can edit extracted fields | Phase1_Signoff.md area 4 | PASS |
+| 19 | Edits create audit log records | Phase1_Signoff.md area 4 | PASS |
+| 20 | AP reviewer can approve or reject | Phase1_Signoff.md area 10 | PASS |
+| 21 | Approved invoices can export to CSV | Phase1_Signoff.md area 14 | PASS |
+| 22 | User can manually enter VoucherID | Phase1_Signoff.md area 11 | PASS |
+| 23 | Invoice can be marked Exported | Phase1_Signoff.md area 11 | PASS |
+| 24 | Invoice can be marked Posted | Phase1_Signoff.md area 11 | PASS |
+| 25 | Original invoice link remains available | Phase1_Signoff.md area 1 | PASS |
+| 26 | Basic KPI counts are visible | Phase1_Signoff.md area 15 | PASS |
+
+**Note on item 11:** "stored as a percentage" is satisfied in intent, not in
+literal column type — the database column is a 0-1 decimal
+(`numeric(5,4)`), not a 0-100 integer. Every point where a human or a
+threshold check reasons about this value treats it as a percentage. This
+is a standard normalize-in-DB, format-at-the-edge pattern, not a defect.
+
+**Conclusion:** all 26 items pass. The 16-area checklist in
+uat/Phase1_Signoff.md is confirmed substantively complete against the
+original literal checklist — nothing is missing, only differently grouped.
+
+STEP 3 — Create FUTURE_USE.md at the repo root
+
+This file tracks deliberate scope exclusions with a named condition for
+revisiting them — distinct from KNOWN_ISSUES.md, which tracks gaps in what's
+already built. Nothing in this file is a bug or something currently broken.
+Create it with this exact content:
+
+# Future Use — Deliberately Deferred, Not Currently Planned
+
+Last updated: 2026-08-13
+
+This file is for scope decisions, not defects. Each entry names something
+intentionally excluded right now, why, and the specific condition under
+which it should be reconsidered. If there's no active plan or timeline for
+an item, it belongs here, not in KNOWN_ISSUES.md or an active backlog.
+
+## Remit-to / vendor-banking review validation
+
+**What:** Automated fuzzy-matching of an invoice's remit-to address against
+the vendor master's RemitToAddress, flagging mismatches for review.
+
+**Why deferred:** This app does not auto-pay anything — ERP posting is
+manual, and a human explicitly reviews remit-to details before payment is
+released. That human review is the actual control; automated matching on
+top of it is defense-in-depth for a threat model (unattended automated
+payment release) that doesn't exist here.
+
+**Revisit if:** An auto-pay or automatic payment-release feature is ever
+proposed. At that point this becomes a required control, not optional.
+
+## Dual-model extraction review pattern (retired, not returning)
+
+**What:** extractionCompare.ts, HAIKU_REVIEWER_RUNBOOK.md, and the
+extraction_review schema — a blind dual-model (two independent extractions
+compared against each other) review pattern.
+
+**Status:** None of these three ever existed in this repo. The pattern was
+retired before it was built, not built and then removed. Owner-confirmed
+2026-08-13.
+
+**Revisit if:** A second-opinion or cross-model verification pattern is
+ever reconsidered for extraction — this note explains why the original
+version doesn't exist and isn't a rediscoverable asset to restore.
+
+## Explicitly out-of-scope items from the original MVP scope document
+
+**What:** The original invoice-capture scope document lists these as
+explicitly excluded from MVP and later phases, with no current
+implementation and no active plan:
+- Fully touchless posting without AP review
+- Automatic new vendor creation
+- Automatic vendor banking or remit-to changes
+- Full 3-way match automation
+- Automatic payment release
+- Complex tax coding
+- GL account coding automation
+- Vendor statement reconciliation
+- Advanced fraud detection
+- Multi-currency processing
+
+**Why deferred:** Per the original scope document's own phasing — these are
+Phase 3/4 concepts (ERP integration, automation) or explicitly named
+non-goals for the MVP, not oversights.
+
+**Revisit if:** Any specific item above is proposed as real, prioritized
+work — at that point it should move out of this file into an active
+backlog with its own scoping, not be built directly from this one-line
+description.
+
+Report the final state of all three files and confirm KNOWN_ISSUES.md's
+remaining three entries plus the load-test results section are byte-for-byte
+unchanged from before this edit.
