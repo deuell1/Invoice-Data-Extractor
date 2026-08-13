@@ -1,0 +1,55 @@
+Create a new file at uat/Phase1_Signoff.md (matching the existing uat/
+report-naming convention alongside EG1_Exit_Report.md and
+Phase1_UAT_Exit_Report.md). Populate it by reading the actual current state
+of these existing files — do not invent or assume any numbers, pull them
+directly:
+- uat/EG1_Exit_Report.md (including its 2026-08-10 and 2026-08-12 addenda)
+- uat/Phase1_UAT_Exit_Report.md
+- uat/Phase1_Defect_Remediation_Report.md
+- KNOWN_ISSUES.md (all entries, including the load-test baseline)
+
+Structure:
+
+# Phase 1 Sign-Off
+
+**Status: Pending owner approval — see bottom of this document.**
+
+## Exit gate summary
+- EG-1 (extraction accuracy): pull the final verified result and
+  accuracy_run id from EG1_Exit_Report.md's addenda — state the actual
+  measured number, threshold, and which model/provider it was measured
+  against.
+- EG-2 (production readiness): summarize P11-P15 completion (health check,
+  CORS/headers, rate limiting, dependency audit, pool limits + load test)
+  and the backup/restore verification (Postgres PITR tested end-to-end,
+  App Storage versioning confirmed on).
+
+## Known, accepted gaps
+List each KNOWN_ISSUES.md entry by title only, with a one-line pointer back
+to that file for detail — do not duplicate the full reasoning here.
+
+## Residual low-severity defects
+Pull D2 (editorRole gaps) and D4 (intermittent hard-delete 500) from
+Phase1_Defect_Remediation_Report.md if they're still listed as open — state
+their current status accurately, don't assume they're resolved just because
+they're not mentioned elsewhere.
+
+## Acceptance criteria
+Copy the checklist from the original Phase 1 scope (the 25-item checklist
+ending in "Basic KPI counts are visible") and mark each item's actual
+current status based on what's been verified in this repo and this
+conversation's history — do not mark anything complete that hasn't been
+directly verified.
+
+## Approval
+
+Signed off by: _______________________
+Date: _______________________
+Comments: _______________________
+
+Leave the Approval section as blank underscores — do not fill in a name,
+date, or comment. That section is for the project owner to complete
+themselves, not to be pre-populated.
+
+Report back with the exit-gate numbers you pulled and confirm the Approval
+section was left blank.
