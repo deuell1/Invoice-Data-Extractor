@@ -80,3 +80,31 @@ has never actually been run to produce real p50/p99 latency numbers.
 writing.
 
 **Revisit:** Immediately after this file lands — see the next planned step.
+
+## Baseline load-test results (2026-08-13)
+
+Recorded from tests/load/basic-load.mjs, run against the dev environment
+(localhost:8080) at 10 connections / 30s per endpoint, per the entry above
+this one. This is now the actual baseline referenced by that entry.
+
+| Endpoint | p50 | p99 | req/s | errors |
+|---|---|---|---|---|
+| GET /invoices | 25ms | 39ms | 387 | 0/11,619 |
+| GET /invoices/stats | 7ms | 16ms | 1,205 | 0/36,135 |
+| GET /exceptions | 52ms | 79ms | 187 | 0/5,618 |
+| GET /vendors | 17ms | 33ms | 551 | 0/16,525 |
+
+Zero errors across ~70,000 total requests.
+
+**Worth noting, not urgent:** GET /exceptions is 2-7x slower than the other
+three endpoints, with correspondingly lower throughput (mechanically
+consistent — not two separate signals). Still well within acceptable range
+for a human-facing review-queue screen. Worth checking whether
+invoice_capture.review_status has an index if this number gets meaningfully
+worse in a future re-run — that's the most likely explanation for a filtered
+query being slower than the plain list endpoints it's being compared against.
+
+**Scope caveat:** this ran against dev, not production. Dev currently holds
+more rows (2,000+ vendors, 1,167 orphaned audit rows per the entry above)
+than production's clean ~564, so if this baseline is biased at all, it's
+biased pessimistic rather than optimistic.
