@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { assertFkCoverage, warnVendorAuditOrphans } from "./lib/fkCoverageCheck";
 import { logExtractionBootInfo } from "./services/extractionService";
+import { logGraphIngestionBootInfo } from "./services/graphMailClient";
 
 const rawPort = process.env["PORT"];
 
@@ -46,6 +47,7 @@ app.listen(port, (err) => {
     .then(() => warnVendorAuditOrphans())
     .then(() => {
       logExtractionBootInfo();
+      logGraphIngestionBootInfo();
     })
     .catch((startupErr) => {
       logger.error(

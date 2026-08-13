@@ -1,0 +1,79 @@
+Create a new file artifacts/api-server/src/services/graphMailClient.ts.
+This is a pure Microsoft Graph API client — no object storage writes, no
+database writes, no dependency on sourceDocumentService. Keep it isolated
+so it can be verified independently.
+
+1. pnpm add @azure/msal-node in artifacts/api-server.
+
+2. Export these exact names, so a second module can import them predictably:
+
+   export function isGraphIngestionConfigured(): boolean
+     Returns true only if all four of GRAPH_CLIENT_ID, GRAPH_CLIENT_SECRET,
+     GRAPH_TENANT_ID, and GRAPH_MAILBOX_ADDRESS are set and non-empty.
+     Mirror the exact style of isExtractionConfigured() in
+     extractionService.ts:70-72 — a simple, self-contained boolean check,
+     no side effects.
+
+   export function logGraphIngestionBootInfo(): void
+     Mirror logExtractionBootInfo() (extractionService.ts:855-870) exactly
+     in spirit: log at INFO level whether it's configured and which
+     mailbox address is targeted, WITHOUT ever logging the client secret.
+     If any of the four env vars are partially set (e.g. client ID present
+     but secret missing), log a WARN calling that out specifically — a
+     half-configured state is a likely real mistake, not a deliberate
+     choice, unlike EXTRACTION_MOCK_MODE which has an explicit off switch.
+
+   export interface FetchedAttachment {
+     filename: string;
+     contentType: string;
+     buffer: Buffer;
+   }
+
+   export interface MailboxDeltaResult {
+     attachments: FetchedAttachment[];
+     newDeltaToken: string;
+   }
+
+   export async function fetchNewMailAttachments(
+     deltaToken: string | null,
+   ): Promise<MailboxDeltaResult>
+
+3. fetchNewMailAttachments must itself check isGraphIngestionConfigured()
+   first and throw a clear, specific error ("Graph ingestion is not
+   configured — GRAPH_CLIENT_ID/SECRET/TENANT_ID/MAILBOX_ADDRESS missing")
+   if not — do not let it attempt a token request with empty credentials
+   and produce a confusing downstream Azure error instead. This check must
+   never throw or crash anything at module load time — only when this
+   specific function is actually called.
+
+4. Token acquisition: use @azure/msal-node's ConfidentialClientApplication
+   with the client-credentials flow, scope "https://graph.microsoft.com/.default".
+   Client ID/secret/tenant ID come from the three env vars above, read at
+   call time (not cached at module load, so a secret added after boot
+   still works without a restart-order dependency).
+
+5. Delta query: call Microsoft Graph's delta endpoint for the configured
+   mailbox's inbox messages. If deltaToken is null, this is the first-ever
+   sync — request a full delta from scratch. If deltaToken is provided,
+   resume from it. Extract the new delta token from the response's
+   @odata.deltaLink (or @odata.nextLink if paginating — follow pagination
+   fully before returning, don't return partial results on a paginated
+   response).
+
+6. Filter to messages with hasAttachments: true. For each, fetch its
+   attachments, filter to contentType starting with "application/pdf" or
+   "image/" — skip everything else silently (not every attachment on an
+   invoice email is the invoice itself; a logo in an email signature is a
+   common false positive, not an error).
+
+7. Wire logGraphIngestionBootInfo() into artifacts/api-server/src/index.ts
+   alongside the existing logExtractionBootInfo() call (index.ts:48) — same
+   pattern, called once at boot, before the server starts listening.
+
+Do not create any route, any scheduled job, or touch sourceDocumentService,
+objectStorage.ts, or the inbox_sync_state table in this step — this file
+should have zero callers yet except the boot-info wiring in step 7.
+
+Report the boot log output you see when running locally with none of the
+four Graph env vars set — confirm it logs a clear "not configured" message
+and does not crash or throw anywhere in the boot sequence.
