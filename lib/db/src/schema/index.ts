@@ -8,3 +8,4 @@ export * from "./export_batch";
 export * from "./app_settings";
 export * from "./accuracy_run";
 export * from "./exception_event";
+export * from "./inbox_sync_state";

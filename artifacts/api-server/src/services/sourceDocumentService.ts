@@ -48,6 +48,9 @@ export interface CreateSourceDocumentInput {
   originalFileName: string;
   contentType?: string | null;
   fileHash?: string | null;
+  /** Provenance of arrival — how this file reached the system.
+   *  Defaults to "Manual Upload" if omitted. */
+  sourceChannel?: string;
 }
 
 /**
@@ -87,6 +90,7 @@ export async function createSourceDocument(
       fileHash: input.fileHash ?? null,
       processingStatus: "PENDING",
       duplicateOfSourceDocumentId,
+      sourceChannel: input.sourceChannel ?? "Manual Upload",
     })
     .returning({ id: sourceDocumentsTable.id });
 
