@@ -108,3 +108,14 @@ query being slower than the plain list endpoints it's being compared against.
 more rows (2,000+ vendors, 1,167 orphaned audit rows per the entry above)
 than production's clean ~564, so if this baseline is biased at all, it's
 biased pessimistic rather than optimistic.
+
+## extractionCompare.ts, HAIKU_REVIEWER_RUNBOOK.md, extraction_review — N/A, superseded
+
+These three items appeared on an earlier internal priority list as pending
+work (rename reviewerService.ts's comparison utilities, rewrite a runbook
+for Haiku as primary extractor, evaluate reshaping the extraction_review
+schema). None of the three ever existed in this repo. Owner-confirmed
+2026-08-13: the blind dual-model reviewer pattern was retired before this
+work was ever built, not renamed or refactored away — the extraction
+service was built directly on the single-extractor (Claude Haiku) path.
+No action needed. Not a gap.
