@@ -29,6 +29,8 @@ import type {
   AuditLogEntry,
   BulkActionInput,
   BulkActionResult,
+  ClerkWebhook200,
+  ClerkWebhookPayload,
   DashboardMetrics,
   DeleteResult,
   DuplicateCheckResult,
@@ -72,6 +74,7 @@ import type {
   SourceDocumentInput,
   SourceDocumentListResponse,
   SourceDocumentWithInvoices,
+  SyncInboxResult,
   UploadUrlRequest,
   UploadUrlResponse,
   UserRoleUpdate,
@@ -4407,6 +4410,151 @@ export const usePatchUserRole = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getPatchUserRoleMutationOptions(options));
+    }
+
+export const getSyncInboxUrl = () => {
+
+
+
+
+  return `/api/source-documents/sync-inbox`
+}
+
+/**
+ * Fetches new email attachments from the configured Microsoft Graph mailbox, stores each qualifying file in object storage, and creates a source-document record for it. Safe to call when Graph credentials are not yet configured — returns zeros without throwing. Requires the AP_MANAGER role.
+
+ * @summary Trigger a manual inbox sync (AP_MANAGER only)
+ */
+export const syncInbox = async ( options?: RequestInit): Promise<SyncInboxResult> => {
+
+  return customFetch<SyncInboxResult>(getSyncInboxUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getSyncInboxMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncInbox>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof syncInbox>>, TError,void, TContext> => {
+
+const mutationKey = ['syncInbox'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof syncInbox>>, void> = () => {
+
+
+          return  syncInbox(requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SyncInboxMutationResult = NonNullable<Awaited<ReturnType<typeof syncInbox>>>
+
+    export type SyncInboxMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Trigger a manual inbox sync (AP_MANAGER only)
+ */
+export const useSyncInbox = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof syncInbox>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof syncInbox>>,
+        TError,
+        void,
+        TContext
+      > => {
+      return useMutation(getSyncInboxMutationOptions(options));
+    }
+
+export const getClerkWebhookUrl = () => {
+
+
+
+
+  return `/api/webhooks/clerk`
+}
+
+/**
+ * Accepts Clerk webhook events delivered by Svix. Verifies the Svix signature before processing any payload. Handles user.updated by evicting the matching user's display name from the actor-name cache; all other event types return 200 without side effects. Called by Clerk infrastructure — not intended for direct frontend or API-client use.
+
+ * @summary Receive and verify Clerk webhook events
+ */
+export const clerkWebhook = async (clerkWebhookPayload: ClerkWebhookPayload, options?: RequestInit): Promise<ClerkWebhook200> => {
+
+  return customFetch<ClerkWebhook200>(getClerkWebhookUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(
+      clerkWebhookPayload,)
+  }
+);}
+
+
+
+
+export const getClerkWebhookMutationOptions = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clerkWebhook>>, TError,{data: BodyType<ClerkWebhookPayload>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof clerkWebhook>>, TError,{data: BodyType<ClerkWebhookPayload>}, TContext> => {
+
+const mutationKey = ['clerkWebhook'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof clerkWebhook>>, {data: BodyType<ClerkWebhookPayload>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  clerkWebhook(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ClerkWebhookMutationResult = NonNullable<Awaited<ReturnType<typeof clerkWebhook>>>
+    export type ClerkWebhookMutationBody = BodyType<ClerkWebhookPayload>
+    export type ClerkWebhookMutationError = ErrorType<ErrorEnvelope>
+
+    /**
+ * @summary Receive and verify Clerk webhook events
+ */
+export const useClerkWebhook = <TError = ErrorType<ErrorEnvelope>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof clerkWebhook>>, TError,{data: BodyType<ClerkWebhookPayload>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof clerkWebhook>>,
+        TError,
+        {data: BodyType<ClerkWebhookPayload>},
+        TContext
+      > => {
+      return useMutation(getClerkWebhookMutationOptions(options));
     }
 
 export const getGetSettingsUrl = () => {

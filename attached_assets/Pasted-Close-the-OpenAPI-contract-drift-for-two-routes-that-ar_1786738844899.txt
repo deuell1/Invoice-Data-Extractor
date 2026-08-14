@@ -1,0 +1,73 @@
+Close the OpenAPI contract drift for two routes that are live in code but
+absent from lib/api-spec/openapi.yaml, violating this project's own
+single-source-of-truth rule for the API contract.
+
+Missing routes:
+1. POST /source-documents/sync-inbox
+2. POST /webhooks/clerk
+
+Step 1 — Add POST /source-documents/sync-inbox to openapi.yaml.
+
+Base the spec entry on the actual route implementation in
+artifacts/api-server/src/routes/sourceDocuments.ts. Known, already-verified
+behavior to reflect accurately (do not invent additional fields):
+- No request body required.
+- Guarded by requireRole("AP_MANAGER") — document a 403 response for
+  insufficient role, matching the pattern used by other manager-only routes
+  already in the spec (e.g. look at how /vendors/cleanup or a similar
+  existing manager-only route is documented, and follow that exact pattern).
+- 200 response body shape: { processed: number, skipped: number, errors:
+  number } — confirmed via smoke test: when Graph ingestion is unconfigured,
+  returns exactly { processed: 0, skipped: 0, errors: 0 }, never throwing.
+- 500 on unexpected failure, generic error message (the route's catch block
+  returns { error: "Failed to sync inbox" } — do not document any more
+  specific error detail than that, since the route doesn't return more).
+
+Step 2 — Add POST /webhooks/clerk to openapi.yaml.
+
+Base this on artifacts/api-server/src/routes/webhooks.ts. Known,
+already-verified behavior (confirmed via Suite 19 smoke/unit/integration
+tests — do not deviate from this):
+- Accepts Svix webhook headers (svix-id, svix-timestamp, svix-signature)
+  and a raw JSON body — document these as required headers, not as body
+  fields.
+- 200 on successful signature verification and handled event (e.g.
+  user.updated evicts a cached display name; other event types return 200
+  without side effects).
+- 400 when Svix headers are missing (entirely or partially), when the
+  signature is invalid, when the body has been tampered with after signing,
+  or when the same signed request is replayed (duplicate svix-id) or the
+  timestamp is stale.
+- 500 when CLERK_WEBHOOK_SECRET is not configured server-side (verified
+  fail-closed behavior — never skips verification).
+- This route is called by Clerk's infrastructure, not by frontend or other
+  API clients, but document it fully for contract completeness per this
+  project's own rule that openapi.yaml is the single source of truth for
+  every live route.
+
+Step 3 — Regenerate codegen.
+
+Run: pnpm --filter @workspace/api-spec run codegen
+
+This regenerates lib/api-zod and lib/api-client-react. Do not hand-edit
+either generated package directly — if the codegen output looks wrong,
+fix the openapi.yaml source and re-run codegen, don't patch the generated
+files.
+
+Step 4 — Verify.
+
+1. pnpm run typecheck — must report 0 errors across all packages.
+2. Confirm the two new spec entries actually validate as OpenAPI 3.1 (the
+   codegen step running successfully without errors is sufficient evidence
+   of this — report if codegen itself throws a spec-validation error).
+
+Report back with exactly these confirmations:
+
+1. The exact YAML added for both new paths, verbatim.
+2. Confirmation that pnpm --filter @workspace/api-spec run codegen
+   completed without errors.
+3. pnpm run typecheck result — error count.
+4. Confirm no other route or existing spec entry was modified — this task
+   is additive only.
+
+Do not commit, deploy, or run any Replit publish step as part of this task.

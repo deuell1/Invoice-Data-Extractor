@@ -2638,6 +2638,36 @@ export const PatchUserRoleResponse = zod.object({
 
 
 /**
+ * Fetches new email attachments from the configured Microsoft Graph mailbox, stores each qualifying file in object storage, and creates a source-document record for it. Safe to call when Graph credentials are not yet configured — returns zeros without throwing. Requires the AP_MANAGER role.
+
+ * @summary Trigger a manual inbox sync (AP_MANAGER only)
+ */
+export const SyncInboxResponse = zod.object({
+  "processed": zod.number().describe('Attachments successfully stored and registered as source documents'),
+  "skipped": zod.number().describe('Attachments skipped (e.g. non-PDF\/image content types)'),
+  "errors": zod.number().describe('Attachments that failed to ingest; per-attachment failures are isolated')
+})
+
+
+/**
+ * Accepts Clerk webhook events delivered by Svix. Verifies the Svix signature before processing any payload. Handles user.updated by evicting the matching user's display name from the actor-name cache; all other event types return 200 without side effects. Called by Clerk infrastructure — not intended for direct frontend or API-client use.
+
+ * @summary Receive and verify Clerk webhook events
+ */
+export const ClerkWebhookHeader = zod.object({
+  "svix-id": zod.string().describe('Unique message ID assigned by Svix'),
+  "svix-timestamp": zod.string().describe('Unix timestamp (seconds) of when the message was sent'),
+  "svix-signature": zod.string().describe('Base64-encoded HMAC signatures (space-separated if multiple)')
+})
+
+export const ClerkWebhookBody = zod.record(zod.string(), zod.unknown()).describe('Raw Clerk event payload delivered by Svix. Schema varies by event type (e.g. user.updated, user.created). The handler verifies the Svix signature against the raw body before inspecting any fields.\n')
+
+export const ClerkWebhookResponse = zod.object({
+  "received": zod.boolean()
+})
+
+
+/**
  * @summary Get internal configuration (safe defaults applied)
  */
 export const GetSettingsResponse = zod.object({

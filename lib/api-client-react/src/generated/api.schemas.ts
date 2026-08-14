@@ -1209,6 +1209,21 @@ export interface Settings {
   defaultExportFormat: string;
 }
 
+/**
+ * Raw Clerk event payload delivered by Svix. Schema varies by event type (e.g. user.updated, user.created). The handler verifies the Svix signature against the raw body before inspecting any fields.
+
+ */
+export interface ClerkWebhookPayload { [key: string]: unknown }
+
+export interface SyncInboxResult {
+  /** Attachments successfully stored and registered as source documents */
+  processed: number;
+  /** Attachments skipped (e.g. non-PDF/image content types) */
+  skipped: number;
+  /** Attachments that failed to ingest; per-attachment failures are isolated */
+  errors: number;
+}
+
 export interface SettingsUpdate {
   /** @nullable */
   extractionConfidenceThreshold?: number | null;
@@ -1559,5 +1574,9 @@ export const GetImportTemplateImportType = {
 export type ListExportsParams = {
 page?: number;
 limit?: number;
+};
+
+export type ClerkWebhook200 = {
+  received: boolean;
 };
 
