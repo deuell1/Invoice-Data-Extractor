@@ -1,0 +1,66 @@
+Close the duplicate-detection gap on the Microsoft Graph email ingestion path.
+inboxIngestionService.ts currently calls createSourceDocument without a
+fileHash, so the hash-based duplicate-file advisory (which already works on
+the manual upload path) never fires on emailed invoices — the exact channel
+most likely to receive the same invoice twice (forwarded threads, CC'd
+copies, resends).
+
+Step 1 — Find the existing hash algorithm before writing any new code.
+
+Before touching inboxIngestionService.ts, determine exactly how fileHash is
+computed on the manual upload path (client-side in
+artifacts/invoice-capture/src, likely in the intake page or an upload
+helper). Report what you find: the algorithm (e.g. SHA-256), the encoding
+(hex vs base64), and whether it hashes the raw file bytes directly or some
+wrapped/normalized form.
+
+This matters and is not optional to check: if the email path hashes with a
+different algorithm or encoding than the upload path, duplicate detection
+will silently fail to catch the same invoice arriving once by email and once
+by manual upload — a real, likely scenario that would defeat the point of
+this fix. The two paths must produce byte-identical hash strings for
+identical file content.
+
+Step 2 — Compute the hash server-side in inboxIngestionService.ts.
+
+In syncInboxOnce(), before calling createSourceDocument for each attachment,
+compute a hash of attachment.buffer using Node's built-in crypto module,
+matching the exact algorithm and encoding found in Step 1 (e.g.
+crypto.createHash("sha256").update(attachment.buffer).digest("hex") if
+that's what Step 1 confirms — adjust to match, don't assume this default).
+
+Pass the result as fileHash in the createSourceDocument call, alongside the
+existing fileObjectPath, originalFileName, contentType, and sourceChannel
+fields. Do not change any other field or any other part of the ingestion
+flow — this is a single added parameter.
+
+Step 3 — Do not change per-attachment failure isolation.
+
+inboxIngestionService.ts already isolates failures so one bad attachment
+doesn't abort the batch (each attachment is processed in its own try/catch
+inside the loop). Computing the hash must happen inside that same
+per-attachment try block, so a hashing failure on one attachment is caught
+and logged the same way a storage or DB failure already is — it must not
+throw uncaught and abort the whole sync run.
+
+Step 4 — Verify.
+
+1. Run pnpm run typecheck — must report 0 errors.
+2. If EXTRACTION_MOCK_MODE or a Graph mock/test fixture exists for this
+   service, run its existing unit tests. If none exist, do not add new test
+   infrastructure in this task — that's a separate concern.
+3. Do NOT attempt to test this against real Microsoft Graph credentials —
+   GRAPH_CLIENT_ID/GRAPH_CLIENT_SECRET/GRAPH_TENANT_ID/GRAPH_MAILBOX_ADDRESS
+   are intentionally not being configured as part of this task. The Azure
+   app registration is separate, deliberately deferred work.
+
+Report back with exactly these confirmations:
+
+1. The exact algorithm/encoding found in Step 1, and where in the frontend
+   code it lives (file + line).
+2. The exact line(s) added to inboxIngestionService.ts, verbatim.
+3. Confirmation that the hash computation is inside the existing
+   per-attachment try/catch, not outside it.
+4. pnpm run typecheck result — error count.
+
+Do not commit, deploy, or run any Replit publish step as part of this task.

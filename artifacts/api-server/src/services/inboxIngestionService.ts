@@ -18,6 +18,7 @@ import {
   isGraphIngestionConfigured,
   fetchNewMailAttachments,
 } from "./graphMailClient";
+import { createHash } from "node:crypto";
 import { ObjectStorageService } from "../lib/objectStorage";
 import { createSourceDocument } from "./sourceDocumentService";
 
@@ -77,6 +78,10 @@ export async function syncInboxOnce(): Promise<SyncInboxResult> {
   // Step d: ingest each attachment, isolated so one failure doesn't abort the batch.
   for (const attachment of result.attachments) {
     try {
+      const fileHash = createHash("sha256")
+        .update(attachment.buffer)
+        .digest("hex");
+
       const fileObjectPath = await storage.uploadObjectBuffer(
         attachment.buffer,
         attachment.contentType,
@@ -87,6 +92,7 @@ export async function syncInboxOnce(): Promise<SyncInboxResult> {
         originalFileName: attachment.filename,
         contentType: attachment.contentType,
         sourceChannel: "AP Email",
+        fileHash,
       });
 
       processed++;
