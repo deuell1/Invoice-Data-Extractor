@@ -1201,6 +1201,23 @@ console.log("══════════════════════�
   }
 
   console.log(`  → Snapshot loaded from ground-truth CSV: ${SNAPSHOT.length} test case(s) (${gtCsvPath})`);
+
+  // ── Single-currency blind-spot warning ───────────────────────────────────────
+  // When every ground-truth row shares the same currency code, currency extraction
+  // is never stressed across different values.  A model that always emits "USD"
+  // would pass all currency checks — so warn loudly to remind maintainers to add
+  // multi-currency test cases before shipping multi-currency support.
+  {
+    const uniqueCurrencies = new Set(SNAPSHOT.map((r) => r.currency.toUpperCase()));
+    if (uniqueCurrencies.size === 1) {
+      warn(
+        `Suite 11: all ${SNAPSHOT.length} ground-truth rows share the same currency ` +
+        `"${[...uniqueCurrencies][0]}" — currency extraction is never stressed across ` +
+        `different values; add rows with other currency codes to close this blind spot`,
+      );
+    }
+  }
+
   const ACCURACY_THRESHOLD = 95; // percent — fail if overall accuracy drops below this
 
   // ── Vendor-name normalization ────────────────────────────────────────────────
@@ -1492,6 +1509,7 @@ console.log("══════════════════════�
     // a hard ✗ FAIL line after the loop — catching PO regressions even when overall
     // accuracy stays above the 95% threshold.
     const s11PoDiffs = [];
+    const s11CurrencyDiffs = [];
 
     for (const snap of SNAPSHOT) {
       const match = s11Finals.find(
@@ -1600,16 +1618,24 @@ console.log("══════════════════════�
       }
 
       // — currency —
+      // Mismatches push to BOTH s11Diffs (accuracy diagnostic) AND s11CurrencyDiffs
+      // (hard ✗ FAIL gate below the loop) so a wrong/blank currency code is
+      // immediately visible regardless of whether overall accuracy stays above the
+      // 95% threshold.
       s11Total++;
       if (!match) {
-        s11Diffs.push(`${snap.testCaseId} currency: no extracted invoice matched invoiceNumber="${snap.invoiceNumber}" (expected "${snap.currency}")`);
+        const diffMsg = `${snap.testCaseId} currency: no extracted invoice matched invoiceNumber="${snap.invoiceNumber}" (expected "${snap.currency}")`;
+        s11Diffs.push(diffMsg);
+        s11CurrencyDiffs.push(diffMsg);
       } else {
         const extractedCurrency = String(match.currency ?? "").trim().toUpperCase();
         const expectedCurrency  = snap.currency.toUpperCase();
         if (extractedCurrency === expectedCurrency) {
           s11Correct++;
         } else {
-          s11Diffs.push(`${snap.testCaseId} currency: expected "${snap.currency}" got "${match.currency ?? "(null)"}"`);
+          const diffMsg = `${snap.testCaseId} currency: expected "${snap.currency}" got "${match.currency ?? "(null)"}"`;
+          s11Diffs.push(diffMsg);
+          s11CurrencyDiffs.push(diffMsg);
         }
       }
 
@@ -1666,6 +1692,22 @@ console.log("══════════════════════�
       }
       throw new Error(
         `Suite 11: ${s11PoDiffs.length} poNumber regression(s) detected — ` +
+        `see ✗ FAIL lines above for per-test-case detail`,
+      );
+    }
+
+    // ── Hard gate: currency regressions ─────────────────────────────────────────
+    // Every currency mismatch emits an explicit ✗ FAIL line naming the testCaseId
+    // so a blank or wrong currency code (e.g. "" or "CAD" on a USD invoice) is
+    // immediately visible even when overall accuracy stays above 95%.
+    if (s11CurrencyDiffs.length > 0) {
+      for (const d of s11CurrencyDiffs) {
+        console.error(`  ✗ FAIL: Suite 11 currency regression — ${d}`);
+        failed++;
+        failures.push(`Suite 11 currency regression — ${d}`);
+      }
+      throw new Error(
+        `Suite 11: ${s11CurrencyDiffs.length} currency regression(s) detected — ` +
         `see ✗ FAIL lines above for per-test-case detail`,
       );
     }
