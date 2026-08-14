@@ -1,0 +1,67 @@
+This depends on graphMailClient.ts from the previous step already existing
+with exactly these exports: isGraphIngestionConfigured, fetchNewMailAttachments,
+FetchedAttachment, MailboxDeltaResult. Verify that file exists with those
+exports before starting — if it doesn't, stop and report that instead of
+proceeding.
+
+1. Add a new method to the ObjectStorageService class in
+   artifacts/api-server/src/lib/objectStorage.ts:
+
+   async uploadObjectBuffer(
+     buffer: Buffer,
+     contentType: string,
+   ): Promise<string>
+
+   Mirror getObjectEntityUploadURL()'s path construction exactly
+   (objectStorage.ts:109-129): generate a randomUUID() objectId, build
+   fullPath as `${privateObjectDir}/uploads/${objectId}` using the same
+   getPrivateObjectDir() check and error if unset, parse it with the same
+   parseObjectPath() helper into bucketName/objectName. Instead of calling
+   signObjectURL to return a presigned PUT URL, write the buffer directly
+   using the existing exported objectStorageClient
+   (objectStorageClient.bucket(bucketName).file(objectName).save(buffer,
+   { contentType })). Return the object path in the same "/objects/uploads/{objectId}"
+   string format that getObjectEntityFile expects to parse back — this must
+   be a valid fileObjectPath that createSourceDocument and every existing
+   caller already understands, not a new format.
+
+2. Create artifacts/api-server/src/services/inboxIngestionService.ts:
+
+   export async function syncInboxOnce(): Promise<{
+     processed: number;
+     skipped: number;
+     errors: number;
+   }>
+
+   Behavior, in order:
+   a. If !isGraphIngestionConfigured(), log a clear WARN and return
+      { processed: 0, skipped: 0, errors: 0 } immediately — do not throw.
+      This function must be safe to call from a cron job that fires before
+      real credentials exist.
+   b. Read the inbox_sync_state row for GRAPH_MAILBOX_ADDRESS. If no row
+      exists yet, treat deltaToken as null (first-ever sync) — do not
+      create the row yet, create/update it only after a successful run
+      (step e), so a crash mid-run doesn't leave a bad token persisted.
+   c. Call fetchNewMailAttachments(deltaToken).
+   d. For each attachment, wrapped in its own try/catch so one failure
+      doesn't abort the batch: call uploadObjectBuffer, then call
+      createSourceDocument with { fileObjectPath, originalFileName:
+      attachment.filename, contentType: attachment.contentType,
+      sourceChannel: "AP Email" }. On success increment processed; on any
+      thrown error, log it with enough detail to diagnose (filename,
+      error message — never log the buffer contents) and increment errors,
+      then continue to the next attachment.
+   e. After the loop, upsert the inbox_sync_state row (insert if none
+      existed, update if it did) with the new deltaToken and
+      lastSyncedAt = now. Do this even if some individual attachments
+      failed in step d — a partial-success run should still advance the
+      checkpoint past the messages it successfully saw, not endlessly
+      retry the same batch on every future run.
+
+Do not add any route or scheduled job yet — this step is the service
+function only, callable but not yet called from anywhere. Do not modify
+graphMailClient.ts.
+
+Report a dry-run confirmation: with Graph unconfigured (no env vars set),
+call syncInboxOnce() once from a scratch script or REPL and confirm it
+returns { processed: 0, skipped: 0, errors: 0 } without throwing.

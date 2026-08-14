@@ -128,6 +128,34 @@ export class ObjectStorageService {
     });
   }
 
+  /**
+   * Upload a raw Buffer directly to object storage and return the
+   * `/objects/uploads/{objectId}` path that createSourceDocument and every
+   * other existing caller already understands via getObjectEntityFile().
+   *
+   * Mirror of getObjectEntityUploadURL() — same path construction, same error
+   * for a missing PRIVATE_OBJECT_DIR — but writes the bytes server-side
+   * instead of returning a presigned PUT URL.
+   */
+  async uploadObjectBuffer(
+    buffer: Buffer,
+    contentType: string,
+  ): Promise<string> {
+    const privateObjectDir = this.getPrivateObjectDir();
+
+    const objectId = randomUUID();
+    const fullPath = `${privateObjectDir}/uploads/${objectId}`;
+
+    const { bucketName, objectName } = parseObjectPath(fullPath);
+
+    await objectStorageClient
+      .bucket(bucketName)
+      .file(objectName)
+      .save(buffer, { contentType });
+
+    return `/objects/uploads/${objectId}`;
+  }
+
   async getObjectEntityFile(objectPath: string): Promise<File> {
     if (!objectPath.startsWith("/objects/")) {
       throw new ObjectNotFoundError();
