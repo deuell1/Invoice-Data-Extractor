@@ -1335,6 +1335,107 @@ test("exception queue audit panel shows error state when audit API request is ab
   await expect(page.locator("body")).not.toBeEmpty();
 });
 
+// ─── 21. Exception Queue — InvoiceAuditPanel empty state ─────────────────────
+
+test("exception queue audit panel shows 'No audit logs yet' when the invoice has no audit history", async ({
+  page,
+}) => {
+  const INVOICE_ID = 70;
+
+  // Mock the exceptions list to return a single brand-new invoice.
+  await page.route("**/api/exceptions**", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: [
+          {
+            id: INVOICE_ID,
+            invoiceNumber: "INV-NEW-70",
+            vendorId: null,
+            vendorName: null,
+            invoiceDate: null,
+            totalAmount: null,
+            taxAmount: null,
+            poNumber: null,
+            currency: "USD",
+            exceptionReason: "Low confidence",
+            lowConfidenceFields: null,
+            updatedAt: "2026-08-14T10:00:00.000Z",
+            status: "EXCEPTION",
+            exceptionOwner: null,
+          },
+        ],
+        total: 1,
+      }),
+    });
+  });
+
+  // Mock the audit API for this invoice returning an empty array (no history yet).
+  await page.route(`**/api/invoices/${INVOICE_ID}/audit**`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([]),
+    });
+  });
+
+  // Mock the vendors list (loaded by the page on mount).
+  await page.route("**/api/vendors**", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: [], total: 0 }),
+      });
+    } else {
+      await route.continue();
+    }
+  });
+
+  await page.goto("/exceptions");
+
+  // Wait for the exception queue heading.
+  await expect(
+    page.getByRole("heading", { name: /exception queue/i }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  // The mocked invoice row must be visible.
+  await expect(
+    page.getByTestId(`row-exception-${INVOICE_ID}`),
+  ).toBeVisible({ timeout: 10_000 });
+
+  // Click the chevron cell (first <td> in the row) to expand the audit panel.
+  await page
+    .getByTestId(`row-exception-${INVOICE_ID}`)
+    .locator("td")
+    .first()
+    .click();
+
+  // The "Audit History" label must appear in the expanded row.
+  await expect(page.getByText("Audit History")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // The empty-state message must be visible.
+  await expect(page.getByText("No audit logs yet")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // No actor badges or timeline entries should appear.
+  await expect(page.getByTestId("badge-actor-system")).not.toBeVisible();
+  await expect(page.getByTestId("label-actor-legacy")).not.toBeVisible();
+  await expect(page.getByTestId("label-actor-human")).not.toBeVisible();
+  await expect(page.getByTestId("badge-actor-role")).not.toBeVisible();
+
+  // Page must remain intact — no crash or blank screen.
+  await expect(page.locator("body")).not.toBeEmpty();
+});
+
 // ─── 4. Invoice List ─────────────────────────────────────────────────────────
 
 test("invoice list page renders with filter controls", async ({ page }) => {
