@@ -14,6 +14,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { SourceDocumentSummary } from "@/components/source-document-summary";
+import { hashFileSha256Hex } from "@/lib/utils";
 
 type Phase = "idle" | "uploading" | "tracking";
 
@@ -85,13 +86,19 @@ export function InvoiceIntake() {
     setProgress(10);
 
     try {
-      const uploadData = await requestUploadUrl.mutateAsync({
-        data: {
-          name: file.name,
-          size: file.size,
-          contentType: file.type || "application/octet-stream",
-        },
-      });
+      // Hash and presigned-URL request are independent — run in parallel.
+      // The PUT and createSourceDocument steps are unchanged; fileHash just
+      // needs to be ready before the createSourceDocument call below.
+      const [uploadData, fileHash] = await Promise.all([
+        requestUploadUrl.mutateAsync({
+          data: {
+            name: file.name,
+            size: file.size,
+            contentType: file.type || "application/octet-stream",
+          },
+        }),
+        hashFileSha256Hex(file),
+      ]);
 
       setProgress(30);
 
@@ -116,6 +123,7 @@ export function InvoiceIntake() {
           fileObjectPath: uploadData.objectPath,
           originalFileName: file.name,
           contentType: file.type || null,
+          fileHash,
         },
       });
 
