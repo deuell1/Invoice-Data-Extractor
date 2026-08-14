@@ -1477,6 +1477,77 @@ test("audit viewer: non-array 200 response shows error or empty state and does n
   await expect(page.locator("body")).not.toBeEmpty();
 });
 
+// ─── 23. Audit Viewer — retry button reloads after transient failure ──────────
+
+test("audit viewer: clicking retry after a transient failure loads the timeline", async ({
+  page,
+}) => {
+  // Track how many times the route has been called so the first request fails
+  // and the second (after clicking "Try Again") succeeds.
+  let callCount = 0;
+
+  await page.route("**/api/invoices/21/audit**", async (route) => {
+    callCount += 1;
+    if (callCount === 1) {
+      // First request — simulate a transient server error.
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Transient server error" }),
+      });
+    } else {
+      // Second request (after retry) — server has recovered; return real data.
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify([
+          {
+            id: 2101,
+            invoiceId: 21,
+            action: "STATUS_CHANGE",
+            actorClerkId: "system-pipeline",
+            actorName: null,
+            editorRole: null,
+            fieldName: null,
+            oldValue: null,
+            newValue: null,
+            note: "Recovered after transient failure",
+            createdAt: "2026-07-01T10:00:00.000Z",
+          },
+        ]),
+      });
+    }
+  });
+
+  await page.goto("/audit");
+
+  await expect(
+    page.getByRole("heading", { name: /audit log viewer/i }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  // Trigger the initial (failing) load.
+  await page.getByTestId("input-invoice-id").fill("21");
+  await page.getByTestId("button-load-audit").click();
+
+  // The error state must appear after the first (500) request.
+  await expect(page.getByTestId("audit-error")).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect(page.getByTestId("audit-timeline")).not.toBeVisible();
+
+  // Click "Try Again" — this invalidates the query and fires the second request.
+  await page.getByTestId("button-retry-audit").click();
+
+  // After the server recovers, the timeline must appear and the error must be gone.
+  await expect(page.getByTestId("audit-timeline")).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect(page.getByTestId("audit-error")).not.toBeVisible();
+
+  // The page must remain intact — no crash or blank screen.
+  await expect(page.locator("body")).not.toBeEmpty();
+});
+
 // ─── 4. Invoice List ─────────────────────────────────────────────────────────
 
 test("invoice list page renders with filter controls", async ({ page }) => {

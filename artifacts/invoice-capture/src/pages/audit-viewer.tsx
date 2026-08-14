@@ -21,6 +21,9 @@ export function AuditViewer() {
     query: {
       enabled: invoiceId != null && invoiceId > 0,
       queryKey: getGetInvoiceAuditLogQueryKey(invoiceId ?? 0),
+      // Do not auto-retry: the user controls retries via the "Try Again" button.
+      // Immediate failure surfacing keeps the error state predictable.
+      retry: false,
       // Treat a non-array 200 body as a load failure so the error state
       // (with retry) is shown rather than silently falling through to an
       // empty-state or crashing on .map().
