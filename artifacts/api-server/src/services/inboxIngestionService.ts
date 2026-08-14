@@ -71,7 +71,7 @@ export async function syncInboxOnce(): Promise<SyncInboxResult> {
 
   const storage = new ObjectStorageService();
   let processed = 0;
-  let skipped = 0;
+  let skipped = result.skippedCount;
   let errors = 0;
 
   // Step d: ingest each attachment, isolated so one failure doesn't abort the batch.

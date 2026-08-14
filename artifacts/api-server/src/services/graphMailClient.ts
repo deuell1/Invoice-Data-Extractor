@@ -94,6 +94,10 @@ export interface MailboxDeltaResult {
   /** Full @odata.deltaLink URL — store as-is in inbox_sync_state.delta_token
    *  and pass back on the next call to resume from this point. */
   newDeltaToken: string;
+  /** Number of attachments Graph returned that were filtered out before
+   *  being handed to the caller — wrong content type, or an
+   *  itemAttachment/referenceAttachment with no inline contentBytes. */
+  skippedCount: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -211,6 +215,7 @@ export async function fetchNewMailAttachments(
   // Attachment fetch — PDF and images only
   // ---------------------------------------------------------------------------
   const attachments: FetchedAttachment[] = [];
+  let skippedCount = 0;
 
   for (const messageId of messagesWithAttachments) {
     const attResp = await fetch(
@@ -246,11 +251,13 @@ export async function fetchNewMailAttachments(
         !contentType.startsWith("application/pdf") &&
         !contentType.startsWith("image/")
       ) {
+        skippedCount++;
         continue;
       }
 
       if (!att.contentBytes) {
         // itemAttachment or referenceAttachment — no inline content, skip.
+        skippedCount++;
         continue;
       }
 
@@ -262,5 +269,5 @@ export async function fetchNewMailAttachments(
     }
   }
 
-  return { attachments, newDeltaToken };
+  return { attachments, newDeltaToken, skippedCount };
 }
