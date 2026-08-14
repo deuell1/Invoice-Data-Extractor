@@ -704,6 +704,27 @@ console.log("══════════════════════�
     console.log(`  → exception review audit verified: actorClerkId=${reviewedRow.actorClerkId}, role=${reviewedRow.editorRole}`);
   }
 
+  // ── Return to approval + STATUS_CHANGE audit assertion ─────────────────────
+  {
+    const { status: rtS } = await api("POST", `/invoices/${excId}/exception/return-to-approval`, {
+      note: "Smoke test return to approval",
+    });
+    assert(rtS === 200, `POST /invoices/:id/exception/return-to-approval returns 200 (got ${rtS})`);
+    const { status: rtAlS, json: rtAlJ } = await api("GET", `/invoices/${excId}/audit`);
+    assert(rtAlS === 200, `GET audit-log returns 200 after return-to-approval (got ${rtAlS})`);
+    const statusChangeRow = rtAlJ.find((r) => r.action === "STATUS_CHANGE");
+    assert(statusChangeRow, `STATUS_CHANGE audit row exists in log`);
+    assert(
+      statusChangeRow.actorClerkId === "smoke-test",
+      `STATUS_CHANGE audit row has actorClerkId="smoke-test" (got "${statusChangeRow.actorClerkId}")`,
+    );
+    assert(
+      ["AP_MANAGER", "AP_CLERK"].includes(statusChangeRow.editorRole),
+      `STATUS_CHANGE audit row has editorRole populated (got "${statusChangeRow.editorRole}")`,
+    );
+    console.log(`  → return-to-approval audit verified: actorClerkId=${statusChangeRow.actorClerkId}, role=${statusChangeRow.editorRole}`);
+  }
+
   // Force to EXCEPTION status using the status endpoint.
   const { status: forceS, json: forceJ } = await api(
     "PATCH",
