@@ -23,8 +23,8 @@ import {
   Moon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Button } from "@workspace/mission-control-ds/components/ui/button";
+import { Badge } from "@workspace/mission-control-ds/components/ui/badge";
 import { useRole } from "@/hooks/use-role";
 import { useTheme } from "@/hooks/use-theme";
 

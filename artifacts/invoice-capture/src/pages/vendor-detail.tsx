@@ -12,15 +12,15 @@ import {
 } from "@workspace/api-client-react";
 import type { Vendor, VendorUpdate } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@workspace/mission-control-ds/hooks/use-toast";
 import { format } from "date-fns";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardHeader, CardTitle } from "@workspace/mission-control-ds/components/ui/card";
+import { Button } from "@workspace/mission-control-ds/components/ui/button";
+import { Input } from "@workspace/mission-control-ds/components/ui/input";
+import { Label } from "@workspace/mission-control-ds/components/ui/label";
+import { Badge } from "@workspace/mission-control-ds/components/ui/badge";
+import { Switch } from "@workspace/mission-control-ds/components/ui/switch";
+import { Textarea } from "@workspace/mission-control-ds/components/ui/textarea";
 import {
   AlertCircle, AlertTriangle, ArrowLeft, Check, ChevronDown, ChevronRight, ChevronUp,
   Clock, Edit2, Loader2, Plus, Receipt, Shield,

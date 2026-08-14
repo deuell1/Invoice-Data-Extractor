@@ -16,11 +16,11 @@ import {
   ScanLine,
   Ban,
 } from "lucide-react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@workspace/mission-control-ds/components/ui/card";
+import { Badge } from "@workspace/mission-control-ds/components/ui/badge";
+import { Button } from "@workspace/mission-control-ds/components/ui/button";
+import { Switch } from "@workspace/mission-control-ds/components/ui/switch";
+import { Label } from "@workspace/mission-control-ds/components/ui/label";
 import { StatusBadge } from "@/components/status-badge";
 import { SourceDocumentCleanupActions } from "@/components/cleanup-actions";
 

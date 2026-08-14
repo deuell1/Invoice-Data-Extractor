@@ -9,10 +9,10 @@ import {
   useCreateSourceDocument,
   useRequestUploadUrl,
 } from "@workspace/api-client-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
-import { useToast } from "@/hooks/use-toast";
+import { Button } from "@workspace/mission-control-ds/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@workspace/mission-control-ds/components/ui/card";
+import { Progress } from "@workspace/mission-control-ds/components/ui/progress";
+import { useToast } from "@workspace/mission-control-ds/hooks/use-toast";
 import { SourceDocumentSummary } from "@/components/source-document-summary";
 import { hashFileSha256Hex } from "@/lib/utils";
 

@@ -11,26 +11,26 @@ import type {
   ListSourceDocumentsProcessingStatus,
   SourceDocument,
 } from "@workspace/api-client-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Card, CardContent, CardHeader, CardTitle } from "@workspace/mission-control-ds/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@workspace/mission-control-ds/components/ui/table";
+import { Button } from "@workspace/mission-control-ds/components/ui/button";
+import { Input } from "@workspace/mission-control-ds/components/ui/input";
+import { Switch } from "@workspace/mission-control-ds/components/ui/switch";
+import { Label } from "@workspace/mission-control-ds/components/ui/label";
+import { Badge } from "@workspace/mission-control-ds/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@workspace/mission-control-ds/components/ui/select";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
+} from "@workspace/mission-control-ds/components/ui/dialog";
 import {
   FileText, Loader2, Search, ChevronLeft, ChevronRight, FileSearch, History, Eye, AlertTriangle, RefreshCw,
 } from "lucide-react";
 import { format } from "date-fns";
 import { AuditActor } from "@/components/audit-actor";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@workspace/mission-control-ds/hooks/use-toast";
 
 type StatusFilter = "ALL" | ListSourceDocumentsProcessingStatus;
 

@@ -1,4 +1,4 @@
-import { Badge } from "@/components/ui/badge";
+import { Badge } from "@workspace/mission-control-ds/components/ui/badge";
 import { Bot, User } from "lucide-react";
 
 /**

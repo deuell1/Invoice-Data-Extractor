@@ -4,11 +4,11 @@ import { publishableKeyFromHost } from "@clerk/react/internal";
 import { shadcn } from "@clerk/themes";
 import { Switch, Route, useLocation, Router as WouterRouter, Redirect } from "wouter";
 import { QueryClient, QueryClientProvider, useQueryClient, QueryCache, MutationCache } from "@tanstack/react-query";
-import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { Toaster } from "@workspace/mission-control-ds/components/ui/toaster";
+import { TooltipProvider } from "@workspace/mission-control-ds/components/ui/tooltip";
 import { AppRouter } from "@/components/app-router";
 import { HomePage } from "@/pages/home";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@workspace/mission-control-ds/hooks/use-toast";
 import { ApiError } from "@workspace/api-client-react";
 
 // Module-level 401 handler — registered by SessionExpiredGuard once it mounts.

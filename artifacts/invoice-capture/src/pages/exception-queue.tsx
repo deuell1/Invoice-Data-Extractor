@@ -12,26 +12,26 @@ import {
   getGetInvoiceAuditLogQueryKey,
   useListVendors,
 } from "@workspace/api-client-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Card, CardContent } from "@workspace/mission-control-ds/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@workspace/mission-control-ds/components/ui/table";
+import { Button } from "@workspace/mission-control-ds/components/ui/button";
+import { Badge } from "@workspace/mission-control-ds/components/ui/badge";
+import { Input } from "@workspace/mission-control-ds/components/ui/input";
+import { Label } from "@workspace/mission-control-ds/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@workspace/mission-control-ds/components/ui/select";
 import { InvoiceCleanupActions } from "@/components/cleanup-actions";
 import { Loader2, AlertTriangle, ArrowRight, RotateCcw, ChevronDown, ChevronRight, Pencil, AlertCircle, UserRound, Users } from "lucide-react";
 import { AuditActor } from "@/components/audit-actor";
 import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@workspace/mission-control-ds/hooks/use-toast";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogFooter,
-} from "@/components/ui/dialog";
+} from "@workspace/mission-control-ds/components/ui/dialog";
 
 type Invoice = {
   id: number;

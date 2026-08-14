@@ -4,12 +4,12 @@ import {
   getGetSettingsQueryKey,
   useUpdateSettings,
 } from "@workspace/api-client-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useToast } from "@/hooks/use-toast";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@workspace/mission-control-ds/components/ui/card";
+import { Button } from "@workspace/mission-control-ds/components/ui/button";
+import { Input } from "@workspace/mission-control-ds/components/ui/input";
+import { Label } from "@workspace/mission-control-ds/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@workspace/mission-control-ds/components/ui/select";
+import { useToast } from "@workspace/mission-control-ds/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Settings as SettingsIcon, Save, Users } from "lucide-react";
 import { Link, useLocation } from "wouter";

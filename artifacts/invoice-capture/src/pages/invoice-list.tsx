@@ -5,12 +5,12 @@ import {
   useGetInvoiceStats,
   getListInvoicesQueryKey,
 } from "@workspace/api-client-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@workspace/mission-control-ds/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@workspace/mission-control-ds/components/ui/table";
+import { Button } from "@workspace/mission-control-ds/components/ui/button";
+import { Input } from "@workspace/mission-control-ds/components/ui/input";
+import { Switch } from "@workspace/mission-control-ds/components/ui/switch";
+import { Label } from "@workspace/mission-control-ds/components/ui/label";
 import { StatusBadge } from "@/components/status-badge";
 import { InvoiceCleanupActions } from "@/components/cleanup-actions";
 import {
@@ -18,8 +18,8 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-} from "@/components/ui/dropdown-menu";
-import { useToast } from "@/hooks/use-toast";
+} from "@workspace/mission-control-ds/components/ui/dropdown-menu";
+import { useToast } from "@workspace/mission-control-ds/hooks/use-toast";
 import {
   FileText, AlertCircle, CheckSquare, CheckCircle, FilePlus, Loader2,
   Search, ChevronLeft, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown,

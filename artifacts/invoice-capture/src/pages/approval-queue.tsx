@@ -7,17 +7,17 @@ import {
   useApproveInvoice,
   useSetVoucherId
 } from "@workspace/api-client-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Card, CardContent, CardHeader, CardTitle } from "@workspace/mission-control-ds/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@workspace/mission-control-ds/components/ui/table";
+import { Button } from "@workspace/mission-control-ds/components/ui/button";
+import { Input } from "@workspace/mission-control-ds/components/ui/input";
+import { Checkbox } from "@workspace/mission-control-ds/components/ui/checkbox";
+import { Badge } from "@workspace/mission-control-ds/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@workspace/mission-control-ds/components/ui/tooltip";
 import { Loader2, Download, CheckSquare, CheckCircle2, AlertTriangle, Lock, UserRound, Users } from "lucide-react";
 import { format } from "date-fns";
 import { useQueryClient } from "@tanstack/react-query";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@workspace/mission-control-ds/hooks/use-toast";
 import { StatusBadge } from "@/components/status-badge";
 import { useIsManager } from "@/hooks/use-role";
 

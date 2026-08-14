@@ -11,10 +11,10 @@ import {
   getGetInvoiceAuditLogQueryKey,
   getGetSourceDocumentQueryKey,
 } from "@workspace/api-client-react";
-import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
+import { Button } from "@workspace/mission-control-ds/components/ui/button";
+import { Textarea } from "@workspace/mission-control-ds/components/ui/textarea";
+import { Label } from "@workspace/mission-control-ds/components/ui/label";
+import { Input } from "@workspace/mission-control-ds/components/ui/input";
 import {
   Dialog,
   DialogContent,
@@ -22,8 +22,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { useToast } from "@/hooks/use-toast";
+} from "@workspace/mission-control-ds/components/ui/dialog";
+import { useToast } from "@workspace/mission-control-ds/hooks/use-toast";
 import { getApiErrorMessage } from "@/lib/utils";
 import { Ban, Trash2, Loader2 } from "lucide-react";
 

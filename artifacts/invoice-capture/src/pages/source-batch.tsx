@@ -1,5 +1,5 @@
 import { useParams, useLocation } from "wouter";
-import { Button } from "@/components/ui/button";
+import { Button } from "@workspace/mission-control-ds/components/ui/button";
 import { ArrowLeft, UploadCloud } from "lucide-react";
 import { SourceDocumentSummary } from "@/components/source-document-summary";
 

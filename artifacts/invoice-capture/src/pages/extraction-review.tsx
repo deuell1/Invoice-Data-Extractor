@@ -18,24 +18,24 @@ import {
 } from "@workspace/api-client-react";
 import type { DuplicateCheckResult } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Card, CardContent, CardHeader, CardTitle } from "@workspace/mission-control-ds/components/ui/card";
+import { Input } from "@workspace/mission-control-ds/components/ui/input";
+import { Label } from "@workspace/mission-control-ds/components/ui/label";
+import { Button } from "@workspace/mission-control-ds/components/ui/button";
+import { Badge } from "@workspace/mission-control-ds/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@workspace/mission-control-ds/components/ui/select";
 import { VendorCombobox } from "@/components/vendor-combobox";
 import { StatusBadge } from "@/components/status-badge";
 import { InvoiceCleanupActions } from "@/components/cleanup-actions";
 import { AuditActor } from "@/components/audit-actor";
-import { useToast } from "@/hooks/use-toast";
+import { useToast } from "@workspace/mission-control-ds/hooks/use-toast";
 import { Loader2, AlertCircle, CheckCircle2, AlertTriangle, RefreshCw, Clock, FileText, Info, ExternalLink, Download, FileWarning, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
-} from "@/components/ui/accordion";
+} from "@workspace/mission-control-ds/components/ui/accordion";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,7 +45,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+} from "@workspace/mission-control-ds/components/ui/alert-dialog";
 
 const FIELD_LABELS: Record<string, string> = {
   vendorId: "Vendor",

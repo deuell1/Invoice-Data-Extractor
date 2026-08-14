@@ -3,10 +3,10 @@ import {
   usePatchUserRole,
   getListUsersQueryKey,
 } from "@workspace/api-client-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import { useToast } from "@/hooks/use-toast";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@workspace/mission-control-ds/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@workspace/mission-control-ds/components/ui/select";
+import { Badge } from "@workspace/mission-control-ds/components/ui/badge";
+import { useToast } from "@workspace/mission-control-ds/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { Loader2, Users, Settings as SettingsIcon } from "lucide-react";
 import { useIsManager } from "@/hooks/use-role";

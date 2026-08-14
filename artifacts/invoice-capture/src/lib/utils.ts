@@ -1,9 +1,5 @@
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}
+// cn is provided by the design system — re-export so existing @/lib/utils imports keep working.
+export { cn } from "@workspace/mission-control-ds/lib/utils";
 
 /**
  * Compute a SHA-256 hex digest of a browser File using the Web Crypto API.

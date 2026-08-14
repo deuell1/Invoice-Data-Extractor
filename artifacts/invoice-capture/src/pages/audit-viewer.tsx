@@ -4,10 +4,10 @@ import {
   useGetInvoiceAuditLog,
   getGetInvoiceAuditLogQueryKey,
 } from "@workspace/api-client-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle } from "@workspace/mission-control-ds/components/ui/card";
+import { Button } from "@workspace/mission-control-ds/components/ui/button";
+import { Input } from "@workspace/mission-control-ds/components/ui/input";
+import { Label } from "@workspace/mission-control-ds/components/ui/label";
 import { Loader2, History, Search, FileQuestion } from "lucide-react";
 import { AuditActor } from "@/components/audit-actor";
 import { format } from "date-fns";

@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import { FileText, CheckSquare, AlertCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Button } from "@workspace/mission-control-ds/components/ui/button";
 
 export function HomePage() {
   return (
