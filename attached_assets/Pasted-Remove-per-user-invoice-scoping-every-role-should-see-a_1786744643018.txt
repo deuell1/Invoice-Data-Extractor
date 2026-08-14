@@ -1,0 +1,44 @@
+Remove per-user invoice scoping — every role should see all invoices with no
+restriction based on who submitted or is assigned to them.
+
+Context: GET /invoices (artifacts/api-server/src/routes/invoices.ts) currently
+has a server-side scope-enforcement block that restricts AP_CLERK-role users to
+only invoices where submittedBy matches their own clerkUserId (and, for
+status=EXCEPTION, to invoices they own or that are unassigned). This causes the
+"Total Invoices" KPI (from GET /invoices/stats, which is unscoped) to disagree
+with the invoice table (which is scoped) for AP_CLERK users. The desired
+behavior is: no per-user differentiation — every authenticated user, regardless
+of role, sees every non-voided invoice (subject to the existing status/search/
+filter query params, exactly as today).
+
+Task:
+1. In the GET /invoices handler in artifacts/api-server/src/routes/invoices.ts,
+   remove the entire block that reads req.clerkUserRole / req.clerkUserId and
+   pushes submittedBy / exceptionOwnerClerkId conditions for AP_CLERK.
+2. Decide what happens to the `assignedTo` query param and its
+   `else if (userRole !== "AP_CLERK" && assignedTo)` branch — leave it in as an
+   optional, explicit filter usable by any role (e.g. still useful for a "my
+   work" view someone can opt into), but make sure it is never applied
+   automatically based on role. Confirm this with output in your report.
+3. Do NOT change the role-guard middleware (requireRole("AP_MANAGER")) on other
+   routes like /invoices/:id/approve, /invoices/:id/voucher, /invoices/export,
+   /source-documents/sync-inbox, etc. This task is scoped to visibility only,
+   not action permissions — those still exist and should be untouched.
+4. Update or remove the AP_CLERK-scoping smoke test coverage in smoke_test.mjs
+   Suite 10 that currently asserts clerk-vs-manager DATA scoping (as opposed to
+   the 403 role-guard assertions on manager-only routes, which must stay
+   exactly as-is — only remove/update assertions about visibility scoping, not
+   the 403 permission checks).
+5. Confirm GET /invoices/stats needs no change (it was already unscoped and is
+   now consistent with the now-unscoped GET /invoices).
+
+Report back with:
+- The diff for invoices.ts
+- What you decided about the assignedTo param and why
+- Any smoke test changes made, with names
+- Confirmation the full 19-suite smoke run still shows only the expected
+  Suite 13/14 dev-DB-debris failures (any third failure is real and should be
+  reported, not silently ignored)
+- Confirmation that GET /invoices/:id/approve, /voucher, /export, and
+  /source-documents/sync-inbox still correctly 403 for AP_CLERK (permission
+  guards are unaffected by this visibility change)

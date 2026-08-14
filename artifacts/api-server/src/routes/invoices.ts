@@ -355,35 +355,11 @@ router.get("/invoices", async (req, res): Promise<void> => {
   if (confidenceMax != null) {
     conditions.push(lte(invoiceCaptureTable.confidenceScore, String(confidenceMax / 100)));
   }
-  // ── Server-side scope enforcement ────────────────────────────────────────────
-  // AP_CLERK: always restrict results to their personal work regardless of any
-  // caller-supplied query params — prevents access-scope bypass via direct API calls.
-  // AP_MANAGER: honor the optional assignedTo param (for "My work" toggle in the UI).
-  const userRole = (req as any).clerkUserRole as string | undefined;
-  const clerkUserId = (req as any).clerkUserId as string | undefined;
-
-  if (userRole === "AP_CLERK" && clerkUserId) {
-    if (status === "EXCEPTION") {
-      // Exception records: scope by Clerk-user-ID assignment. Truly unassigned
-      // (both owner fields null) are visible to all clerks.
-      // Items assigned by display-name only (ownerClerkId = null, owner = text) are
-      // NOT treated as unassigned — they belong to the named person, not a clerk.
-      conditions.push(
-        or(
-          eq(invoiceCaptureTable.exceptionOwnerClerkId, clerkUserId),
-          and(
-            isNull(invoiceCaptureTable.exceptionOwner),
-            isNull(invoiceCaptureTable.exceptionOwnerClerkId),
-          ),
-        )!,
-      );
-    } else {
-      // PENDING_APPROVAL, PENDING_EXTRACTION, APPROVED, POSTED, or no status filter:
-      // restrict to invoices submitted by this clerk.
-      conditions.push(eq(invoiceCaptureTable.submittedBy, clerkUserId));
-    }
-  } else if (userRole !== "AP_CLERK" && assignedTo) {
-    // AP_MANAGER with explicit assignedTo param (e.g. "My work" toggle in approval queue).
+  // ── Optional assignedTo filter (any role) ────────────────────────────────────
+  // All authenticated users see all non-voided invoices. assignedTo is an
+  // explicit opt-in filter (e.g. a "My work" toggle) available to any role —
+  // it is never applied automatically.
+  if (assignedTo) {
     conditions.push(eq(invoiceCaptureTable.submittedBy, assignedTo));
   }
 
