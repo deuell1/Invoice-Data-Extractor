@@ -15,7 +15,7 @@ export const invoiceAuditLogTable = pgTable("invoice_audit_log", {
   editorRole: text("editor_role"),
   note: text("note"),
   /** Clerk userId of the authenticated user who performed the action. */
-  actorClerkId: text("actor_clerk_id").notNull().default("unattributed-legacy"),
+  actorClerkId: text("actor_clerk_id").notNull(),
   /** Human-readable display name resolved from Clerk at write time. */
   actorName: text("actor_name"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
