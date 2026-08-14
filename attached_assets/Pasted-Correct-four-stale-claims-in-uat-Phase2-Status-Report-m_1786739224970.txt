@@ -1,0 +1,87 @@
+Correct four stale claims in uat/Phase2_Status_Report.md using the exact same
+convention already used elsewhere in this same document for the po_header
+correction: strike through the original claim with ~~tildes~~, insert a bolded
+"Correction (2026-08-14):" note immediately after explaining what's actually
+true, and add one row per correction to the Correction Log table at the
+bottom of the file. Do not delete the original text — every one of these
+four corrections must be visible as struck-through text plus a correction
+note, preserving the historical record, matching how §2.1 and §6 Known Issue
+#3 already handle the po_header correction.
+
+Correction 1 — §6 Known Issues, item #4 (accuracy runs).
+
+Original text: "0 accuracy runs recorded. Accuracy page shows 'Not measured'."
+with User Impact "Expected — no labeled test pack" and Resolution Path
+"Record a run via 'Record Run' when a labeled ground-truth pack is available".
+
+This is stale. Three accuracy runs are now recorded (accuracy_run ids 1, 2,
+3), the third scoring 100.0% (49/49 fields) using Claude Haiku 4.5, recorded
+2026-08-12. See uat/EG1_Exit_Report.md and uat/Phase1_Signoff_CORRECTED.md for
+the full history. Strike the original row's claim and add the correction
+note with this information. The Resolution Path is now satisfied, not
+pending.
+
+Correction 2 — §5, Import Types Supported table.
+
+Original table lists three import types: VENDOR_MASTER, PO_REFERENCE, and
+INVOICE_CORRECTION, all marked ✅ for Template Download / Validate / Commit.
+
+PO_REFERENCE does not exist in the current codebase. Verify this yourself
+before editing: check the ImportType union in
+artifacts/api-server/src/services/importService.ts — it currently defines
+only "VENDOR_MASTER" | "INVOICE_CORRECTION". Confirm the same two-type
+enum in lib/api-spec/openapi.yaml's import-type enum definitions. Strike the
+PO_REFERENCE row and add a correction note stating it was removed when the
+po_header table was removed (commit d1a1252) but this table was never
+updated to reflect that at the time — connect this correction explicitly to
+the existing po_header Correction Log entry, since they're the same root
+cause.
+
+Correction 3 — §8, Exit Gates table.
+
+Original states both EG-1 and EG-2 are "⏳ Open" and includes the line
+"**Phase 1 is NOT marked PASS** — these two exit gates remain in their
+pre-Phase-2 state."
+
+Both gates are now closed. Phase 1 was signed off 2026-08-14
+(uat/Phase1_Signoff_CORRECTED.md) — EG-1 passed at 100.0% accuracy
+(accuracy_run id 3), EG-2 (production readiness) completed with all P11-P15
+hardening items done. Strike the "⏳ Open" status for both gates and the
+"Phase 1 is NOT marked PASS" line, and add a correction note pointing to
+uat/Phase1_Signoff_CORRECTED.md as the current authoritative record. Do not
+change the surrounding descriptive text about what each gate covers — only
+the status.
+
+Correction 4 — §6 Known Issues, item #2 (invoice_status enum).
+
+Original text: "`invoice_status` DB enum is missing `PENDING_REVIEW` and
+`EXPORTED` values that appear in the TypeScript enum definition. All SQL
+comparisons against these values use `::text` cast and remain safe."
+
+This is now fully moot, not merely safely handled. Verify yourself before
+editing: check invoiceStatusEnum in lib/db/src/schema/invoices.ts — it
+currently defines only six values (PENDING_EXTRACTION, EXCEPTION,
+PENDING_APPROVAL, APPROVED, POSTED, VOIDED). Neither PENDING_REVIEW nor
+EXPORTED appears anywhere in the invoice status type. EXPORTED does exist,
+but only as a value of the separate, untyped exportStatus text column
+(a different concept the original note conflated with invoice status).
+Strike the original claim and add a correction note explaining that the
+enum concern no longer applies to the current schema — there is nothing
+to add in a future migration window because the described gap doesn't exist.
+
+Step 5 — Add all four corrections to the Correction Log table at the bottom
+of the file, each dated 2026-08-14, following the exact same row format as
+the existing 2026-08-06 po_header entry.
+
+Do not touch any other section of this document. Do not modify
+KNOWN_ISSUES.md, FUTURE_USE.md, or any other file in this task.
+
+Report back with exactly these confirmations:
+
+1. The exact ImportType union found in importService.ts, verbatim.
+2. The exact invoiceStatusEnum values found in invoices.ts, verbatim.
+3. The final text of all four corrected sections plus the four new
+   Correction Log rows, verbatim.
+4. Confirmation that no other file was modified.
+
+Do not commit, deploy, or run any Replit publish step as part of this task.

@@ -173,8 +173,10 @@ Settings are served from code defaults until a user saves (0 rows in `app_settin
 | Import Type | Template Download | Validate | Commit |
 |---|---|---|---|
 | VENDOR_MASTER (29 columns) | ✅ | ✅ | ✅ |
-| PO_REFERENCE | ✅ | ✅ | ✅ |
+| ~~PO_REFERENCE~~ | ~~✅~~ | ~~✅~~ | ~~✅~~ |
 | INVOICE_CORRECTION | ✅ | ✅ | ✅ |
+
+**Correction (2026-08-14):** `PO_REFERENCE` does not exist in the current codebase. `importService.ts` defines `ImportType` as `"VENDOR_MASTER" | "INVOICE_CORRECTION"` only, confirmed by the OpenAPI spec enum (`[VENDOR_MASTER, INVOICE_CORRECTION]`). This row should have been removed as part of the same `po_header` removal (commit `d1a1252`) already documented in §2.1 and the Correction Log entry of 2026-08-06 — the two corrections share the same root cause.
 
 ### Export Types Supported
 
@@ -191,9 +193,9 @@ Settings are served from code defaults until a user saves (0 rows in `app_settin
 | # | Severity | Description | User Impact | Resolution Path |
 |---|---|---|---|---|
 | 1 | Low | `GET /api/audit` (top-level, global) returns 404 — no route registered. The Audit Viewer UI calls `GET /invoices/:id/audit-log` (per-invoice) and is fully functional. | None | Add a global audit feed route in Phase 3 if cross-invoice audit browsing is desired |
-| 2 | Low | `invoice_status` DB enum is missing `PENDING_REVIEW` and `EXPORTED` values that appear in the TypeScript enum definition. All SQL comparisons against these values use `::text` cast and remain safe. | None | Add the missing enum values in the next scheduled migration window |
+| 2 | Low | ~~`invoice_status` DB enum is missing `PENDING_REVIEW` and `EXPORTED` values that appear in the TypeScript enum definition. All SQL comparisons against these values use `::text` cast and remain safe.~~ **Correction (2026-08-14):** this concern is fully moot. `invoiceStatusEnum` in `lib/db/src/schema/invoices.ts` defines exactly six values (`PENDING_EXTRACTION`, `EXCEPTION`, `PENDING_APPROVAL`, `APPROVED`, `POSTED`, `VOIDED`) — neither `PENDING_REVIEW` nor `EXPORTED` appears in the invoice status type. `EXPORTED` exists only as a value of the separate `exportStatus` text column (a different concept this note conflated with invoice status). There is nothing to add in a future migration window; the described gap does not exist in the current schema. | None | ~~Add the missing enum values in the next scheduled migration window~~ N/A — gap does not exist |
 | 3 | Info | ~~0 PO headers in DB. PO matching will always route to EXCEPTION until a PO Reference CSV is imported.~~ **Correction (2026-08-06):** the `po_header` table was removed in commit `d1a1252`; PO validation is deferred and there is no PO Reference import path in the current schema. | None — PO validation out of scope | Reintroduce a PO data model if/when PO matching is scheduled |
-| 4 | Info | 0 accuracy runs recorded. Accuracy page shows "Not measured". | Expected — no labeled test pack | Record a run via "Record Run" when a labeled ground-truth pack is available |
+| 4 | Info | ~~0 accuracy runs recorded. Accuracy page shows "Not measured".~~ **Correction (2026-08-14):** three accuracy runs are now recorded (ids 1, 2, 3). Run id 3 (2026-08-12) scored **100.0%** (49/49 fields) using Claude Haiku 4.5 via the Replit AI Integrations proxy — the authoritative EG-1 measurement against the current production extractor. See `uat/EG1_Exit_Report.md` and `uat/Phase1_Signoff_CORRECTED.md` for the full history including the integrity incident and the control re-score (id 2, 91.8%). | ~~Expected — no labeled test pack~~ Resolved | ~~Record a run via "Record Run" when a labeled ground-truth pack is available~~ Satisfied — run id 3 is the authoritative result |
 
 ---
 
@@ -217,10 +219,12 @@ The following two exit gates were explicitly deferred from Phase 2 per the proje
 
 | Gate | Description | Status |
 |---|---|---|
-| **EG-1: End-to-end UAT** | A complete AP cycle (upload → extract → exception → approve → export) run by an AP Processor and AP Approver against a real invoice packet (≥5 invoices, ≥3 vendors), reviewed against ground truth. | ⏳ Open |
-| **EG-2: Production readiness review** | Security review, secret management audit, structured logging, monitoring, backup/restore verification, and load assessment before promotion to production. | ⏳ Open |
+| **EG-1: End-to-end UAT** | A complete AP cycle (upload → extract → exception → approve → export) run by an AP Processor and AP Approver against a real invoice packet (≥5 invoices, ≥3 vendors), reviewed against ground truth. | ~~⏳ Open~~ ✅ Closed |
+| **EG-2: Production readiness review** | Security review, secret management audit, structured logging, monitoring, backup/restore verification, and load assessment before promotion to production. | ~~⏳ Open~~ ✅ Closed |
 
-**Phase 1 is NOT marked PASS** — these two exit gates remain in their pre-Phase-2 state.
+~~**Phase 1 is NOT marked PASS** — these two exit gates remain in their pre-Phase-2 state.~~
+
+**Correction (2026-08-14):** both exit gates are now closed. Phase 1 was signed off 2026-08-14 by Davontay Euell (`uat/Phase1_Signoff_CORRECTED.md`). EG-1 passed at 100.0% accuracy (accuracy_run id 3, Claude Haiku 4.5, 2026-08-12). EG-2 (production readiness) completed with all P11–P15 hardening items verified. `uat/Phase1_Signoff_CORRECTED.md` is the current authoritative record.
 
 ---
 
@@ -269,7 +273,11 @@ No Phase 3 credentials, endpoints, or webhooks are configured in this deployment
 | Date | Section(s) | Correction |
 |---|---|---|
 | 2026-08-06 | §2.1 Data Layer, §6 Known Issues #3 | The original report claimed "`po_header` extensions ✅ (Added `poDate`, `buyer`, `importBatchId`)". This is no longer true: the `po_header` table was removed from the schema in commit `d1a1252` ("Remove unused vendor cleanup logic and refactor related services"). PO validation is deferred; invoices carrying a PO number are captured as free-text `poNumber` only, with no PO matching against a reference table. The original rows are struck through above rather than deleted, to preserve the historical record. |
+| 2026-08-14 | §6 Known Issues #4 | Original stated "0 accuracy runs recorded. Accuracy page shows 'Not measured'" with resolution path "Record a run when a labeled ground-truth pack is available." Three accuracy runs are now recorded (ids 1, 2, 3). Run id 3 (2026-08-12, Claude Haiku 4.5) scored 100.0% (49/49 fields) — the authoritative EG-1 measurement. The resolution path is satisfied. Original text struck through; correction note added in §6 row #4. |
+| 2026-08-14 | §5 Import Types Supported | Original table listed `PO_REFERENCE` as a supported import type (✅ Template Download / Validate / Commit). `PO_REFERENCE` does not exist in the current codebase — `importService.ts` defines `ImportType` as `"VENDOR_MASTER" \| "INVOICE_CORRECTION"` only, confirmed by the OpenAPI spec. This row should have been removed with the `po_header` table (commit `d1a1252`, the same root cause as the 2026-08-06 Correction Log entry). `PO_REFERENCE` row struck through; correction note added below the table. |
+| 2026-08-14 | §8 Exit Gates | Original stated both EG-1 and EG-2 were "⏳ Open" and that "Phase 1 is NOT marked PASS." Both gates are now closed. Phase 1 was signed off 2026-08-14 by Davontay Euell (`uat/Phase1_Signoff_CORRECTED.md`). EG-1 passed at 100.0% accuracy (accuracy_run id 3). EG-2 completed with all P11–P15 hardening items verified. Status cells and the "NOT marked PASS" line struck through; correction note added in §8. |
+| 2026-08-14 | §6 Known Issues #2 | Original stated "`invoice_status` DB enum is missing `PENDING_REVIEW` and `EXPORTED` values" with resolution path "Add the missing enum values in the next scheduled migration window." The current `invoiceStatusEnum` in `lib/db/src/schema/invoices.ts` defines exactly six values (`PENDING_EXTRACTION`, `EXCEPTION`, `PENDING_APPROVAL`, `APPROVED`, `POSTED`, `VOIDED`) — neither `PENDING_REVIEW` nor `EXPORTED` appears in the invoice status type. `EXPORTED` exists only as a value of the separate `exportStatus` text column (a different concept). The described gap does not exist in the current schema; there is nothing to migrate. Original text struck through; correction note added in §6 row #2. |
 
 ---
 
-*End of Phase 2 Status Report — 2026-06-29 (corrected 2026-08-06, see Correction Log)*
+*End of Phase 2 Status Report — 2026-06-29 (corrected 2026-08-06, 2026-08-14, see Correction Log)*
