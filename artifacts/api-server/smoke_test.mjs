@@ -837,6 +837,7 @@ console.log("══════════════════════�
 //   DELETE /exports/:id
 //   DELETE /vendors/:id
 //   DELETE /storage/objects/*path
+//   POST   /source-documents/sync-inbox
 //
 // Strategy:
 //   • AP_CLERK (via X-Smoke-Role: AP_CLERK header) must get exactly 403 on all.
@@ -849,7 +850,7 @@ console.log("══════════════════════�
 
 console.log("\n══════════════════════════════════════════");
 console.log("SUITE 10: Role-based access control (AP_CLERK vs AP_MANAGER)");
-console.log("  AP_CLERK  → must get 403 on all 8 manager-only routes");
+console.log("  AP_CLERK  → must get 403 on all 9 manager-only routes");
 console.log("  AP_MANAGER → must get expected business status (no 403/401/5xx)");
 console.log("══════════════════════════════════════════");
 
@@ -868,6 +869,7 @@ console.log("══════════════════════�
     ["DELETE", `/exports/${GHOST_ID}`,                       undefined],
     ["DELETE", `/vendors/${GHOST_ID}`,                       { confirm: true }],
     ["DELETE", `/storage/objects/smoke-role-test/ghost.pdf`, undefined],
+    ["POST",   `/source-documents/sync-inbox`,               {}],
   ];
 
   for (const [method, routePath, body] of clerkBlockedRoutes) {
@@ -936,6 +938,19 @@ console.log("══════════════════════�
       `AP_MANAGER: POST /exports returns 201 after passing guard (got ${xRoleS})`,
     );
     if (xRoleJ?.id) createdExportBatchIds.push(xRoleJ.id);
+  }
+
+  // POST /source-documents/sync-inbox → 200 with zero-result body (Graph not configured).
+  {
+    const { status: syncS, json: syncJ } = await api("POST", "/source-documents/sync-inbox", {});
+    assert(
+      syncS === 200,
+      `AP_MANAGER: POST /source-documents/sync-inbox returns 200 after passing guard (got ${syncS})`,
+    );
+    assert(
+      syncJ?.processed === 0 && syncJ?.skipped === 0 && syncJ?.errors === 0,
+      `AP_MANAGER: POST /source-documents/sync-inbox returns { processed: 0, skipped: 0, errors: 0 } when Graph is unconfigured (got ${JSON.stringify(syncJ)})`,
+    );
   }
 }
 
