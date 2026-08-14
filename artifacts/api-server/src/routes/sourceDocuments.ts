@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { requireRole } from "../middlewares/requireAuth";
 import { extractionRateLimit } from "../middlewares/extractionRateLimit";
 import { and, eq, ilike, inArray, isNull, desc, sql } from "drizzle-orm";
 import {
@@ -27,6 +28,8 @@ import {
   deleteSourceDocument,
   type SourceDocumentWithInvoices,
 } from "../services/sourceDocumentService";
+import { syncInboxOnce } from "../services/inboxIngestionService";
+import { logger } from "../lib/logger";
 
 const isoOrNull = (v: unknown): string | null =>
   v instanceof Date ? v.toISOString() : ((v as string | null) ?? null);
@@ -94,6 +97,17 @@ function buildPayload(data: SourceDocumentWithInvoices) {
     duplicateSourceDocument,
   };
 }
+
+// ─── POST /source-documents/sync-inbox ───────────────────────────────────────
+router.post("/source-documents/sync-inbox", requireRole("AP_MANAGER"), async (_req, res): Promise<void> => {
+  try {
+    const result = await syncInboxOnce();
+    res.json(result);
+  } catch (err) {
+    logger.error({ err }, "Failed to sync inbox");
+    res.status(500).json({ error: "Failed to sync inbox" });
+  }
+});
 
 // ─── POST /source-documents ──────────────────────────────────────────────────
 router.post("/source-documents", extractionRateLimit, async (req, res): Promise<void> => {

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "wouter";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useListSourceDocuments,
   getListSourceDocumentsQueryKey,
@@ -25,10 +26,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
-  FileText, Loader2, Search, ChevronLeft, ChevronRight, FileSearch, History, Eye, AlertTriangle,
+  FileText, Loader2, Search, ChevronLeft, ChevronRight, FileSearch, History, Eye, AlertTriangle, RefreshCw,
 } from "lucide-react";
 import { format } from "date-fns";
 import { AuditActor } from "@/components/audit-actor";
+import { useToast } from "@/hooks/use-toast";
 
 type StatusFilter = "ALL" | ListSourceDocumentsProcessingStatus;
 
@@ -132,6 +134,34 @@ export function SourceDocuments() {
   const [includeRemoved, setIncludeRemoved] = useState(false);
   const [page, setPage] = useState(1);
   const [auditSource, setAuditSource] = useState<SourceDocument | null>(null);
+  const [syncPending, setSyncPending] = useState(false);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const handleSyncInbox = async () => {
+    setSyncPending(true);
+    try {
+      const resp = await fetch("/api/source-documents/sync-inbox", { method: "POST" });
+      if (!resp.ok) {
+        const body = await resp.json().catch(() => ({})) as { error?: string };
+        throw new Error(body.error ?? `HTTP ${resp.status}`);
+      }
+      const result = await resp.json() as { processed: number; skipped: number; errors: number };
+      toast({
+        title: "Inbox synced",
+        description: `Processed ${result.processed}, skipped ${result.skipped}, ${result.errors} error${result.errors === 1 ? "" : "s"}`,
+      });
+      queryClient.invalidateQueries({ queryKey: getListSourceDocumentsQueryKey() });
+    } catch (e) {
+      toast({
+        variant: "destructive",
+        title: "Inbox sync failed",
+        description: e instanceof Error ? e.message : "Please try again.",
+      });
+    } finally {
+      setSyncPending(false);
+    }
+  };
 
   const queryParams = {
     processingStatus: statusFilter === "ALL" ? undefined : statusFilter,
@@ -174,6 +204,18 @@ export function SourceDocuments() {
           <div className="flex items-center justify-between gap-4 flex-wrap">
             <CardTitle>Documents</CardTitle>
             <div className="flex items-center gap-4 flex-wrap">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSyncInbox}
+                disabled={syncPending}
+                data-testid="button-sync-inbox"
+              >
+                {syncPending
+                  ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  : <RefreshCw className="mr-2 h-4 w-4" />}
+                Sync Inbox
+              </Button>
               <div className="w-48">
                 <Select value={statusFilter} onValueChange={(v) => handleStatusChange(v as StatusFilter)}>
                   <SelectTrigger data-testid="select-processing-status">

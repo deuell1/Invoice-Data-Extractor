@@ -1,0 +1,45 @@
+Add the scheduled trigger, the manual trigger, and a UI button — all calling
+the existing syncInboxOnce() from inboxIngestionService.ts. Do not modify
+graphMailClient.ts, inboxIngestionService.ts's internal logic, or
+objectStorage.ts in this step.
+
+1. pnpm add node-cron (and @types/node-cron as a devDependency) in
+   artifacts/api-server.
+
+2. In artifacts/api-server/src/index.ts, after the existing
+   logGraphIngestionBootInfo() call, schedule syncInboxOnce() using
+   node-cron. Read the schedule from a new GRAPH_SYNC_CRON_SCHEDULE env var,
+   defaulting to "0 */12 * * *" (every 12 hours) if unset — this matches
+   "doesn't need to be live," not a tight polling loop. Wrap the scheduled
+   call's execution in a try/catch that logs any thrown error — a cron job
+   must never crash the whole process on a bad run. Log once at startup
+   which schedule is active, the same way other boot-time config is logged.
+
+3. Add a new route in artifacts/api-server/src/routes/sourceDocuments.ts:
+   POST /source-documents/sync-inbox
+   Guard it with requireRole("AP_MANAGER") — import requireRole from
+   "../middlewares/requireAuth" (not currently imported in this file; add
+   it), mirroring exactly how vendors.ts guards /vendors/cleanup.
+   The handler calls syncInboxOnce() and returns its result directly as
+   JSON: { processed, skipped, errors }. If it throws, return 500 with a
+   generic message — do not leak internal error details to the client,
+   matching the pattern used elsewhere in this file.
+
+4. Add a "Sync Invoices" button to the Source Documents page
+   (artifacts/invoice-capture/src/pages/source-documents.tsx). On click,
+   call the new route, show a toast/notification with the result
+   (e.g. "Processed 3, skipped 1, 0 errors" — adapt to whatever
+   notification pattern this page already uses), and invalidate the
+   source-documents list query afterward so any newly ingested documents
+   appear without a manual refresh. Follow the existing button and query-
+   invalidation conventions already used in cleanup-actions.tsx rather than
+   introducing a new pattern. This button should be visible but need not be
+   restricted client-side by role — the server-side requireRole guard is
+   the actual enforcement; a non-manager clicking it should just see a
+   clear 403-derived error, not a hidden button (consistent with how other
+   role-gated actions in this app already behave).
+
+Report back: the exact cron expression active by default, confirm the
+route returns { processed: 0, skipped: 0, errors: 0 } when Graph is
+unconfigured (same as the direct function call you already verified), and
+confirm a non-AP_MANAGER role gets a 403 on the route.

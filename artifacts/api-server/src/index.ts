@@ -3,6 +3,8 @@ import { logger } from "./lib/logger";
 import { assertFkCoverage, warnVendorAuditOrphans } from "./lib/fkCoverageCheck";
 import { logExtractionBootInfo } from "./services/extractionService";
 import { logGraphIngestionBootInfo } from "./services/graphMailClient";
+import { syncInboxOnce } from "./services/inboxIngestionService";
+import { schedule } from "node-cron";
 
 const rawPort = process.env["PORT"];
 
@@ -48,6 +50,23 @@ app.listen(port, (err) => {
     .then(() => {
       logExtractionBootInfo();
       logGraphIngestionBootInfo();
+
+      // Schedule periodic inbox sync. Read the schedule at boot time so
+      // ops can override it without a code change. Default: every 12 hours.
+      const cronSchedule =
+        process.env.GRAPH_SYNC_CRON_SCHEDULE ?? "0 */12 * * *";
+      logger.info(
+        { schedule: cronSchedule },
+        "Graph ingestion: inbox sync scheduled",
+      );
+      schedule(cronSchedule, () => {
+        syncInboxOnce().catch((err) => {
+          logger.error(
+            { err: err instanceof Error ? err.message : String(err) },
+            "Graph ingestion: scheduled sync failed — process not affected",
+          );
+        });
+      });
     })
     .catch((startupErr) => {
       logger.error(
