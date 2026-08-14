@@ -135,8 +135,8 @@ export function AuditViewer() {
                     {log.fieldName && (
                       <div className="text-xs text-muted-foreground" data-testid={`audit-field-change-${log.id}`}>
                         <span className="font-medium text-foreground" data-testid={`audit-field-name-${log.id}`}>{log.fieldName}:</span>{" "}
-                        <span data-testid={`audit-old-value-${log.id}`}>{log.oldValue || "empty"}</span>{" → "}
-                        <span data-testid={`audit-new-value-${log.id}`}>{log.newValue || "empty"}</span>
+                        <span data-testid={`audit-old-value-${log.id}`}>{log.oldValue == null || log.oldValue === "" ? "empty" : log.oldValue}</span>{" → "}
+                        <span data-testid={`audit-new-value-${log.id}`}>{log.newValue == null || log.newValue === "" ? "empty" : log.newValue}</span>
                       </div>
                     )}
                     {log.note && (
