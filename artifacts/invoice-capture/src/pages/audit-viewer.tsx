@@ -21,6 +21,15 @@ export function AuditViewer() {
     query: {
       enabled: invoiceId != null && invoiceId > 0,
       queryKey: getGetInvoiceAuditLogQueryKey(invoiceId ?? 0),
+      // Treat a non-array 200 body as a load failure so the error state
+      // (with retry) is shown rather than silently falling through to an
+      // empty-state or crashing on .map().
+      select: (data) => {
+        if (!Array.isArray(data)) {
+          throw new Error("Unexpected audit log response shape");
+        }
+        return data;
+      },
     },
   });
 

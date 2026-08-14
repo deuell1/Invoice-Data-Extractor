@@ -1436,6 +1436,47 @@ test("exception queue audit panel shows 'No audit logs yet' when the invoice has
   await expect(page.locator("body")).not.toBeEmpty();
 });
 
+// ─── 22. Audit Viewer — non-array 200 response ───────────────────────────────
+
+test("audit viewer: non-array 200 response shows error or empty state and does not crash", async ({
+  page,
+}) => {
+  // Mock the audit API for invoice #8 returning a valid JSON object (not an
+  // array).  The component must not call .map() on a non-array value.
+  await page.route("**/api/invoices/8/audit**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: '{"error":"unexpected"}',
+    });
+  });
+
+  await page.goto("/audit");
+
+  await expect(
+    page.getByRole("heading", { name: /audit log viewer/i }),
+  ).toBeVisible({ timeout: 15_000 });
+
+  await page.getByTestId("input-invoice-id").fill("8");
+  await page.getByTestId("button-load-audit").click();
+
+  // The error state must appear — a non-array body is a contract failure,
+  // not an empty result, so the component must show the error+retry affordance.
+  await expect(page.getByTestId("audit-error")).toBeVisible({
+    timeout: 10_000,
+  });
+
+  // The retry button must also be present alongside the error message.
+  await expect(page.getByTestId("button-retry-audit")).toBeVisible();
+
+  // Neither the timeline nor the empty state must appear.
+  await expect(page.getByTestId("audit-timeline")).not.toBeVisible();
+  await expect(page.getByTestId("audit-empty")).not.toBeVisible();
+
+  // The page must remain intact — no crash or blank screen.
+  await expect(page.locator("body")).not.toBeEmpty();
+});
+
 // ─── 4. Invoice List ─────────────────────────────────────────────────────────
 
 test("invoice list page renders with filter controls", async ({ page }) => {
