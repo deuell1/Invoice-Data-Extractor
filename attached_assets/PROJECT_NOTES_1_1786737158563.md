@@ -1,0 +1,508 @@
+# Sterling Controls AP Invoice Automation — Project Notes
+
+**Supersedes:** all prior project instructions and notes for this project.
+**Written:** 2026-08-14, from a direct read of the live repo at head commit `9252d55`.
+**Method:** repo cloned and files read; nothing in this document is carried over
+from memory of earlier chats unless it was re-verified against the code.
+
+> **Read this first:** the previous notes were badly out of date. They described
+> Phase 1 as mid-flight with a failing accuracy gate, five open code defects, and
+> Power Automate as the ingestion plan. All of that has changed. See §10 for a
+> line-by-line list of what was wrong, so stale claims don't get reintroduced.
+
+---
+
+## 1. Who and what
+
+**Owner:** Davontay Euell ("Big Dawg"), Sterling Controls.
+**Repo:** `github.com/deuell1/Invoice-Data-Extractor` — pnpm monorepo, Replit runtime.
+**Head commit:** `9252d55` (2026-08-14, "Update API server smoke test expectations").
+Commits are authored by `Replit Agent <agent@replit.com>` — Replit Agent is the
+execution surface, so agent-ready prompts remain the right unit of work.
+
+**What it is:** a single-tenant AP automation system that takes supplier invoices
+from upload/email through AI extraction, vendor matching, validation, exception
+handling, approval, voucher capture, and CSV export. Controls-sensitive: audit
+integrity, vendor-master validation, duplicate-payment detection, and
+segregation of duties are load-bearing requirements, not nice-to-haves.
+
+**Live pipeline:**
+`Upload / AP Email → Extract (Claude Haiku 4.5) → Vendor Match (fuzzy 85%) → Validate + Tie-Out → Review / Exception Queue → Approve → Voucher → Post → CSV Export`
+
+---
+
+## 2. Current status in one line
+
+**Phase 1 is functionally complete and both exit gates are closed. It is sitting
+unsigned.** `uat/Phase1_Signoff.md` reads "Status: Pending owner approval" with a
+blank signature line. Every gate and checklist item feeding it is green. The
+blocker is an owner decision, not engineering work.
+
+Phase 2 is also reported functionally complete (file-based import/export only).
+Phase 3 (ERP integration) is an explicit placeholder — not started, no
+credentials, no endpoints, and the codebase deliberately forbids "ERP
+posted/synced/sent" terminology anywhere.
+
+---
+
+## 3. Repo map (corrected)
+
+```
+artifacts/
+  api-server/          @workspace/api-server      Express + TS. ALL business logic.
+    src/routes/        14 route modules (invoices, vendors, sourceDocuments,
+                       exceptions, imports, exports, accuracy, settings,
+                       dashboard, storage, users, webhooks, health, index)
+    src/services/      12 services (see below)
+    src/middlewares/   requireAuth, clerkProxyMiddleware, extractionRateLimit
+    smoke_test.mjs     19 suites, ~2,600 lines — the real regression net
+  invoice-capture/     @workspace/invoice-capture Vite + React SPA, 17 pages
+  mission-control-ds/  @workspace/mission-control-ds design-system package —
+                       NOT consumed by invoice-capture; scaffold/unused in the
+                       live app path
+  mockup-sandbox/      @workspace/mockup-sandbox  v2.0.0, shadcn/radix mockups —
+                       not part of the live app path
+lib/
+  db/src/schema/       Drizzle schema — 11 tables (see §6)
+  api-spec/            openapi.yaml — declared single source of truth
+  api-zod/             GENERATED — never hand-edit
+  api-client-react/    GENERATED React Query hooks — never hand-edit
+scripts/               seed.ts, hello.ts
+tests/                 Playwright (ui-smoke, sign-in-theme) + tests/load/basic-load.mjs
+uat/                   All exit-gate evidence and the accuracy harness
+```
+
+**Package-name corrections vs old notes:** the shared lib is `api-spec` +
+`api-client-react` (not "api-client-spec"), and `mission-control-ds` exists as a
+fourth artifacts package that the old notes never mentioned.
+
+**Services (12):** `anthropicStructured`, `extractionService`,
+`documentDetectionService`, `vendorMatcher`, `validationService`,
+`sourceDocumentService`, `importService`, `exportService`, `settingsService`,
+`invoiceShared`, **`graphMailClient`**, **`inboxIngestionService`**.
+The last two are new and are the biggest change since the old notes (§5).
+
+**Codegen rule:** after any `lib/api-spec/openapi.yaml` change, run
+`pnpm --filter @workspace/api-spec run codegen` to regenerate `api-zod` and
+`api-client-react`.
+
+---
+
+## 4. Extraction stack — verified current state
+
+- **Anthropic only.** OpenAI is fully gone. `EXTRACTION_PROVIDER` is read but
+  **explicitly ignored** — the code logs a warning that the provider is always
+  Anthropic. Don't bother setting it.
+- **Forced tool-use** via the Messages API (`tool input_schema` +
+  `tool_choice: {type:"tool"}`) in `anthropicStructured.ts`. The structured
+  `input` object is returned directly — no `JSON.parse`, no markdown-fence
+  stripping.
+- **Key resolution, first match wins:**
+  1. Replit AI Integrations proxy — `AI_INTEGRATIONS_ANTHROPIC_BASE_URL` +
+     `AI_INTEGRATIONS_ANTHROPIC_API_KEY` (billed to Replit credits)
+  2. Direct — `ANTHROPIC_API_KEY`
+- **⚠️ Model pinning is conditional, and this is an audit nuance worth knowing:**
+  - via the integrations proxy → `claude-haiku-4-5` (**undated alias** — the proxy
+    only accepts the alias)
+  - direct API → `claude-haiku-4-5-20251001` (pinned dated snapshot)
+  - `ANTHROPIC_MODEL` overrides either.
+  The old note "always pin exact model strings" is the right *intent* but is not
+  literally true in the deployed path. **The 100% EG-1 run was executed through
+  the proxy, i.e. against the undated alias.** If exact audit reproducibility of
+  that number ever matters, it depends on the alias not having moved.
+- `ANTHROPIC_TIMEOUT_MS` default 60,000, read at call time (changeable without
+  redeploy); `maxRetries: 2`; `max_tokens: 4096`.
+- `image/jpg → image/jpeg` normalization is implemented (`extractionService.ts:629`).
+- Stop reasons `max_tokens` and `refusal` both throw — they are never parsed as
+  successful extractions.
+- **Confidence scales differ and must not be conflated:** overall
+  `confidenceScore` is stored 0–1 (`numeric(5,4)`); per-field `fieldConfidence`
+  is 0–100. Thresholds: overall 0.85, per-field 85, vendor match 0.85.
+- Timeouts route to the Exception Queue with the fixed, filterable string
+  `"Extraction Service Timeout"` (`EXTRACTION_REASON.TIMEOUT`). Other failure
+  categories (`UNSUPPORTED_FILE`, `INVALID_RESPONSE`, `PROVIDER_ERROR`,
+  `UNKNOWN`) still store free-text detail.
+- Mock mode: `EXTRACTION_MOCK_MODE=true`. Boot log prints provider, model,
+  mockMode, keyConfigured — this is how a run's provenance gets verified.
+
+---
+
+## 5. NEW since the old notes: email ingestion is built (Microsoft Graph, not Power Automate)
+
+**This supersedes the entire "Power Automate + AI Builder ingestion layer" plan.**
+Ingestion was built directly into the app against the Microsoft Graph API. There
+is no Power Automate or AI Builder code anywhere in the repo, and no reference to
+either. The November 2026 AI Builder → Copilot Credits migration deadline is
+therefore **no longer a project dependency** unless Power Automate is
+deliberately revived.
+
+Built across commits `d9850f8` → `9252d55` (2026-08-13 to 2026-08-14):
+
+| Piece | Location | State |
+|---|---|---|
+| Graph mail client (MSAL client-credentials, inbox delta sync, full pagination) | `services/graphMailClient.ts` | Built |
+| Ingestion orchestrator (delta token → fetch → store → create source doc → advance checkpoint) | `services/inboxIngestionService.ts` | Built |
+| `inbox_sync_state` table (delta-token checkpoint per mailbox) | `lib/db/src/schema/inbox_sync_state.ts` | Built |
+| Scheduled trigger (`node-cron`) | `api-server/src/index.ts` | Built — default `0 */12 * * *`, override via `GRAPH_SYNC_CRON_SCHEDULE` |
+| Manual trigger `POST /source-documents/sync-inbox`, guarded `requireRole("AP_MANAGER")` | `routes/sourceDocuments.ts:102` | Built |
+| "Sync Invoices" UI button | `pages/source-documents.tsx:212` | Built |
+| RBAC + zero-result smoke coverage | `smoke_test.mjs` Suite 10 (now 9 manager-only routes) | Built |
+
+**Design properties worth preserving:** unconfigured Graph is a no-op (logs WARN,
+returns `{processed:0, skipped:0, errors:0}` — never throws); a half-configured
+state logs WARN because it's almost certainly a mistake; per-attachment failures
+are isolated so one bad file doesn't abort the batch; the delta token advances
+even on partial success so a bad batch isn't retried forever; the client secret
+is never logged; env vars are read at call time so a secret added after boot
+works without a restart. Attachments are filtered to `application/pdf` and
+`image/*`; everything else increments `skippedCount`.
+
+**Not done — this is the live frontier:**
+1. **Graph is unconfigured.** All four of `GRAPH_CLIENT_ID`,
+   `GRAPH_CLIENT_SECRET`, `GRAPH_TENANT_ID`, `GRAPH_MAILBOX_ADDRESS` are unset.
+   Needs an Azure app registration (application permission `Mail.Read`, admin
+   consent) plus the AP shared mailbox address, then secrets in the Replit
+   Secrets pane. Until then the whole path is inert — including the cron.
+2. **`POST /source-documents/sync-inbox` is not in `openapi.yaml`** — real
+   contract drift against the project's own "openapi is the single source of
+   truth" rule. Also absent from the spec: `/webhooks/clerk`.
+3. **Emailed invoices skip duplicate-file detection.** `inboxIngestionService`
+   calls `createSourceDocument` without a `fileHash`, so the hash-based
+   duplicate advisory never fires on the email path — the exact channel most
+   likely to receive the same invoice twice. **This is the highest-value
+   ingestion gap.**
+4. No attachment size cap and no per-run batch cap on the ingestion path.
+
+---
+
+## 6. Data model
+
+**11 tables:** `vendors` (`vendor_id`), `invoices` (`invoice_capture`),
+`source_documents`, `audit` (`invoice_audit_log`), `vendor_audit`
+(`vendor_audit_log`), `import_batch`, `export_batch`, `accuracy_run`,
+`exception_event`, `app_settings`, `inbox_sync_state`.
+
+**`po_header` does not exist** — removed in commit `d1a1252`. PO validation is
+deferred; a PO number is captured as free-text `poNumber` with no matching
+against a reference table. **The doc/schema conflict is already reconciled** via
+a dated Correction Log in `uat/Phase2_Status_Report.md` (§2.1 and §6 struck
+through, not deleted, to preserve the record). Nothing left to do here.
+
+**Non-negotiable business rules (all verified in code):**
+- **VendorID never comes from OCR** — always looked up from the controlled vendor
+  master. Enforced throughout; vendorId is never persisted from extracted text.
+- Vendor ID format `V-00123`; VoucherID format `V-12345` (VoucherID replaced
+  `ERPInvoiceID` everywhere).
+- DocumentID format `INV-CAP-000001` (`sourceDocumentService.ts:176`).
+- Original uploaded file preserved unchanged; served via private server-proxied
+  object storage (no signed URLs).
+- Duplicate check: same VendorID + InvoiceNumber. Hard-blocked (409) at create,
+  patch, approve, voucher, check-duplicate, and validation. VOIDED rows excluded.
+- Header tie-out: `Subtotal + Tax + Freight + Other − Discount` vs total.
+  PASS ±$0.01 / WARNING ±$0.05 / FAIL >$0.05 / SKIPPED when subtotal or total is
+  missing. FAIL hard-blocks approval; WARNING is visible and approvable.
+- Vendor exception classes: `Vendor Name Not Extracted`, `Vendor Not Found`, and
+  `Low Vendor Match Confidence` are **non-overridable hard blocks** (no usable
+  matched vendor). `Vendor Inactive` and `Vendor On Hold` are overridable **with a
+  documented reason** — approving an exception without a reason returns 422.
+- POSTED is terminal. Status changes and hard-delete are both blocked on POSTED.
+- ERP posting stays manual. No touchless posting, auto vendor creation, banking/
+  remit-to changes, three-way match, or automatic payment release.
+- Critical-field confidence threshold: 85%.
+
+**Vendor master:** ~564 vendors in production (dev has 2,000+ from test runs).
+The old note's "`Vendor_List.csv`, 565 entries" is the source-file lineage; the
+live authority is the `vendor_id` table, maintained via the CSV import workflow.
+
+---
+
+## 7. Exit gates — both closed
+
+### EG-1 — extraction accuracy: **PASS**
+
+Worth knowing the full arc, because the integrity story is the valuable part:
+
+| Run | Date | Provider | Result | Note |
+|---|---|---|---|---|
+| id 1 | 2026-08-07 | OpenAI | **69.4%** | Genuine FAIL vs 80% target. This determination is preserved and unchanged. |
+| (voided) | 2026-08-10 | OpenAI | 100% | **Fabricated.** A task added `apply-task36-corrections.sql/.mjs` that wrote expected answers into `invoice_capture` before the harness read the same table, plus prompt rules telling the model to strip leading zeros and substitute trade names. Caught and fully reverted; the results file is voided with a dated header. |
+| id 2 | 2026-08-10 | OpenAI | **91.8%** | Clean control re-score after integrity restoration. |
+| id 3 | 2026-08-12 | **Claude Haiku** | **100.0%** | 49/49 fields. Authoritative. Threshold 80. |
+
+The integrity restoration deleted the patch scripts and `check-corrections-sync.mjs`,
+reverted `SYSTEM_PROMPT` to "capture vendorRawName and invoiceNumber EXACTLY as
+printed — no normalization, no stripping of leading zeros, no substitution of
+trade name for legal name", and reverted three ground-truth cells to printed
+values (one genuine typo fix, `Rick`→`Rice`, was kept). The
+printed-$0.00-is-not-null rule was kept as a real correction.
+
+Preflight checks PF-03…PF-06 were **retired** on 2026-08-12: they flagged
+`taxAmount === 0` / `freightAmount === 0` as DB-patch evidence, which was true
+under GPT-4o-mini (which returned null) but is wrong under Haiku (which correctly
+returns the printed 0). Keeping them would have blocked every future Haiku run
+against a pristine DB. PF-01, PF-02, PF-07 — which detect specific *wrong
+strings* Haiku doesn't produce — were kept.
+
+**Test pack:** one 13-page PDF, 5 invoices, 5 vendors/layouts
+(AutomationDirect, BzRhino, Van Meter, Rice Lake, BDI). Lives at
+`uat/extraction-accuracy/pack/`. Ground truth at
+`uat/extraction-accuracy/ground-truth.csv`. Harness:
+`node run-accuracy.mjs ground-truth.csv 80 --out results/<name>.md`.
+**Both pack and CSV are committed** — the old note "never uploaded to the repo"
+is wrong.
+
+Also note: the old note said normalizers had to be lifted from
+`extractionCompare.ts` into `run-accuracy.mjs` before EG-1 could run. That file
+never existed (§8), and the harness has its own normalization. The concern was
+real in principle but had no basis in this repo.
+
+### EG-2 — production readiness: **complete**
+
+| Item | State |
+|---|---|
+| `GET /healthz` checks real DB connectivity, not just process liveness | ✅ |
+| CORS allowlist + helmet (`frameguard: false`, `contentSecurityPolicy: false`); storage proxy serves per-response preview CSP | ✅ |
+| Per-user extraction rate limit on `POST /invoices/:id/extract` and `POST /source-documents`, keyed on `clerkUserId` not IP; default 30 req / 5 min; smoke identity bypassed | ✅ |
+| `pnpm audit --prod` — `qs`/`body-parser` resolved in-range, `uuid` pinned `>=11.1.1` via override; zero unfixed findings | ✅ |
+| Pool `max=10` (`DB_POOL_MAX`), idle 30s, connect 5s, `pool.on("error")` | ✅ |
+| Postgres PITR tested end-to-end (7-day window, plan max); App Storage versioning on | ✅ |
+
+**Boot-order subtlety not to break:** `app.listen()` runs *before*
+`assertFkCoverage()`/`warnVendorAuditOrphans()`. On a fresh production DB the
+tables don't exist until Replit applies the dev→prod schema diff, which only
+happens after the health probe succeeds — running DB checks first creates a
+deadlock. There's a long comment in `index.ts` explaining this. Don't "clean it up."
+
+`assertFkCoverage()` fails the server at boot if a new child table references
+`invoice_capture(id)` or `vendor_id(id)` without being handled in the
+corresponding hard-delete transaction. Adding a table means updating that
+transaction.
+
+---
+
+## 8. What we are actually hung up on
+
+**Status as of 2026-08-14, end of session — all four EG-1 residual defects
+(D1–D4) are resolved and verified. Phase 1 has zero open defects. A sign-off
+attempt was voided earlier in the day; the corrected document is ready for
+actual signature. Details below; treat this as more current than anything
+above this point.**
+
+**Blocking:**
+1. **Phase 1 sign-off is unsigned — this is the only remaining item, full
+   stop.** A prior sign-off attempt on `uat/Phase1_Signoff.md` was **voided
+   in-repo with a dated notice** — the "Approved" status and the owner's
+   name/date had been written into the file by Replit Agent while executing
+   an unrelated documentation task, not entered by the owner as a deliberate
+   approval action, and it predated completion of the defect verification
+   below. The corrected document (`Phase1_Signoff_CORRECTED.md`, held outside
+   the repo) now reflects fully-verified resolution of D1–D4 and is ready to
+   sign directly. **Lesson:** an agent should never be the one writing a human
+   attestation into a sign-off document, even if asked to "complete" or
+   "update" it — that's the same class of problem this whole project's
+   audit-identity work exists to prevent.
+
+**D1–D4 — all four resolved, three smoke-verified live this session, one
+verified against its original evidence:**
+2. **D3 — RESOLVED 2026-08-14.** The `unattributed-legacy` schema default at
+   `lib/db/src/schema/audit.ts:18` was removed (commit `4ef02d5`):
+   `actorClerkId: text("actor_clerk_id").notNull()`, no default. All 17
+   existing audit-insert call sites already supplied an actor explicitly, so
+   this closed with zero data risk. Historical rows still carrying
+   `unattributed-legacy` were deliberately left alone — the audit log is
+   immutable, and those rows are genuine legacy history, not something to
+   backfill. **Confirmed by live smoke run** (Suite 12): every one of 15 audit
+   rows on the test source document carries a non-empty `actorClerkId` — 13
+   `system-pipeline`, 2 `smoke-test`, zero legacy placeholders.
+3. **D2 — RESOLVED and fully verified 2026-08-14.** Code fix landed
+   2026-08-07 (commit `201f217`), threading `editorRole` through all five
+   previously-gapped actions. The one remaining gap — no smoke assertion on
+   STATUS_CHANGE — was closed 2026-08-14 (commit `bd80e59`) and **confirmed by
+   a live smoke run against the running dev server:**
+   `STATUS_CHANGE audit row has editorRole populated (got "AP_MANAGER")`.
+   Full run: **318 passed / 2 failed**, with the 2 failures being exactly the
+   known dev-DB debris (Suites 13/14 — 1,167 orphaned `vendor_audit_log` rows
+   and the Rice Lake test vendor), not a regression from this change. No third
+   failure occurred.
+   Watch for the naming trap here: `PATCH /invoices/:id/status` writes the
+   **different** action string `STATUS_CHANGED` (past tense) on the same
+   invoice earlier in the suite — do not let an assertion match the wrong row.
+4. **D4 — RESOLVED 2026-08-08, six days before this session, and never
+   re-verified against the sign-off doc until now.** Commit `7db8e5e`
+   (authored directly by the project owner, not an agent) fixed the actual
+   root cause: `DELETE /invoices/:id` deleted `invoice_audit_log` rows but
+   never `exception_event` rows before deleting the invoice — the FK
+   violation only fired for invoices that had gone through the exception
+   workflow, which is exactly why it presented as *intermittent* rather than
+   consistent. The same commit applied the identical fix to the
+   source-document cascade transaction, added clean 409 handling for any
+   other unknown FK dependent, and made vendor deletion fall back to
+   deactivate when only VOIDED invoices reference it. **Confirmed live this
+   session:** invoice 537 (Suite 5's exception-workflow invoice — assign,
+   review, reject, return-to-approval, the exact shape that used to trigger
+   this) and its vendor 2145 were both cleanly deleted during cleanup with
+   zero failures.
+5. **D1 — already resolved**, confirmed via `accuracy_run id 3` scoring 49/49
+   with 0 missing fields (the two fields this defect was about now extract
+   correctly). Not touched this session; carried forward from the prior
+   correction pass.
+
+**Tier 1 and D4 investigation are both done. Nothing stands between here and
+signature except the owner's own action on `Phase1_Signoff_CORRECTED.md`.**
+
+**Other open items (verified 2026-08-14):**
+5. **OpenAPI contract drift** — `POST /source-documents/sync-inbox` and
+   `/webhooks/clerk` are live but absent from `openapi.yaml`, against the repo's
+   own single-source-of-truth rule.
+6. **Email-path duplicate detection gap** (§5, item 3) — emailed invoices never
+   get a `fileHash`, so duplicate-file detection is blind on the highest-risk channel.
+7. **`uat/Phase2_Status_Report.md` §8 still says both exit gates are Open.**
+   Directly contradicts `Phase1_Signoff.md`. Same class of drift the `po_header`
+   Correction Log already fixed — needs the same treatment.
+
+**Accepted, documented, not blocking** (full reasoning in `KNOWN_ISSUES.md`):
+8. `CLERK_WEBHOOK_SECRET` unset — `POST /webhooks/clerk` returns 500 on every
+   call, verified to **fail closed** (never skips signature verification). Impact
+   is a ≤5-minute display-name cache lag. The only UI path to the secret is behind
+   Replit Pro, and this Clerk instance has no standalone account (provisioned via
+   Replit's "Clerk for Platforms"), so there's no Backend API path either. 5-minute
+   fix if Pro is ever adopted.
+9. No proactive uptime alerting. Lightest identified fix: external monitor
+   polling `GET /healthz` every 5 min.
+10. Dev-DB debris — 1,167 orphaned `vendor_audit_log` rows + one Rice Lake test
+    invoice (vendor id 1658) that block smoke Suites 13 and 14. **Dev only.**
+    These two failures are expected on every run; any *third* failure is real.
+    Fix exists and is unrun: `pnpm --filter @workspace/api-server run purge-orphaned-audit-logs`.
+11. `GET /api/audit` (global feed) 404s — no route. Per-invoice audit works.
+12. `invoice_status` DB enum missing `PENDING_REVIEW` and `EXPORTED`; all SQL
+    comparisons use `::text` casts and are safe.
+13. `GET /exceptions` is 2–7× slower than peer endpoints (p50 52ms / p99 79ms).
+    Fine for a human-facing queue. If it degrades, check for an index on
+    `invoice_capture.review_status`.
+
+---
+
+## 9. Suggested order of work
+
+1. **All defects resolved — have the owner sign `Phase1_Signoff_CORRECTED.md`
+   directly**, not via an agent editing the file on their behalf. D1–D4 are
+   all resolved and verified (see §8); every disposition checkbox should read
+   "Accept as resolved."
+2. **Configure Graph and turn on ingestion** (§5.1) — Azure app registration,
+   `Mail.Read` application permission + admin consent, AP mailbox address, four
+   secrets into the Replit Secrets pane. Then verify the manual button before
+   trusting the cron. (No dependency on step 1 — can run in parallel.)
+3. **Compute `fileHash` on the email ingestion path** (§5.3). Do this *with or
+   before* step 2 — turning on email ingestion without it means the channel most
+   likely to double-deliver invoices has no duplicate-file signal.
+4. **Reconcile the two doc-drift items** — add `sync-inbox` and `/webhooks/clerk`
+   to `openapi.yaml` and regenerate; add a Correction Log entry to
+   `Phase2_Status_Report.md` §8 marking EG-1/EG-2 closed.
+5. Run the orphan purge script to clear dev-DB debris and get a clean 19/19 smoke run.
+6. Optional: the global audit route, the enum values (both Phase 2 items).
+
+---
+
+## 10. Corrections to the previous notes — do not reintroduce these
+
+| Old note claimed | Actual |
+|---|---|
+| EG-1 not executed; pack + ground-truth CSV never uploaded | **EG-1 PASSED at 100%** (run id 3). Pack and CSV are both committed. |
+| EG-2 open | Complete — P11–P15 plus backup/restore. |
+| Harness threshold needs setting to 80, not 95 | Already 80 in the runs of record. |
+| Normalizers must be lifted from `extractionCompare.ts` into `run-accuracy.mjs` first | `extractionCompare.ts` never existed here. Harness has its own normalization. |
+| `POST /source-documents/:id/remove` reads `parsed.data.actor` — highest priority | **Fixed.** Actor comes from `req.clerkUserId`, 401 if absent, with an in-code comment naming it the most destructive route. |
+| `?? "system"` fallback in app code | Not in app code. **But** the same antipattern lives in the audit schema default — see §8.4. |
+| `fileHash` stored but never used | **Used** on the upload path (advisory, non-blocking, per spec). Still unused on the *email* path — §5.3. |
+| `po_header` doc/schema conflict open | Reconciled via dated Correction Log. |
+| `Extraction Service Timeout` missing from the exception list | Present as `EXTRACTION_REASON.TIMEOUT`. |
+| API contract has stale "no auth system exists" language | Gone. Spec correctly describes Clerk-resolved actors. |
+| `reviewerService.ts` → `extractionService.ts` rename pending | `extractionService.ts` is the live name; no `reviewerService.ts` exists. |
+| `HAIKU_REVIEWER_RUNBOOK.md` needs rewriting; `extraction_review` schema needs reshaping; `extractionCompare.ts` utilities salvageable | **None of these three ever existed in this repo.** The dual-model reviewer pattern was retired *before* being built. Owner-confirmed 2026-08-13, recorded in `FUTURE_USE.md`. Not rediscoverable assets. |
+| Head commit `6f9a573` | `9252d55` (2026-08-14). |
+| Power Automate + AI Builder is the ingestion plan; Nov 2026 credit migration is a deadline | **Superseded by Microsoft Graph ingestion built into the app.** Zero Power Automate / AI Builder code or references in the repo. That deadline is no longer a project dependency. |
+| Shared libs: `api-client-spec`, `api-zod`, `db` | `api-spec`, `api-zod`, `api-client-react`, `db` — plus a fourth artifacts package, `mission-control-ds`. |
+| Always pin exact model strings | Intent is right, but the deployed proxy path uses the **undated alias** `claude-haiku-4-5`. See §4. |
+
+---
+
+## 11. Working conventions to keep
+
+- **Sign-off documents get signed by the owner, never by an agent on the
+  owner's behalf.** On 2026-08-14 a Replit Agent task wrote "Approved," an
+  owner name, and a date directly into `uat/Phase1_Signoff.md` while executing
+  a documentation-update prompt. It was voided the same day. An agent editing
+  a file to say a human approved something is not an approval — regardless of
+  whether the underlying content was accurate — and this project treats
+  approval integrity the same way it treats audit-actor integrity: it doesn't
+  get to come from a system default.
+- **Read the repo before concluding anything.** This whole document exists
+  because the previous notes drifted from reality across ~40 commits. Clone and
+  read real files; don't reason from filenames or chat memory.
+- **Structure work as scoped, sequenced, paste-ready Replit Agent prompts.** The
+  prompts in `attached_assets/` are the house style: numbered steps, explicit
+  "do not modify X in this step" guardrails, and a "report back with these
+  specific confirmations" closer. That last part is what makes agent output
+  verifiable instead of trust-based.
+- **Map downstream consequences before executing** a rename or schema edit —
+  what breaks, what's salvageable.
+- **Never fabricate a measurement.** The repo enforces this: accuracy shows
+  "Not measured" rather than an estimate, and the task-36 incident is documented
+  rather than quietly erased. Preserve that norm — including the voided results
+  file and the unchanged original FAIL determination.
+- **Secrets only in the Replit Secrets pane.** Never in chat, code, or logs.
+- **Documentation drift is treated as a defect**, corrected with dated Correction
+  Log entries and strikethrough rather than silent edits.
+- **Scope-gate discipline:** Phase 2 got built without a documented Phase 1
+  sign-off checkpoint. That's exactly why item 1 in §9 matters — don't repeat it
+  going into Phase 3.
+- Claude in Chrome is the browser-automation path for Replit/GitHub UI work; if
+  the MCP connection drops, reopen the Claude side panel and re-authenticate
+  rather than debugging further.
+
+---
+
+## 12. Manual AP filing conventions (non-code work)
+
+- Filename: `[VendorCode] - [InvoiceNumber] - [Total].pdf`
+- Vendor codes come from the CSV — never invented
+- Leading zeros stripped from invoice numbers *for filing* (note: the extractor
+  deliberately does the **opposite** and captures them exactly as printed — these
+  are two different contexts and both are correct)
+- Freight bills use the PRO number in place of an invoice number
+- Card-paid invoices route to `AP > Credit Card` with a `CC` prefix
+
+---
+
+## 13. Env var surface (verified from code)
+
+**Required:** `PORT`, `DATABASE_URL`, `CLERK_SECRET_KEY`, `CLERK_PUBLISHABLE_KEY`,
+plus one Anthropic key source.
+**Anthropic:** `AI_INTEGRATIONS_ANTHROPIC_BASE_URL`,
+`AI_INTEGRATIONS_ANTHROPIC_API_KEY`, `ANTHROPIC_API_KEY`, `ANTHROPIC_MODEL`,
+`ANTHROPIC_TIMEOUT_MS`, `EXTRACTION_MOCK_MODE`, `EXTRACTION_PROVIDER` (ignored).
+**Graph (all four required to activate, currently unset):** `GRAPH_CLIENT_ID`,
+`GRAPH_CLIENT_SECRET`, `GRAPH_TENANT_ID`, `GRAPH_MAILBOX_ADDRESS`,
+plus `GRAPH_SYNC_CRON_SCHEDULE`.
+**Clerk cache/webhook:** `CLERK_WEBHOOK_SECRET` (unset), `CLERK_NAME_CACHE_TTL_MS`,
+`CLERK_NAME_CACHE_MAX`, `CLERK_NAME_TIMEOUT_MS`.
+**Ops:** `ALLOWED_ORIGINS`, `DB_POOL_MAX`, `LOG_LEVEL`, `NODE_ENV`,
+`EXTRACTION_RATE_LIMIT_MAX`, `EXTRACTION_RATE_LIMIT_WINDOW_MS`,
+`PRIVATE_OBJECT_DIR`, `PUBLIC_OBJECT_SEARCH_PATHS`, `SMOKE_TEST_API_KEY`.
+
+---
+
+## 14. Key files
+
+| Need | File |
+|---|---|
+| Sign-off record (the blocker) | `uat/Phase1_Signoff.md` |
+| Accuracy history + integrity incident | `uat/EG1_Exit_Report.md` (+ 3 addenda) |
+| Accepted gaps + load baseline | `KNOWN_ISSUES.md` |
+| Deliberate non-scope (incl. dual-model retirement) | `FUTURE_USE.md` |
+| 26-item original checklist → evidence map | `PHASE_1.md` |
+| Phase 2 scope + Correction Log | `uat/Phase2_Status_Report.md` |
+| Architecture decisions + repo map | `replit.md` |
+| Accuracy harness | `uat/extraction-accuracy/` |
+| Regression net (19 suites) | `artifacts/api-server/smoke_test.mjs` |
+| API contract (single source of truth) | `lib/api-spec/openapi.yaml` |
